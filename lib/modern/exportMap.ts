@@ -37,8 +37,10 @@ export type MapCaptureRequest = {
   cssHeight: number;
   /** How much sharper than on-screen to render, e.g. 4 for a 4× denser canvas. */
   pixelRatio: number;
-  /** Applied after the style loads, so overlays match the live map. */
-  decorate?: (map: MapLibreMap) => void;
+  /** Applied after the style loads, so overlays match the live map. May be async —
+   *  the capture waits for it to settle before waiting for the map to go idle, so an
+   *  overlay that has to load an image (the house marker) is present in the pixels. */
+  decorate?: (map: MapLibreMap) => void | Promise<void>;
 };
 
 export type MapCaptureResult = {
@@ -91,8 +93,11 @@ async function captureAt(
       const failed = (event: unknown) => reject(new Error(`Map render failed: ${String(event)}`));
       instance.once("error", failed);
       instance.once("load", () => {
-        request.decorate?.(instance);
-        instance.once("idle", () => resolve());
+        // "idle" is only meaningful once every overlay has been added — registering the
+        // listener after decorate settles means a late-added layer can't be missed.
+        Promise.resolve(request.decorate?.(instance))
+          .then(() => instance.once("idle", () => resolve()))
+          .catch(reject);
       });
     });
 

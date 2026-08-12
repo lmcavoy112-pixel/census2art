@@ -1,16 +1,22 @@
 "use client";
 
-// The Modern print designer.
+// The print designer.
 //
-// Deliberately much lighter than the Historic designer (app/design/page.tsx): there is no
-// border art, no symbol, and no pixel-calibration layer, because the product here is a
-// real map framed above an information block rather than a composed artwork. What it does
-// share with Historic is the catalogue, sizes and the /create handoff — all via lib/design/.
+// One page, two templates. Modern frames a real MapLibre map over an information block;
+// Historic prints the county as line art inside a Celtic border. The template is the
+// first thing chosen (section 0) and it decides which of the sections below apply —
+// there is no border style to pick on a Modern print and no contour density on a
+// Historic one, so those sections are simply not offered rather than shown disabled.
+//
+// The right-hand rail is a numbered accordion with one section open at a time, an icon
+// strip to jump between them, and a price bar pinned to the bottom that never scrolls
+// away from the customer.
 
 import dynamic from "next/dynamic";
 import { Jost } from "next/font/google";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { Map as MapLibreMap } from "maplibre-gl";
 
 import {
   buildUrl,
@@ -27,9 +33,7 @@ import {
   layoutFamilyLabel,
   loadCatalogueSkus,
   printSizeForSku,
-  PRODUCTS_FOR_CATEGORY,
   type CatalogueSku,
-  type ProductCategory,
   type ProductKind,
 } from "@/lib/design/catalogue";
 import { submitPrintOrder } from "@/lib/design/order";
@@ -38,14 +42,6 @@ import {
   renderPrintReadyCanvas,
   safeFileNamePart,
 } from "@/lib/printExport";
-import AccentSwatch from "@/app/components/AccentSwatch";
-import {
-  ACCENT_OPTIONS,
-  DEFAULT_ACCENT_ID,
-  isAccentId,
-  getAccentById,
-  type AccentId,
-} from "@/lib/design/appearance";
 import {
   cleanOptionalValue,
   getParam,
@@ -58,11 +54,14 @@ import {
   detectModernLevel,
   type ModernLevel,
 } from "@/lib/modern/presets";
-import type { ModernBasemap } from "@/lib/modern/mapStyle";
+import type { MapLayerToggles, ModernBasemap, ElevationUnit } from "@/lib/modern/mapStyle";
+import { DEFAULT_LAYER_TOGGLES, POLYGON_COLOUR_OPTIONS } from "@/lib/modern/mapStyle";
 import {
-  POLYGON_COLOUR_OPTIONS,
-  getPolygonColourById,
-} from "@/lib/modern/mapStyle";
+  DEFAULT_PALETTE_ID,
+  PRINT_PALETTES,
+  getPaletteById,
+  mapPaletteFor,
+} from "@/lib/modern/palettes";
 import {
   boundsOf,
   boxCentre,
@@ -73,127 +72,74 @@ import {
 import { captureMapImage, effectiveDpi } from "@/lib/modern/exportMap";
 import {
   modernStyle,
-  CONTOUR_DENSITY_MIN,
-  CONTOUR_DENSITY_MAX,
-  CONTOUR_DENSITY_STEP,
+  CONTOUR_INTERVALS,
   DEFAULT_CONTOUR_DENSITY,
+  contourIntervalLabel,
   type ContourDensity,
 } from "@/lib/modern/mapRuntime";
-import { applyModernOverlays } from "@/lib/modern/overlays";
+import { applyMarkerLayer, applyModernOverlays } from "@/lib/modern/overlays";
+import {
+  DEFAULT_MARKER_COLOUR,
+  DEFAULT_MARKER_SIZE,
+  MARKER_COLOUR_PRESETS,
+  MARKER_SIZE_MAX,
+  MARKER_SIZE_MIN,
+  markerSvg,
+  type MarkerShape,
+} from "@/lib/modern/marker";
+import {
+  SectionAccordion,
+  SectionRail,
+  type DesignerSection,
+} from "@/app/components/designer/Accordion";
+import {
+  ChoiceCards,
+  ColourDot,
+  CustomColourDot,
+  FieldLabel,
+  GroupLabel,
+  HelpText,
+  PaletteTile,
+  Segmented,
+  Stepper,
+  TextField,
+  Toggle,
+} from "@/app/components/designer/Controls";
+import {
+  ColourIcon,
+  FamilyIcon,
+  FrameIcon,
+  HelpIcon,
+  MapStyleIcon,
+  MarkerIcon,
+  ResizeIcon,
+  SaveIcon,
+  TemplateIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+} from "@/app/components/designer/icons";
 
 const ModernMapCanvas = dynamic(() => import("@/app/components/modern/ModernMapCanvas"), {
   ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-neutral-100" />,
+  loading: () => <div className="h-full w-full animate-pulse bg-stone-100" />,
 });
 
 // A clean geometric sans, set wide — the Historic serif/uncial faces would fight the map.
 const posterFont = Jost({
   subsets: ["latin"],
-  weight: ["300", "400", "500"],
+  weight: ["300", "400", "500", "600"],
   display: "swap",
 });
 
 type ViewState = { center: [number, number]; zoom: number };
 
-function ControlLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
-      {children}
-    </p>
-  );
-}
+/** How the print is delivered. Drives which product types and sizes are on offer. */
+type Fulfilment = "digital" | "print" | "framed";
 
-/** A Surname-style text box for a drilled-down selection (DED, townland, house number).
- *  Greyed out and disabled when the current design never went that deep. */
-function DetailField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) {
-  const hasValue = value.trim() !== "";
-  return (
-    <div>
-      <ControlLabel>{label}</ControlLabel>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={!hasValue}
-        placeholder={placeholder}
-        className={`w-full rounded-lg border px-3 py-2 text-sm ${
-          hasValue
-            ? "border-neutral-200 bg-white text-neutral-900"
-            : "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400"
-        }`}
-      />
-    </div>
-  );
-}
+type PrintTemplate = "modern" | "historic";
 
-function OptionRow<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { id: T; label: string }[];
-  value: T;
-  onChange: (id: T) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => onChange(option.id)}
-          className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
-            value === option.id
-              ? "border-neutral-900 bg-neutral-900 text-white"
-              : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** A solid-colour swatch for the polygon colour picker — simpler than AccentSwatch,
- *  which pairs a page tone with an ink; this only ever shows one colour. */
-function ColourSwatch({
-  colour,
-  label,
-  selected,
-  onClick,
-}: {
-  colour: string;
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={selected}
-      title={label}
-      className={`h-8 w-8 rounded-full border-2 transition-transform ${
-        selected ? "scale-110 border-neutral-900" : "border-transparent"
-      }`}
-      style={{ background: colour, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)" }}
-    />
-  );
-}
-
-// Household table (Street level): Name is always shown; every other field is
-// opt-in via visibleHouseholdFields. Order here is display order.
+// ── Household table (Street level) ───────────────────────────────────
+// Name is always shown; every other field is opt-in. Order here is display order.
 type HouseholdField =
   | "relation_to_head"
   | "age"
@@ -265,66 +211,85 @@ const MAP_MIN_HEIGHT_RATIO = 0.55;
 const HOUSEHOLD_TABLE_CEILING_FONT_PX = 10;
 const HOUSEHOLD_TABLE_MIN_FONT_PX = 6;
 
-// Sentinel polygonColourId — not a real palette entry (getPolygonColourById won't match
-// it), just a marker for "hide the fill layer, keep the outline" picked from the same
-// swatch row as the real colours.
-const NO_FILL_POLYGON_COLOUR_ID = "none";
+// Sentinel border colour id — not a real palette entry, just a marker for "draw no
+// border at all", picked from the same swatch row as the real colours.
+const NO_BORDER_COLOUR_ID = "none";
+
+/** District border widths offered, in px. Index 0 is "no border". */
+const BORDER_WIDTHS = [0, 1.5, 3, 4.5, 7, 10] as const;
+const DEFAULT_BORDER_WIDTH_INDEX = 3;
+
+/** Marker sizes offered, evenly spaced between the smallest and largest. */
+const MARKER_SIZES = [
+  MARKER_SIZE_MIN,
+  26,
+  DEFAULT_MARKER_SIZE,
+  44,
+  56,
+  MARKER_SIZE_MAX,
+] as const;
+
+const FRAME_COLOURS: { id: "black" | "white"; label: string; hex: string }[] = [
+  { id: "black", label: "Black", hex: "#1B1B1B" },
+  { id: "white", label: "White", hex: "#F7F7F5" },
+];
 
 function ModernDesignContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   // ── Selection carried over from /create ────────────────────────────
-  // Only the fields the map actually queries on are held in state; the rest are used
-  // once, while parsing the handoff, to seed the heading, subheading and level.
   const [surnameSearch, setSurnameSearch] = useState("");
   const [county, setCounty] = useState("");
   const [dedId, setDedId] = useState("");
   const [loaded, setLoaded] = useState(false);
 
+  // ── Which template is being designed ───────────────────────────────
+  const [template, setTemplate] = useState<PrintTemplate>("modern");
+
   // ── Design state ───────────────────────────────────────────────────
   const [level, setLevel] = useState<ModernLevel>("country");
   const [deepestLevel, setDeepestLevel] = useState<ModernLevel>("country");
   const [basemap, setBasemap] = useState<ModernBasemap>("contours");
-  const [showLabels, setShowLabels] = useState(false);
+  const [mapLayers, setMapLayers] = useState<MapLayerToggles>(DEFAULT_LAYER_TOGGLES);
+  const [elevationUnit, setElevationUnit] = useState<ElevationUnit>("m");
   const [contourDensity, setContourDensity] = useState<ContourDensity>(DEFAULT_CONTOUR_DENSITY);
-  const [accentId, setAccentId] = useState<AccentId>(DEFAULT_ACCENT_ID);
-  // null = match the page accent (the historical, unchanged-by-default look).
+  const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE_ID);
+  // null = follow the palette's own polygon colour.
   const [polygonColourId, setPolygonColourId] = useState<string | null>(null);
+  const [borderColourId, setBorderColourId] = useState<string | null>(null);
+  const [borderWidthIndex, setBorderWidthIndex] = useState(DEFAULT_BORDER_WIDTH_INDEX);
   const [headingText, setHeadingText] = useState("");
-  const [showPin, setShowPin] = useState(false);
+
+  // ── House marker ───────────────────────────────────────────────────
+  const [markerShape, setMarkerShape] = useState<MarkerShape>("pin");
+  const [markerColour, setMarkerColour] = useState(DEFAULT_MARKER_COLOUR);
+  const [markerSizeIndex, setMarkerSizeIndex] = useState(2);
   const [pin, setPin] = useState<{ lng: number; lat: number } | null>(null);
-  // Where the current pin coordinate came from — drives the caption next to the pin
-  // checkbox. "manual" once the user has dragged it, regardless of how it started.
+  // Where the current pin came from — drives the confirmation line under the marker
+  // controls. "manual" once dragged, regardless of how it started.
   const [pinSource, setPinSource] = useState<"geocoder" | "centroid" | "manual" | null>(null);
-  // Bumped on every togglePin/manual-drag so a slow geocode response can never clobber
-  // a newer state (a manual drag, or the pin having been turned off again) that arrived
-  // after the request was sent.
+  const [geocodeState, setGeocodeState] = useState<"" | "searching" | "found" | "not-found">("");
+  // Bumped on every placement request so a slow geocode can never clobber a newer state.
   const pinRequestRef = useRef(0);
+
   const [layoutFamily, setLayoutFamily] = useState("7:5/√2");
 
-  // ── Detail fields — display/edit boxes for how deep the selection drilled ──
+  // ── Detail fields — how deep the selection drilled ─────────────────
   const [dedDisplayText, setDedDisplayText] = useState("");
   const [townlandText, setTownlandText] = useState("");
   const [houseNoText, setHouseNoText] = useState("");
 
   // ── Household (Street level census table) ──────────────────────────
-  const [houseUid, setHouseUid] = useState("");
   const [household, setHousehold] = useState<HouseholdPerson[]>([]);
   const [visibleHouseholdFields, setVisibleHouseholdFields] = useState<Set<HouseholdField>>(
     () => new Set(DEFAULT_VISIBLE_HOUSEHOLD_FIELDS)
   );
   const [hiddenHouseholdIndices, setHiddenHouseholdIndices] = useState<Set<number>>(() => new Set());
-  // Table vs List — defaulted once the snapshot loads (table for 8 or fewer of the
-  // default-selected members, list for more), user-overridable via the "Household
-  // Information" tiles regardless of format; no longer tied to Square specifically.
   const [householdDisplayMode, setHouseholdDisplayMode] = useState<"table" | "list">("table");
 
   // ── Map data ───────────────────────────────────────────────────────
   const [polygons, setPolygons] = useState<DedRow[]>([]);
-  // Nationwide DEDs for the Country level — only fetched once that level is actually
-  // viewed, since a common surname's every-county footprint is a lot of geometry to
-  // pull down for a level most designs will never open.
   const [countryPolygons, setCountryPolygons] = useState<DedRow[]>([]);
   const [countryLoaded, setCountryLoaded] = useState(false);
   const [outline, setOutline] = useState<unknown | null>(null);
@@ -332,37 +297,29 @@ function ModernDesignContent() {
   const [view, setView] = useState<ViewState | null>(null);
 
   const [catalogueSkus, setCatalogueSkus] = useState<CatalogueSku[]>([]);
-  const [productCategory, setProductCategory] = useState<ProductCategory>("Printed");
+  const [fulfilment, setFulfilment] = useState<Fulfilment>("print");
   const [productKind, setProductKind] = useState<ProductKind>("Art Print");
   const [frameColour, setFrameColour] = useState<"black" | "white">("black");
   const [selectedSkuId, setSelectedSkuId] = useState<number | null>(null);
 
-  // Switching Print/Framed changes which product types are on offer — drop any
-  // size already picked under the other category, same as the Historic designer.
-  useEffect(() => {
-    setSelectedSkuId(null);
-    setProductKind(PRODUCTS_FOR_CATEGORY[productCategory][0]);
-  }, [productCategory]);
+  // ── Panel state ────────────────────────────────────────────────────
+  const [openSection, setOpenSection] = useState("template");
+  const [showHelp, setShowHelp] = useState(false);
 
   // ── Export / order ─────────────────────────────────────────────────
   const posterRef = useRef<HTMLDivElement | null>(null);
-  // The flex column inside the poster's own padding — heights below are measured against
-  // this, not posterRef, since posterRef's own rect still includes that padding.
   const posterBodyRef = useRef<HTMLDivElement | null>(null);
   const mapAreaRef = useRef<HTMLDivElement | null>(null);
   const [captureUrl, setCaptureUrl] = useState<string | null>(null);
+  const mapInstanceRef = useRef<MapLibreMap | null>(null);
 
-  // ── Household table auto-fit ─────────────────────────────────────────
+  // ── Household table auto-fit ───────────────────────────────────────
   const infoBlockRef = useRef<HTMLDivElement | null>(null);
   const householdMeasureWrapRef = useRef<HTMLDivElement | null>(null);
   const householdCeilingMeasureRef = useRef<HTMLDivElement | null>(null);
   const householdMinMeasureRef = useRef<HTMLDivElement | null>(null);
   const [householdTableFontPx, setHouseholdTableFontPx] = useState(HOUSEHOLD_TABLE_CEILING_FONT_PX);
-  // null = every visible member fits; otherwise the row count that fits, with the rest
-  // summarised by a "+N more" hint.
   const [householdMaxRows, setHouseholdMaxRows] = useState<number | null>(null);
-  // Hard max-height backstop for the real table — belt-and-suspenders alongside the
-  // font/row-count estimate above, so the map's floor holds even if that estimate is off.
   const [householdBudgetPx, setHouseholdBudgetPx] = useState<number | null>(null);
 
   const [busy, setBusy] = useState<"" | "preview" | "export" | "order">("");
@@ -388,7 +345,6 @@ function ModernDesignContent() {
     const nextDedDisplay = cleanOptionalValue(saved?.dedDisplay || getParam(params, "dedDisplay"));
     const nextTownland = cleanOptionalValue(saved?.townland || getParam(params, "townland"));
     const nextHouseNo = cleanOptionalValue(saved?.houseNo || getParam(params, "houseNo"));
-    const nextHouseUid = saved?.houseUid || getParam(params, "houseUid");
     const nextHousehold = saved?.household || [];
     const nextSurnameSearch =
       saved?.surnameSearch || getParam(params, "surnameSearch") || nextSurname.toLowerCase();
@@ -399,13 +355,12 @@ function ModernDesignContent() {
     setDedDisplayText(nextDedDisplay);
     setTownlandText(nextTownland);
     setHouseNoText(nextHouseNo);
-    setHouseUid(nextHouseUid);
     setHousehold(nextHousehold);
 
     // Default to showing only members of the searched-for surname — co-residents with a
-    // different surname start hidden, and the user opts them back in from the table below
-    // if they want them included. Table vs List then defaults off how many that leaves:
-    // a short list reads fine as a table, a long one is tidier as prose.
+    // different surname start hidden, and the user opts them back in below if they want
+    // them included. Table vs List then defaults off how many that leaves: a short list
+    // reads fine as a table, a long one is tidier as prose.
     const defaultHidden = new Set<number>();
     nextHousehold.forEach((person, index) => {
       if (!personMatchesPrimarySurname(person, nextSurnameSearch, nextSurname)) {
@@ -424,14 +379,15 @@ function ModernDesignContent() {
     setDeepestLevel(deepest);
     setLevel(deepest);
     setBasemap(MODERN_PRESETS[deepest].basemaps[0]);
-    setShowLabels(MODERN_PRESETS[deepest].showLabelsByDefault);
+    setMapLayers({
+      ...DEFAULT_LAYER_TOGGLES,
+      placeNames: MODERN_PRESETS[deepest].showLabelsByDefault,
+    });
 
     setHeadingText(nextSurname || "Irish Family History");
 
     const family = getParam(params, "layoutFamily");
     if (family) setLayoutFamily(family);
-
-    if (isAccentId(saved?.accent)) setAccentId(saved.accent);
 
     setLoaded(true);
   }, [searchParams]);
@@ -440,7 +396,15 @@ function ModernDesignContent() {
     void loadCatalogueSkus().then(setCatalogueSkus);
   }, []);
 
-  // DED polygons for the county — the same endpoint the Historic designer uses.
+  // Switching how the print is delivered changes which products are on offer — drop any
+  // size already picked under the old one.
+  useEffect(() => {
+    setSelectedSkuId(null);
+    if (fulfilment === "print") setProductKind("Art Print");
+    if (fulfilment === "framed") setProductKind("Classic Frame");
+  }, [fulfilment]);
+
+  // DED polygons for the county.
   useEffect(() => {
     if (!loaded || !surnameSearch || !county) return;
 
@@ -533,9 +497,9 @@ function ModernDesignContent() {
     );
     if (!nextPreset.allowsPin) {
       pinRequestRef.current += 1;
-      setShowPin(false);
       setPin(null);
       setPinSource(null);
+      setGeocodeState("");
     }
   }, []);
 
@@ -554,9 +518,9 @@ function ModernDesignContent() {
     [countryPolygons]
   );
 
-  // Totals for the "COUNT" stat shown below the map — Country sums every district
-  // nationwide, County sums just the districts inside the selected county, District
-  // reads the single selected polygon's own count (see selectedPolygon below).
+  // Totals for the count shown below the map — Country sums every district nationwide,
+  // County sums just the districts inside the selected county, District reads the single
+  // selected polygon's own count.
   const totalCountryCount = useMemo(
     () => countryPolygons.reduce((sum, p) => sum + (p.person_count || 0), 0),
     [countryPolygons]
@@ -566,14 +530,6 @@ function ModernDesignContent() {
     [polygons]
   );
 
-  // At county level every district is shaded; deeper in, only the chosen one.
-  // What the accent colour draws, per level:
-  //  country — every district nationwide the surname appears in, shaded by density
-  //  county  — every district the surname appears in, shaded by density, inside the county line
-  //  ded     — just the chosen district, filled
-  //  street  — the same chosen district, filled, same as ded — showPolygonFill (the "No
-  //            fill" swatch) is how a customer who finds that too heavy at this zoom
-  //            turns it off, rather than it being forced off unconditionally.
   const visibleOutline = useMemo(() => {
     if (level === "county") return outline;
     return null;
@@ -595,26 +551,13 @@ function ModernDesignContent() {
     return selectedPolygon ? [{ geometry: selectedPolygon.geojson, weight: 1 }] : [];
   }, [level, polygons, countryPolygons, selectedPolygon, maxCount, countryMaxCount]);
 
-  // District/Street have no separate county outline layer — the highlight stroke is the
-  // only line drawn at those levels, so it needs to read heavier than the district
-  // boundaries shown (many at once) at Country/County. Country/County draw one stroke per
-  // DED, which reads as clutter across a whole map — those get no stroke at all, just
-  // the density fill (and, at County, the single county boundary line).
-  const highlightLineWidth = useMemo(
-    () => (level === "ded" || level === "street" ? 7.2 : 0),
-    [level]
-  );
-
   const fitBounds = useMemo<LngLatBox | null>(() => {
     if (level === "country") {
-      // Frame the surname's actual nationwide footprint once it arrives; a fixed
-      // island frame in the meantime beats the old empty-map default centre/zoom.
       const box = boundsOf(countryPolygons.map((p) => p.geojson));
       return box ? padBox(box, 0.05) : IRELAND_BOUNDS;
     }
 
     if (level === "county") {
-      // Prefer the real boundary; fall back to the districts before it arrives.
       const box = boundsOf(outline ? [outline] : polygons.map((p) => p.geojson));
       return box ? padBox(box, 0.04) : null;
     }
@@ -627,12 +570,10 @@ function ModernDesignContent() {
   }, [level, polygons, countryPolygons, selectedPolygon, outline]);
 
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
-  // shape of the map's own container (e.g. ISO portrait to Square shortens it a lot),
-  // and without this the camera stays put and just gets cropped, rather than the extent
-  // adjusting to still show everything. selectedSkuId covers the "7:5" family too, whose
-  // members (5x7, 8x11, 10x14, 16x22) are real print dimensions with genuinely different
-  // ratios from each other, not just scaled copies sharing one shape.
-  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${layoutFamily}-${selectedSkuId ?? "none"}`;
+  // shape of the map's own container, and without this the camera stays put and just
+  // gets cropped rather than the extent adjusting to still show everything.
+  const [refitNonce, setRefitNonce] = useState(0);
+  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${layoutFamily}-${selectedSkuId ?? "none"}-${refitNonce}`;
 
   const centre = useMemo(() => {
     if (view) return view.center;
@@ -644,79 +585,30 @@ function ModernDesignContent() {
     [household, hiddenHouseholdIndices]
   );
 
-  // Dropped in the middle of whatever the designer is currently looking at (zero-flicker
-  // seed), then a DED-biased geocode of the census address is looked up in the
-  // background and swaps in a better guess if it finds one within a 1km tolerance of the
-  // DED polygon — DED boundaries have shifted since 1901, so the guess still needs
-  // dragging into place, just from a better starting point.
-  const togglePin = useCallback(
-    (next: boolean) => {
-      const requestId = ++pinRequestRef.current;
-      setShowPin(next);
-      if (!next) {
-        setPin(null);
-        setPinSource(null);
-        return;
-      }
-      const c = viewRef.current?.center ?? (fitBounds ? boxCentre(fitBounds) : null);
-      if (c) {
-        setPin({ lng: c[0], lat: c[1] });
-        setPinSource(null);
-      }
+  // ── Colours ────────────────────────────────────────────────────────
+  const palette = getPaletteById(paletteId);
+  const mapPalette = useMemo(() => mapPaletteFor(palette), [palette]);
+  const pageHex = palette.paper;
+  const inkHex = palette.ink;
 
-      const polygonId = selectedPolygon?.polygon_id;
-      if (!polygonId || !county || !townlandText) return;
-
-      void fetchJson(
-        buildUrl("/api/geocode-house", {
-          polygon_id: polygonId,
-          county,
-          townland: townlandText,
-          house_no: houseNoText,
-        })
-      )
-        .then((result: { lng: number; lat: number; source: "geocoder" | "centroid" } | null) => {
-          // A newer toggle/drag/level-change happened while this was in flight — discard.
-          if (!result || pinRequestRef.current !== requestId) return;
-          setPin({ lng: result.lng, lat: result.lat });
-          setPinSource(result.source);
-        })
-        .catch(() => {
-          // Network failure — the view-centre seed already placed above stands.
-        });
-    },
-    [fitBounds, selectedPolygon, county, townlandText, houseNoText]
-  );
-
-  const handleViewChange = useCallback((next: ViewState) => setView(next), []);
-  const handlePinChange = useCallback((next: { lng: number; lat: number }) => {
-    pinRequestRef.current += 1;
-    setPin(next);
-    setPinSource("manual");
-  }, []);
-
-  // Paper and ink are one choice — the pin and divider are drawn in the accent that the
-  // chosen page tone was tuned against. The map's district/outline colour follows the
-  // same accent by default, but can be overridden independently via polygonColourId.
-  const selectedAccent = getAccentById(accentId);
-  const pageHex = selectedAccent.page;
-  const accentHex = selectedAccent.accent;
-  // Not a real palette entry — getPolygonColourById won't find it, so the outline still
-  // falls back to accentHex; only the fill layer's opacity is what showPolygonFill zeroes.
-  const polygonColourHex = getPolygonColourById(polygonColourId)?.hex ?? accentHex;
-  const showPolygonFill = polygonColourId !== NO_FILL_POLYGON_COLOUR_ID;
+  const polygonHex =
+    POLYGON_COLOUR_OPTIONS.find((o) => o.id === polygonColourId)?.hex ?? palette.polygon;
+  const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
+  const borderHex =
+    POLYGON_COLOUR_OPTIONS.find((o) => o.id === borderColourId)?.hex ?? polygonHex;
+  const borderWidth =
+    borderColourId === NO_BORDER_COLOUR_ID ? 0 : BORDER_WIDTHS[borderWidthIndex];
 
   const familyOptions = useMemo(() => {
     const groups = buildGalleryGroups(catalogueSkus, GALLERY_FAMILY_ORDER);
     return GALLERY_FAMILY_ORDER.filter((f) => (groups.get(f)?.size ?? 0) > 0).map((f) => ({
       id: f,
-      label: layoutFamilyLabel(f),
+      label: layoutFamilyLabel(f) === "Square" ? "Square" : "Portrait",
+      detail: layoutFamilyLabel(f) === "Square" ? "1:1" : "ISO / A-series",
     }));
   }, [catalogueSkus]);
 
   // ── Sizes ──────────────────────────────────────────────────────────
-  // Narrow the catalogue to the chosen shape and product type; the SKU is what supplies
-  // the export's pixel dimensions, the price, and the id the Prodigi order is placed on.
   const sizeOptions = useMemo(() => {
     return catalogueSkus
       .filter((sku) => sku.layout_family === layoutFamily && sku.product === productKind)
@@ -733,19 +625,100 @@ function ModernDesignContent() {
 
   const printSize = selectedSku ? printSizeForSku(selectedSku) : null;
 
-  // Follow the chosen SKU's real proportions only where sizes genuinely differ in shape —
-  // the "7:5" sizes (5×7", 8×11", 10×14", 16×22") are real American print dimensions, not
-  // scaled copies of one shape, so using the family ratio there would preview a shape the
-  // customer never receives. Every other bucket, including the ISO "√2" sizes filed under
-  // this same family, is one exact shape at different scales — their short_in/long_in are
-  // just decimal-inch roundings of the true mm size (e.g. A3 rounds to 11.7×16.5", A4 to
-  // 8.3×11.7", which aren't quite the same ratio), so use the canonical ratio there instead
-  // or the preview visibly stretches by a percent or two when switching sizes within a family.
-  const aspect = printSize && selectedSku?.ratio_family === "7:5"
-    ? { w: printSize.widthIn, h: printSize.heightIn }
-    : layoutFamilyAspect(layoutFamily);
+  // Follow the chosen SKU's real proportions only where sizes genuinely differ in shape.
+  // Every remaining family is one exact shape at different scales — their short_in/long_in
+  // are decimal-inch roundings of the true mm size (A3 rounds to 11.7×16.5", A4 to
+  // 8.3×11.7", which aren't quite the same ratio), so use the canonical ratio or the
+  // preview visibly stretches by a percent or two when switching sizes within a family.
+  const aspect = layoutFamilyAspect(layoutFamily);
 
-  const householdVisibleFieldOptions = HOUSEHOLD_FIELD_OPTIONS.filter((f) => visibleHouseholdFields.has(f.id));
+  const householdVisibleFieldOptions = HOUSEHOLD_FIELD_OPTIONS.filter((f) =>
+    visibleHouseholdFields.has(f.id)
+  );
+
+  // ── House marker placement ─────────────────────────────────────────
+
+  /** Drops the marker in the middle of the current view, ready to drag. */
+  const placeMarkerManually = useCallback(() => {
+    pinRequestRef.current += 1;
+    const c = viewRef.current?.center ?? (fitBounds ? boxCentre(fitBounds) : null);
+    if (!c) return;
+    setPin({ lng: c[0], lat: c[1] });
+    setPinSource("manual");
+    setGeocodeState("");
+  }, [fitBounds]);
+
+  const removeMarker = useCallback(() => {
+    pinRequestRef.current += 1;
+    setPin(null);
+    setPinSource(null);
+    setGeocodeState("");
+  }, []);
+
+  /**
+   * Looks the 1901 address up against the DED, and drops the marker on the result.
+   *
+   * DED boundaries have shifted since 1901 and the census carries no coordinates below a
+   * district, so this is always a starting point rather than an answer — which is why
+   * both outcomes end with the customer being asked to confirm or place it themselves,
+   * and why nothing here is ever presented as the located house.
+   */
+  const findProperty = useCallback(() => {
+    const requestId = ++pinRequestRef.current;
+    setGeocodeState("searching");
+
+    const polygonId = selectedPolygon?.polygon_id;
+    if (!polygonId || !county) {
+      setGeocodeState("not-found");
+      return;
+    }
+
+    void fetchJson(
+      buildUrl("/api/geocode-house", {
+        polygon_id: polygonId,
+        county,
+        townland: townlandText,
+        house_no: houseNoText,
+      })
+    )
+      .then((result: { lng: number; lat: number; source: "geocoder" | "centroid" } | null) => {
+        // A newer request or a manual placement happened while this was in flight.
+        if (pinRequestRef.current !== requestId) return;
+        // A centroid result is not a located property — it is the middle of the district,
+        // which we can work out ourselves — so it is reported as a miss, not a hit.
+        if (!result || result.source === "centroid") {
+          setGeocodeState("not-found");
+          const c = viewRef.current?.center ?? (fitBounds ? boxCentre(fitBounds) : null);
+          if (c) {
+            setPin({ lng: c[0], lat: c[1] });
+            setPinSource("centroid");
+          }
+          return;
+        }
+        setPin({ lng: result.lng, lat: result.lat });
+        setPinSource("geocoder");
+        setGeocodeState("found");
+      })
+      .catch(() => {
+        if (pinRequestRef.current !== requestId) return;
+        setGeocodeState("not-found");
+      });
+  }, [selectedPolygon, county, townlandText, houseNoText, fitBounds]);
+
+  const handleViewChange = useCallback((next: ViewState) => setView(next), []);
+  const handlePinChange = useCallback((next: { lng: number; lat: number }) => {
+    pinRequestRef.current += 1;
+    setPin(next);
+    setPinSource("manual");
+    setGeocodeState("");
+  }, []);
+  const handleMapReady = useCallback((map: MapLibreMap | null) => {
+    mapInstanceRef.current = map;
+  }, []);
+
+  const markerSize = MARKER_SIZES[markerSizeIndex];
+
+  // ── Poster blocks ──────────────────────────────────────────────────
 
   function pluralSurname(value: string) {
     const cleaned = value.trim();
@@ -793,23 +766,20 @@ function ModernDesignContent() {
       <div className="flex-none pt-[4%] text-center">
         <p
           className="truncate text-[clamp(14px,3.2vw,30px)] font-light uppercase"
-          style={{ letterSpacing: "0.18em" }}
+          style={{ letterSpacing: "0.18em", color: inkHex }}
         >
           {headingText}
         </p>
-        <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: accentHex }} />
+        <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: inkHex }} />
         {count !== null && count > 0 && (
-          <p
-            className="text-[clamp(16px,3vw,32px)] font-semibold"
-            style={{ color: accentHex }}
-          >
+          <p className="text-[clamp(16px,3vw,32px)] font-semibold" style={{ color: inkHex }}>
             {count.toLocaleString()}
           </p>
         )}
         {caption && (
           <p
-            className="mt-[1%] text-[clamp(6px,1.3vw,11px)] uppercase text-neutral-500"
-            style={{ letterSpacing: "0.22em" }}
+            className="mt-[1%] text-[clamp(6px,1.3vw,11px)] uppercase"
+            style={{ letterSpacing: "0.22em", color: inkHex, opacity: 0.6 }}
           >
             {caption}
           </p>
@@ -823,7 +793,7 @@ function ModernDesignContent() {
       return (
         <div className="space-y-1 text-center" style={{ fontSize: fontPx }}>
           {buildHouseholdSummaryLines(rows).map((line, index) => (
-            <p key={index} className="text-neutral-700">
+            <p key={index} style={{ color: inkHex, opacity: 0.85 }}>
               {line}
             </p>
           ))}
@@ -835,11 +805,18 @@ function ModernDesignContent() {
       <table className="mx-auto max-w-full" style={{ borderCollapse: "collapse", fontSize: fontPx }}>
         <thead>
           <tr>
-            <th className="pb-1 pr-3 text-left font-medium text-neutral-500">
+            <th
+              className="pb-1 pr-3 text-left font-medium"
+              style={{ color: inkHex, opacity: 0.6 }}
+            >
               <span className="line-clamp-2">Name</span>
             </th>
             {householdVisibleFieldOptions.map((f) => (
-              <th key={f.id} className="pb-1 pl-3 text-left font-medium text-neutral-500">
+              <th
+                key={f.id}
+                className="pb-1 pl-3 text-left font-medium"
+                style={{ color: inkHex, opacity: 0.6 }}
+              >
                 <span className="line-clamp-2">{f.label}</span>
               </th>
             ))}
@@ -848,11 +825,11 @@ function ModernDesignContent() {
         <tbody>
           {rows.map((person, index) => (
             <tr key={`${person.full_name || "person"}-${index}`}>
-              <td className="py-0.5 pr-3 font-medium text-neutral-900">
+              <td className="py-0.5 pr-3 font-medium" style={{ color: inkHex }}>
                 <span className="line-clamp-2">{person.full_name || ""}</span>
               </td>
               {householdVisibleFieldOptions.map((f) => (
-                <td key={f.id} className="py-0.5 pl-3 text-neutral-700">
+                <td key={f.id} className="py-0.5 pl-3" style={{ color: inkHex, opacity: 0.85 }}>
                   <span className="line-clamp-2">{getHouseholdFieldValue(person, f.id)}</span>
                 </td>
               ))}
@@ -863,11 +840,9 @@ function ModernDesignContent() {
     );
   }
 
-  // Surname + divider, then County/DED (as "Co. County, DED") merged onto one line with
-  // the townland, with the house number on its own line below that, then the table —
-  // together, shared by the real block and both hidden measuring clones below, so what
-  // gets measured is exactly what renders (none of this except the table shrinks with
-  // fontPx, but it all still consumes real height).
+  // Surname + divider, then County/DED merged onto one line with the townland, the house
+  // number below that, then the table — together, shared by the real block and both
+  // hidden measuring clones, so what gets measured is exactly what renders.
   const countyDedTownlandLine = [
     [county && `Co. ${county}`, dedDisplayText].filter(Boolean).join(", "),
     townlandText,
@@ -881,23 +856,23 @@ function ModernDesignContent() {
       <>
         <p
           className="truncate text-center text-[clamp(14px,3.2vw,30px)] font-light uppercase"
-          style={{ letterSpacing: "0.18em" }}
+          style={{ letterSpacing: "0.18em", color: inkHex }}
         >
           {headingText}
         </p>
-        <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: accentHex }} />
+        <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: inkHex }} />
         {countyDedTownlandLine && (
           <p
-            className="text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase text-neutral-500"
-            style={{ letterSpacing: "0.2em" }}
+            className="text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase"
+            style={{ letterSpacing: "0.2em", color: inkHex, opacity: 0.6 }}
           >
             {countyDedTownlandLine}
           </p>
         )}
         {houseNoLine && (
           <p
-            className="mb-[2%] text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase text-neutral-500"
-            style={{ letterSpacing: "0.2em" }}
+            className="mb-[2%] text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase"
+            style={{ letterSpacing: "0.2em", color: inkHex, opacity: 0.6 }}
           >
             {houseNoLine}
           </p>
@@ -910,13 +885,12 @@ function ModernDesignContent() {
   // Measures the actual rendered height of the header and two hidden household-table
   // clones (all rows at the ceiling font, all rows at the floor font) to decide whether
   // the visible table needs to shrink its font and/or cap its row count so the map never
-  // drops below MAP_MIN_HEIGHT_RATIO × poster width. Re-runs whenever the household list,
-  // visible fields, header text, or paper format change, plus on poster resize.
+  // drops below MAP_MIN_HEIGHT_RATIO × poster width.
   //
   // The computed budget is also applied as a hard max-height/overflow:hidden backstop on
-  // the real table (see householdBudgetPx below) — the font/row-count math is only an
-  // estimate (real text can wrap differently than assumed), so the CSS cap is what
-  // actually guarantees the map never loses its floor if that estimate runs a little hot.
+  // the real table — the font/row-count math is only an estimate (real text can wrap
+  // differently than assumed), so the CSS cap is what actually guarantees the map never
+  // loses its floor if that estimate runs a little hot.
   useLayoutEffect(() => {
     if (level !== "street" || visibleHousehold.length === 0) {
       setHouseholdMaxRows(null);
@@ -937,10 +911,10 @@ function ModernDesignContent() {
       // (an occupation, say) can wrap in one but not the other and throw the estimate off.
       measureWrapEl.style.width = `${headerEl.getBoundingClientRect().width}px`;
 
-      // bodyEl (not posterRef) is the flex column *inside* the poster's own p-[7%]
-      // padding — but getBoundingClientRect() is a border-box measurement, so with
-      // h-full it reports the same size as the unpadded outer poster. Subtract the
-      // padding explicitly to get the content box the header/map/table actually share.
+      // bodyEl (not posterRef) is the flex column *inside* the poster's own padding — but
+      // getBoundingClientRect() is a border-box measurement, so with h-full it reports the
+      // same size as the unpadded outer poster. Subtract the padding explicitly to get the
+      // content box the header/map/table actually share.
       const bodyRect = bodyEl.getBoundingClientRect();
       const bodyStyle = getComputedStyle(bodyEl);
       const paddingX = (parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0);
@@ -954,10 +928,9 @@ function ModernDesignContent() {
 
       const naturalAtCeiling = ceilingEl.getBoundingClientRect().height;
 
-      // line-clamp-2 on every cell guarantees no row ever visually exceeds two lines,
-      // but a font that's already forcing a cell to clamp (its content is taller than
-      // its box) means text is being cut off — prefer shrinking over that even when
-      // the ceiling font would otherwise fit the overall height budget.
+      // line-clamp-2 on every cell guarantees no row ever visually exceeds two lines, but
+      // a font that's already forcing a cell to clamp means text is being cut off —
+      // prefer shrinking over that even when the ceiling font would fit the height budget.
       const ceilingClamped = hasClampedCell(ceilingEl);
 
       if (budgetPx <= 0 || (naturalAtCeiling <= budgetPx && !ceilingClamped)) {
@@ -966,18 +939,13 @@ function ModernDesignContent() {
         return;
       }
 
-      // Row height doesn't scale linearly with font size — each row's padding is a
-      // fixed px amount, not proportional — so extrapolating a target font straight
-      // from the ceiling measurement tends to undershoot right at the floor, where
-      // that fixed padding is a bigger share of the row. Whether everything fits at
-      // the floor font is instead decided from naturalAtMin, a real measurement of
-      // that exact case, not an extrapolation.
+      // Row height doesn't scale linearly with font size — each row's padding is a fixed
+      // px amount — so extrapolating a target font straight from the ceiling measurement
+      // undershoots at the floor. Whether everything fits at the floor font is instead
+      // decided from naturalAtMin, a real measurement of that exact case.
       const naturalAtMin = minEl.getBoundingClientRect().height;
 
       if (naturalAtMin <= budgetPx) {
-        // Fits somewhere between the floor and ceiling — interpolate a font size
-        // between the two real measurements (safer than extrapolating from just one),
-        // then round down a size for margin against the approximation.
         const t = (budgetPx - naturalAtMin) / (naturalAtCeiling - naturalAtMin);
         const interpolatedFont = HOUSEHOLD_TABLE_MIN_FONT_PX
           + t * (HOUSEHOLD_TABLE_CEILING_FONT_PX - HOUSEHOLD_TABLE_MIN_FONT_PX);
@@ -987,9 +955,8 @@ function ModernDesignContent() {
         return;
       }
 
-      // Doesn't fit even at the floor font (confirmed by measurement, not estimated) —
-      // cap rows, reserving one slot for the "+N more" hint line (itself roughly one
-      // row tall at the floor font), plus a safety margin against the same non-linearity.
+      // Doesn't fit even at the floor font — cap rows, reserving one slot for the
+      // "+N more" hint line, plus a safety margin against the same non-linearity.
       const rowCount = visibleHousehold.length;
       const rowsThatFit = Math.floor(rowCount * (budgetPx / naturalAtMin) * 0.92) - 1;
       setHouseholdTableFontPx(HOUSEHOLD_TABLE_MIN_FONT_PX);
@@ -1026,21 +993,36 @@ function ModernDesignContent() {
     const posterScale = printSize.pixelWidth / posterRect.width;
 
     const currentView = viewRef.current;
+    const markerState = pin
+      ? { lng: pin.lng, lat: pin.lat, shape: markerShape, colour: markerColour, size: markerSize }
+      : null;
+
     const capture = await captureMapImage({
-      style: modernStyle(basemap, showLabels, contourDensity),
+      style: modernStyle({
+        basemap,
+        layers: mapLayers,
+        contourDensity,
+        elevationUnit,
+        palette: mapPalette,
+      }),
       center: currentView?.center ?? centre,
       zoom: currentView?.zoom ?? preset.fallbackZoom,
       cssWidth: Math.round(mapRect.width),
       cssHeight: Math.round(mapRect.height),
       pixelRatio: posterScale,
-      decorate: (map) =>
+      decorate: async (map) => {
         applyModernOverlays(map, {
           highlights,
           outline: visibleOutline,
-          accentColour: polygonColourHex,
+          accentColour: polygonHex,
+          borderColour: borderHex,
           showFill: showPolygonFill,
-          highlightLineWidth,
-        }),
+          highlightLineWidth: borderWidth,
+        });
+        // The live marker is a DOM element outside the canvas, so it is not in the
+        // pixels read back here — it has to be drawn into the map for the print.
+        if (markerState) await applyMarkerLayer(map, markerState, posterScale);
+      },
     });
 
     const mapWidthInches = printSize.widthIn * (mapRect.width / posterRect.width);
@@ -1066,9 +1048,6 @@ function ModernDesignContent() {
     }
   }
 
-  // Opens a static preview in a new tab — same idea as Historic's "Export", just
-  // routed through withPrintReadyPoster since a plain html2canvas call can't read
-  // back a live WebGL canvas.
   async function exportAsImage() {
     if (busy || !printSize) return;
     setBusy("preview");
@@ -1140,9 +1119,12 @@ function ModernDesignContent() {
             level,
             basemap,
             contourDensity,
-            showLabels,
-            accent: accentId,
+            mapLayers,
+            elevationUnit,
+            palette: paletteId,
             polygonColour: polygonColourId,
+            borderColour: borderColourId,
+            borderWidth,
             headingText,
             dedDisplayText,
             townlandText,
@@ -1150,6 +1132,9 @@ function ModernDesignContent() {
             centre: viewRef.current?.center ?? centre,
             zoom: viewRef.current?.zoom ?? preset.fallbackZoom,
             pin,
+            markerShape,
+            markerColour,
+            markerSize,
             exportPixelWidth: canvas.width,
             exportPixelHeight: canvas.height,
           },
@@ -1165,77 +1150,716 @@ function ModernDesignContent() {
     }
   }
 
+  // ── Panel sections ─────────────────────────────────────────────────
+
+  const detailFields: { label: string; value: string; set: (v: string) => void }[] = [
+    { label: "County", value: county, set: setCounty },
+    { label: "District", value: dedDisplayText, set: setDedDisplayText },
+    { label: "Townland", value: townlandText, set: setTownlandText },
+    { label: "House", value: houseNoText, set: setHouseNoText },
+  ];
+
+  const templateSection: DesignerSection = {
+    id: "template",
+    title: "Template",
+    summary: "Choose the style of artwork to design.",
+    icon: <TemplateIcon />,
+    body: (
+      <div className="space-y-4">
+        <ChoiceCards
+          columns={2}
+          ariaLabel="Artwork template"
+          value={template}
+          onChange={(id) => setTemplate(id)}
+          options={[
+            { id: "modern", label: "Modern", detail: "Real map, framed" },
+            { id: "historic", label: "Historic", detail: "Celtic line art" },
+          ]}
+        />
+        <HelpText>
+          {template === "modern"
+            ? "A contour or street map of the place your family lived, printed above their census record."
+            : "The county drawn as line art inside a Celtic border, with your surname and a chosen symbol."}
+        </HelpText>
+      </div>
+    ),
+  };
+
+  const familySection: DesignerSection = {
+    id: "family",
+    title: "Family",
+    summary: "The names and places printed on your artwork.",
+    icon: <FamilyIcon />,
+    body: (
+      <div className="space-y-5">
+        <TextField
+          label="Surname"
+          value={headingText}
+          onChange={setHeadingText}
+          hint="Printed as the heading on your artwork."
+        />
+
+        {template === "modern" && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              {detailFields.map((field) => (
+                <TextField
+                  key={field.label}
+                  label={field.label}
+                  value={field.value}
+                  onChange={field.set}
+                  disabled={field.value.trim() === ""}
+                  placeholder="Not selected"
+                />
+              ))}
+            </div>
+            <HelpText>
+              Greyed-out fields weren&apos;t part of your search. Go back to search to add them.
+            </HelpText>
+
+            <div>
+              <FieldLabel>Map extent</FieldLabel>
+              <ChoiceCards
+                columns={2}
+                ariaLabel="Map extent"
+                value={level}
+                onChange={changeLevel}
+                options={availableLevels(deepestLevel).map((l) => ({
+                  id: l,
+                  label: MODERN_PRESETS[l].label,
+                }))}
+              />
+              <HelpText>{preset.description}</HelpText>
+            </div>
+
+            {level === "street" && household.length > 0 && (
+              <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
+                <GroupLabel>Household record</GroupLabel>
+                <div className="mb-4">
+                  <Segmented
+                    ariaLabel="Household layout"
+                    value={householdDisplayMode}
+                    onChange={setHouseholdDisplayMode}
+                    options={[
+                      { id: "table" as const, label: "Table" },
+                      { id: "list" as const, label: "List" },
+                    ]}
+                  />
+                  <HelpText>
+                    {householdDisplayMode === "table"
+                      ? "Columns — best for a shorter household."
+                      : "Grouped by surname in a few lines — best for a longer household."}
+                  </HelpText>
+                </div>
+
+                <p className="mb-2 text-[12px] font-medium text-stone-700">Who to print</p>
+                <div className="mb-4 space-y-1">
+                  {household.map((person, index) => {
+                    const hidden = hiddenHouseholdIndices.has(index);
+                    return (
+                      <label
+                        key={`${person.full_name || "person"}-${index}`}
+                        className="flex items-center gap-2 text-[13px] text-stone-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={() =>
+                            setHiddenHouseholdIndices((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(index)) next.delete(index);
+                              else next.add(index);
+                              return next;
+                            })
+                          }
+                          className="h-4 w-4 rounded border-stone-300"
+                        />
+                        <span className={hidden ? "text-stone-400" : ""}>
+                          {person.full_name || "Unnamed"}
+                          {person.age ? ` (${person.age})` : ""}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <p className="mb-2 text-[12px] font-medium text-stone-700">Details to print</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
+                    const active = visibleHouseholdFields.has(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() =>
+                          setVisibleHouseholdFields((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(f.id)) next.delete(f.id);
+                            else next.add(f.id);
+                            return next;
+                          })
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                          active
+                            ? "border-stone-800 bg-stone-800 text-white"
+                            : "border-stone-300 bg-white text-stone-600 hover:bg-white"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    ),
+  };
+
+  const colourSection: DesignerSection = {
+    id: "colour",
+    title: "Colour",
+    summary: "Choose the colour palette for your print.",
+    icon: <ColourIcon />,
+    body: (
+      <div className="space-y-6">
+        <div className="grid grid-cols-4 gap-2">
+          {PRINT_PALETTES.map((option) => (
+            <PaletteTile
+              key={option.id}
+              label={option.label}
+              paper={option.paper}
+              ink={option.ink}
+              land={option.land}
+              water={option.water}
+              selected={paletteId === option.id}
+              onClick={() => setPaletteId(option.id)}
+            />
+          ))}
+        </div>
+
+        <div className="border-t border-stone-200 pt-5">
+          <GroupLabel>Districts</GroupLabel>
+
+          <div className="mb-5">
+            <FieldLabel>Fill colour</FieldLabel>
+            <div className="flex flex-wrap items-start gap-2">
+              <ColourDot
+                colour={palette.polygon}
+                label="Match palette"
+                selected={polygonColourId === null}
+                onClick={() => setPolygonColourId(null)}
+              />
+              {POLYGON_COLOUR_OPTIONS.map((option) => (
+                <ColourDot
+                  key={option.id}
+                  colour={option.hex}
+                  label={option.label}
+                  selected={polygonColourId === option.id}
+                  onClick={() => setPolygonColourId(option.id)}
+                />
+              ))}
+              <ColourDot
+                colour="transparent"
+                label="No fill"
+                empty
+                selected={polygonColourId === NO_BORDER_COLOUR_ID}
+                onClick={() => setPolygonColourId(NO_BORDER_COLOUR_ID)}
+              />
+            </div>
+            <HelpText>
+              {polygonColourId === NO_BORDER_COLOUR_ID
+                ? "No fill — the district border alone."
+                : "Districts are shaded by how many of your name lived there."}
+            </HelpText>
+          </div>
+
+          <div className="mb-5">
+            <FieldLabel>Border colour</FieldLabel>
+            <div className="flex flex-wrap items-start gap-2">
+              <ColourDot
+                colour={polygonHex}
+                label="Match fill"
+                selected={borderColourId === null}
+                onClick={() => setBorderColourId(null)}
+              />
+              {POLYGON_COLOUR_OPTIONS.map((option) => (
+                <ColourDot
+                  key={option.id}
+                  colour={option.hex}
+                  label={option.label}
+                  selected={borderColourId === option.id}
+                  onClick={() => setBorderColourId(option.id)}
+                />
+              ))}
+              <ColourDot
+                colour="transparent"
+                label="No border"
+                empty
+                selected={borderColourId === NO_BORDER_COLOUR_ID}
+                onClick={() => setBorderColourId(NO_BORDER_COLOUR_ID)}
+              />
+            </div>
+          </div>
+
+          <Stepper
+            label="Border thickness"
+            valueLabel={borderWidth === 0 ? "None" : `${borderWidth}px`}
+            index={borderWidthIndex}
+            count={BORDER_WIDTHS.length}
+            onIndexChange={setBorderWidthIndex}
+            minLabel="Fine"
+            maxLabel="Heavy"
+          />
+        </div>
+      </div>
+    ),
+  };
+
+  const contourIndex = Math.max(
+    0,
+    CONTOUR_INTERVALS.indexOf(contourDensity as (typeof CONTOUR_INTERVALS)[number])
+  );
+
+  const mapStyleSection: DesignerSection = {
+    id: "map-style",
+    title: "Map style",
+    summary: "Fine-tune how the map itself looks.",
+    icon: <MapStyleIcon />,
+    body: (
+      <div className="space-y-5">
+        {preset.basemaps.length > 1 && (
+          <div>
+            <FieldLabel>Basemap</FieldLabel>
+            <ChoiceCards
+              columns={2}
+              ariaLabel="Basemap"
+              value={basemap}
+              onChange={setBasemap}
+              options={preset.basemaps.map((b) => ({
+                id: b,
+                label: b === "contours" ? "Contours" : "Streets",
+                detail: b === "contours" ? "Elevation lines" : "Roads and buildings",
+              }))}
+            />
+          </div>
+        )}
+
+        {basemap === "contours" && (
+          <Stepper
+            label="Contour density"
+            valueLabel={contourIntervalLabel(contourDensity)}
+            index={contourIndex}
+            count={CONTOUR_INTERVALS.length}
+            onIndexChange={(i) => setContourDensity(CONTOUR_INTERVALS[i])}
+            minLabel="Sparse"
+            maxLabel="Dense"
+          />
+        )}
+
+        <div className="border-t border-stone-200 pt-4">
+          <GroupLabel>Show on map</GroupLabel>
+          <Toggle
+            label="Place names"
+            checked={mapLayers.placeNames}
+            onChange={(v) => setMapLayers((prev) => ({ ...prev, placeNames: v }))}
+          />
+          <Toggle
+            label="Mountain peaks"
+            checked={mapLayers.mountainPeaks}
+            onChange={(v) => setMapLayers((prev) => ({ ...prev, mountainPeaks: v }))}
+          />
+          {mapLayers.mountainPeaks && (
+            <Toggle
+              label="Elevation units"
+              indented
+              checked
+              onChange={() => undefined}
+              trailing={
+                <Segmented
+                  ariaLabel="Elevation units"
+                  value={elevationUnit}
+                  onChange={setElevationUnit}
+                  options={[
+                    { id: "m" as const, label: "m" },
+                    { id: "ft" as const, label: "ft" },
+                  ]}
+                />
+              }
+            />
+          )}
+          <Toggle
+            label="Rivers & streams"
+            checked={mapLayers.riversStreams}
+            onChange={(v) => setMapLayers((prev) => ({ ...prev, riversStreams: v }))}
+          />
+          <Toggle
+            label="Roads"
+            checked={mapLayers.roads}
+            onChange={(v) => setMapLayers((prev) => ({ ...prev, roads: v }))}
+          />
+        </div>
+      </div>
+    ),
+  };
+
+  const markerSection: DesignerSection = {
+    id: "marker",
+    title: "Marker",
+    summary: "Mark the house on the map.",
+    note: "optional",
+    icon: <MarkerIcon />,
+    body: (
+      <div className="space-y-5">
+        {pin && (
+          <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-medium text-stone-800">Marker placed</span>
+              <button
+                type="button"
+                onClick={removeMarker}
+                className="text-[13px] text-red-700 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+            <p className="mt-1 text-[12px] text-stone-600">
+              {pinSource === "geocoder" && "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
+              {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
+              {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
+              {!pinSource && "Drag it on the map to place it."}
+            </p>
+          </div>
+        )}
+
+        <div>
+          <button
+            type="button"
+            onClick={findProperty}
+            disabled={geocodeState === "searching" || !selectedPolygon}
+            className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
+          </button>
+          {geocodeState === "not-found" && (
+            <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
+              Couldn&apos;t find the property from the 1901 address — place it manually by
+              dragging the marker on the map.
+            </p>
+          )}
+          {geocodeState === "found" && (
+            <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
+              Found a likely match. Please confirm the location before ordering — 1901
+              addresses are approximate.
+            </p>
+          )}
+          {!selectedPolygon && (
+            <HelpText>
+              Searching needs a district. Pick one back in search to use this.
+            </HelpText>
+          )}
+          {!pin && (
+            <button
+              type="button"
+              onClick={placeMarkerManually}
+              className="mt-2 w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[14px] font-medium text-stone-700 transition-colors hover:bg-stone-50"
+            >
+              Place it myself
+            </button>
+          )}
+        </div>
+
+        <div>
+          <FieldLabel>Shape</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            {(["pin", "heart"] as MarkerShape[]).map((shape) => (
+              <button
+                key={shape}
+                type="button"
+                aria-label={shape}
+                aria-pressed={markerShape === shape}
+                onClick={() => setMarkerShape(shape)}
+                className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
+                  markerShape === shape
+                    ? "border-stone-900 ring-1 ring-stone-900"
+                    : "border-stone-300 hover:bg-stone-50"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: markerSvg(shape, markerColour, 30) }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel>Colour</FieldLabel>
+          <div className="flex flex-wrap items-start gap-2">
+            {MARKER_COLOUR_PRESETS.map((option) => (
+              <ColourDot
+                key={option.id}
+                colour={option.hex}
+                label={option.label}
+                selected={markerColour.toLowerCase() === option.hex.toLowerCase()}
+                onClick={() => setMarkerColour(option.hex)}
+              />
+            ))}
+            <CustomColourDot
+              value={markerColour}
+              onChange={setMarkerColour}
+              selected={
+                !MARKER_COLOUR_PRESETS.some(
+                  (o) => o.hex.toLowerCase() === markerColour.toLowerCase()
+                )
+              }
+            />
+          </div>
+        </div>
+
+        <Stepper
+          label="Size"
+          valueLabel={`${markerSize}px`}
+          index={markerSizeIndex}
+          count={MARKER_SIZES.length}
+          onIndexChange={setMarkerSizeIndex}
+          minLabel="Small"
+          maxLabel="Large"
+        />
+      </div>
+    ),
+  };
+
+  const sizeSection: DesignerSection = {
+    id: "size",
+    title: "Size & frame",
+    summary: "Choose format, size and frame finish.",
+    icon: <FrameIcon />,
+    body: (
+      <div className="space-y-5">
+        <div>
+          <FieldLabel>Format</FieldLabel>
+          <ChoiceCards
+            columns={3}
+            ariaLabel="Format"
+            value={fulfilment}
+            onChange={setFulfilment}
+            options={[
+              { id: "digital", label: "Digital", detail: "Coming soon", disabled: true },
+              { id: "print", label: "Print", detail: "Poster shipped" },
+              { id: "framed", label: "Framed", detail: "Ready to hang" },
+            ]}
+          />
+        </div>
+
+        {familyOptions.length > 1 && (
+          <div>
+            <FieldLabel>Shape</FieldLabel>
+            <ChoiceCards
+              columns={2}
+              ariaLabel="Shape"
+              value={layoutFamily}
+              onChange={setLayoutFamily}
+              options={familyOptions}
+            />
+          </div>
+        )}
+
+        {fulfilment === "framed" && (
+          <div>
+            <FieldLabel>Frame style</FieldLabel>
+            <ChoiceCards
+              columns={3}
+              ariaLabel="Frame style"
+              value={productKind}
+              onChange={(kind) => {
+                setProductKind(kind);
+                setSelectedSkuId(null);
+              }}
+              options={[
+                { id: "Classic Frame" as ProductKind, label: "Classic", detail: "Framed print" },
+                { id: "Framed Canvas" as ProductKind, label: "Canvas", detail: "Float frame" },
+                { id: "Stretched Canvas" as ProductKind, label: "Stretched", detail: "No frame" },
+              ]}
+            />
+          </div>
+        )}
+
+        {fulfilment === "framed" && productKind !== "Stretched Canvas" && (
+          <div>
+            <FieldLabel>Frame colour</FieldLabel>
+            <div className="grid grid-cols-4 gap-2">
+              {FRAME_COLOURS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={frameColour === option.id}
+                  onClick={() => setFrameColour(option.id)}
+                  className={`rounded-md border px-2 py-2 transition-colors ${
+                    frameColour === option.id
+                      ? "border-stone-900 ring-1 ring-stone-900"
+                      : "border-stone-300 hover:bg-stone-50"
+                  }`}
+                >
+                  <span
+                    className="mx-auto block h-8 w-8 rounded"
+                    style={{ background: option.hex, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }}
+                  />
+                  <span className="mt-1 block text-center text-[12px] text-stone-700">
+                    {option.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <FieldLabel>Size</FieldLabel>
+          {sizeOptions.length === 0 ? (
+            <HelpText>No sizes available in this shape and format.</HelpText>
+          ) : (
+            <ChoiceCards
+              columns={4}
+              ariaLabel="Size"
+              value={selectedSku ? String(selectedSku.id) : null}
+              onChange={(id) => setSelectedSkuId(Number(id))}
+              options={sizeOptions.map((sku) => ({
+                id: String(sku.id),
+                label: sku.size_label,
+                detail: `£${Number(sku.price_gbp).toFixed(2)}`,
+              }))}
+            />
+          )}
+          {printSize && (
+            <HelpText>
+              Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px, 300dpi.
+            </HelpText>
+          )}
+        </div>
+      </div>
+    ),
+  };
+
+  const historicPlaceholder: DesignerSection = {
+    id: "symbol",
+    title: "Symbol",
+    summary: "Choose the emblem printed below your surname.",
+    icon: <MapStyleIcon />,
+    body: (
+      <p className="rounded-md bg-amber-50 px-3 py-2.5 text-[13px] leading-relaxed text-amber-900">
+        The Historic template still lives on its own page while it is being moved across.
+        Use <strong>Change template</strong> at the top to open it.
+      </p>
+    ),
+  };
+
+  const sections: DesignerSection[] =
+    template === "modern"
+      ? [templateSection, familySection, colourSection, mapStyleSection, markerSection, sizeSection]
+      : [templateSection, familySection, historicPlaceholder, sizeSection];
+
+  // Keep the open section valid when the template changes the section list.
+  useEffect(() => {
+    if (!sections.some((s) => s.id === openSection)) setOpenSection("template");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template]);
+
+  // ── Poster toolbar ─────────────────────────────────────────────────
+
+  const zoomBy = useCallback((delta: number) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    map.easeTo({ zoom: map.getZoom() + delta, duration: 250 });
+  }, []);
+
+  const posterToolbar = [
+    { id: "zoom-in", label: "Zoom in", icon: <ZoomInIcon size={18} />, onClick: () => zoomBy(0.6) },
+    { id: "zoom-out", label: "Zoom out", icon: <ZoomOutIcon size={18} />, onClick: () => zoomBy(-0.6) },
+    {
+      id: "refit",
+      label: "Refit",
+      icon: <ResizeIcon size={18} />,
+      onClick: () => {
+        setView(null);
+        setRefitNonce((n) => n + 1);
+      },
+    },
+    {
+      id: "save",
+      label: busy === "export" ? "Saving…" : "Save",
+      icon: <SaveIcon size={18} />,
+      onClick: () => void downloadPrintFile(),
+    },
+  ];
+
   if (!loaded) {
     return (
-      <main className="min-h-screen bg-neutral-50 px-6 py-10">
-        <p className="text-sm text-neutral-600">Loading design…</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#F5F4F1]">
+        <p className="text-sm text-stone-600">Loading your design…</p>
       </main>
     );
   }
 
-  return (
-    <main className={`${posterFont.className} min-h-screen bg-neutral-50 px-6 py-10 text-neutral-900`}>
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
-              Modern Design
-            </p>
-            <h1 className="mt-1 text-3xl font-light tracking-tight">Frame your map</h1>
-          </div>
-          <button
-            type="button"
-            onClick={() => router.push("/design")}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium transition-colors hover:bg-neutral-50"
-          >
-            Change style
-          </button>
-        </div>
+  const framed = fulfilment === "framed" && productKind !== "Stretched Canvas";
+  const frameHex = FRAME_COLOURS.find((f) => f.id === frameColour)?.hex ?? "#1B1B1B";
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-          {/* ── Poster ── */}
-          {/* items-start matters: this is a grid cell sized by the taller controls column,
-              and a stretched flex child overrides the poster's aspect-ratio height — which
-              silently distorted both the preview and the exported file. */}
-          <div className="flex flex-col items-center">
-            <div className="mb-4 flex w-full max-w-[620px] items-center justify-end gap-2">
-              <button
-                onClick={exportAsImage}
-                disabled={busy !== ""}
-                title="Open static image in new tab"
-                className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-200 transition-colors disabled:opacity-50"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M7 1v8M4 6l3 3 3-3M1 10v1a2 2 0 002 2h8a2 2 0 002-2v-1" />
-                </svg>
-                {busy === "preview" ? "Capturing…" : "Export"}
-              </button>
-              <button
-                onClick={downloadPrintFile}
-                disabled={busy !== "" || !printSize}
-                title={printSize ? `Download the exact file sent to Prodigi: ${printSize.pixelWidth} × ${printSize.pixelHeight}px at 300dpi` : undefined}
-                className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-200 transition-colors disabled:opacity-50"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M2 12h10M7 1v8M4 6l3 3 3-3" />
-                </svg>
-                {busy === "export" ? "Extracting…" : "Extract print file"}
-              </button>
-            </div>
+  return (
+    <main className={`${posterFont.className} flex h-screen flex-col bg-[#F5F4F1] text-stone-900`}>
+      {/* ── Masthead ── */}
+      <header className="flex flex-none items-center justify-between gap-4 border-b border-stone-200 bg-[#F5F4F1] px-6 py-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500">
+            Irish Ancestry Art
+          </p>
+          <h1 className="mt-0.5 text-[22px] font-light tracking-tight">
+            {template === "modern" ? "Design your map print" : "Design your record print"}
+          </h1>
+        </div>
+        <button
+          type="button"
+          onClick={() => router.push("/design")}
+          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-stone-50"
+        >
+          Change template
+        </button>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* ── Poster stage ── */}
+        <section className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-6 pr-24 lg:p-10 lg:pr-28">
+          {/* Sized by whichever runs out first — the stage's width or its height — so a
+              tall portrait and a square both sit fully in view without the stage
+              scrolling.
+              The frame is a wrapper *outside* posterRef on purpose: posterRef is the node
+              rasterised for print, and the frame is a physical object Prodigi puts around
+              the paper, not something printed onto it. */}
+          <div
+            className="shadow-[0_12px_48px_rgba(0,0,0,0.14)]"
+            style={{
+              background: framed ? frameHex : "transparent",
+              padding: framed ? "3.5%" : 0,
+              width: "min(100%, calc((100vh - 13rem) * var(--poster-aspect)))",
+              maxWidth: 640,
+              ["--poster-aspect" as string]: `${aspect.w / aspect.h}`,
+            }}
+          >
             <div
               ref={posterRef}
-              className="w-full max-w-[620px] shadow-[0_10px_50px_rgba(0,0,0,0.12)]"
+              className="w-full"
               style={{ background: pageHex, aspectRatio: `${aspect.w} / ${aspect.h}` }}
             >
               <div ref={posterBodyRef} className="flex h-full flex-col p-[7%]">
-                {/* ── Info block — just the "1901 Irish Census" eyebrow, on every level.
-                     Surname, count, and a level-specific caption all sit below the map
-                     instead — see renderSurnameCountBlock (Country/County/District) and
-                     renderHouseholdBlockContent (Street) further down. ── */}
+                {/* Just the eyebrow, on every level — surname, count and caption all sit
+                    below the map instead. */}
                 <div ref={infoBlockRef} className="pb-[1.5%] text-center">
                   <p
-                    className="text-[clamp(6px,1.3vw,11px)] font-medium uppercase text-neutral-500"
-                    style={{ letterSpacing: "0.22em" }}
+                    className="text-[clamp(6px,1.3vw,11px)] font-medium uppercase"
+                    style={{ letterSpacing: "0.22em", color: inkHex, opacity: 0.6 }}
                   >
                     1901 Irish Census
                   </p>
@@ -1257,27 +1881,30 @@ function ModernDesignContent() {
                   )}
                   <ModernMapCanvas
                     basemap={basemap}
-                    showLabels={showLabels}
+                    layers={mapLayers}
+                    elevationUnit={elevationUnit}
+                    palette={mapPalette}
                     contourDensity={contourDensity}
-                    accentColour={polygonColourHex}
+                    accentColour={polygonHex}
+                    borderColour={borderHex}
                     showFill={showPolygonFill}
                     highlights={highlights}
                     outline={visibleOutline}
-                    highlightLineWidth={highlightLineWidth}
+                    highlightLineWidth={borderWidth}
                     fitBounds={fitBounds}
                     fitKey={fitKey}
                     fitPadding={preset.fitPadding}
                     initialZoom={preset.fallbackZoom}
-                    pin={showPin ? pin : null}
+                    pin={pin}
+                    markerShape={markerShape}
+                    markerColour={markerColour}
+                    markerSize={markerSize}
                     onPinChange={handlePinChange}
                     onViewChange={handleViewChange}
+                    onReady={handleMapReady}
                   />
                 </div>
 
-                {/* ── Country/County/District — surname, then a record count specific to
-                     that level, then a caption below the map. The count is never the same
-                     number twice: nationwide total, county total, or just the one selected
-                     district. ── */}
                 {level === "country" &&
                   renderSurnameCountBlock(totalCountryCount, "Recorded in Ireland in 1901")}
                 {level === "county" &&
@@ -1293,10 +1920,8 @@ function ModernDesignContent() {
                       : ""
                   )}
 
-                {/* ── Household census table — Street level only, printed below
-                     the map. Font size and row count auto-fit to whatever room is
-                     left once the map keeps its minimum (see the useLayoutEffect
-                     above) — a short household just lets the map grow instead. ── */}
+                {/* Household census table — Street level only. Font size and row count
+                    auto-fit to whatever room is left once the map keeps its minimum. */}
                 {level === "street" && visibleHousehold.length > 0 && (
                   <div
                     className="flex-none overflow-hidden pt-[4%]"
@@ -1308,431 +1933,145 @@ function ModernDesignContent() {
                     )}
                     {householdMaxRows !== null && (
                       <p
-                        className="mt-1 text-center text-neutral-400"
-                        style={{ fontSize: householdTableFontPx }}
+                        className="mt-1 text-center"
+                        style={{ fontSize: householdTableFontPx, color: inkHex, opacity: 0.5 }}
                       >
-                        +{visibleHousehold.length - householdMaxRows} more — hide members below to print them
+                        +{visibleHousehold.length - householdMaxRows} more — hide members in Family to print them
                       </p>
                     )}
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Hidden off-screen clones, measured (not shown) to compute the auto-fit
-                above — one at the font ceiling, one at the floor, both with every visible
-                member and the same pt-[4%]/divider/label chrome as the real block, so the
-                measurement matches exactly what will actually render. */}
-            {level === "street" && visibleHousehold.length > 0 && (
-              <div
-                ref={householdMeasureWrapRef}
-                aria-hidden="true"
-                style={{ position: "fixed", top: -9999, left: -9999, visibility: "hidden", width: 620 }}
-              >
-                <div ref={householdCeilingMeasureRef} className="pt-[4%]">
-                  {renderHouseholdBlockContent(visibleHousehold, HOUSEHOLD_TABLE_CEILING_FONT_PX)}
-                </div>
-                <div ref={householdMinMeasureRef} className="pt-[4%]">
-                  {renderHouseholdBlockContent(visibleHousehold, HOUSEHOLD_TABLE_MIN_FONT_PX)}
-                </div>
-              </div>
-            )}
-
-            {level === "street" && household.length > 0 && (
-              <div className="mt-6 w-full max-w-[620px] overflow-hidden rounded-xl border border-neutral-200 bg-white">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-5 py-4">
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-900">Household</p>
-                    <p className="mt-0.5 text-xs text-neutral-500">
-                      Only members matching the searched surname are selected by default —
-                      show or hide members and fields here to control exactly what prints
-                      in the artwork above.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
-                      const active = visibleHouseholdFields.has(f.id);
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() =>
-                            setVisibleHouseholdFields((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(f.id)) next.delete(f.id);
-                              else next.add(f.id);
-                              return next;
-                            })
-                          }
-                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                            active
-                              ? "border-neutral-900 bg-neutral-900 text-white"
-                              : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
-                          }`}
-                        >
-                          {f.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-sm" style={{ borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr className="border-b border-neutral-200">
-                        <th className="w-10 px-4 py-2.5"></th>
-                        <th className="px-2 py-2.5 text-left text-xs font-medium text-neutral-500">Name</th>
-                        {HOUSEHOLD_FIELD_OPTIONS.filter((f) => visibleHouseholdFields.has(f.id)).map((f) => (
-                          <th key={f.id} className="px-2 py-2.5 text-left text-xs font-medium text-neutral-500">
-                            {f.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {household.map((person, index) => {
-                        const hidden = hiddenHouseholdIndices.has(index);
-                        return (
-                          <tr
-                            key={`${person.full_name || "person"}-${index}`}
-                            className="border-b border-neutral-100 last:border-0"
-                            style={{ opacity: hidden ? 0.4 : 1 }}
-                          >
-                            <td className="px-4 py-2">
-                              <input
-                                type="checkbox"
-                                checked={!hidden}
-                                onChange={() =>
-                                  setHiddenHouseholdIndices((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(index)) next.delete(index);
-                                    else next.add(index);
-                                    return next;
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-neutral-300"
-                              />
-                            </td>
-                            <td className="px-2 py-2 font-medium text-neutral-900">{person.full_name || ""}</td>
-                            {HOUSEHOLD_FIELD_OPTIONS.filter((f) => visibleHouseholdFields.has(f.id)).map((f) => (
-                              <td key={f.id} className="px-2 py-2 text-neutral-600">
-                                {getHouseholdFieldValue(person, f.id)}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* ── Controls ── */}
-          <div className="space-y-6">
-            {mapError && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{mapError}</p>
-            )}
-
-            {/* ── Surname — leads the column: it's the text people scan for
-                 first, and the helper line makes clear it's editable. ── */}
-            <div>
-              <ControlLabel>Surname</ControlLabel>
-              <input
-                value={headingText}
-                onChange={(e) => setHeadingText(e.target.value)}
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
-              />
-              <p className="mt-1 text-xs text-neutral-500">Text found on artwork</p>
-            </div>
-
-            {/* Mirrors the drill-down from /create — greyed out and disabled wherever
-                this design never went that deep, editable where it did. */}
-            <div className="grid grid-cols-3 gap-2">
-              <DetailField
-                label="DED"
-                value={dedDisplayText}
-                onChange={setDedDisplayText}
-                placeholder="Not selected"
-              />
-              <DetailField
-                label="Townland"
-                value={townlandText}
-                onChange={setTownlandText}
-                placeholder="Not selected"
-              />
-              <DetailField
-                label="House No."
-                value={houseNoText}
-                onChange={setHouseNoText}
-                placeholder="Not selected"
-              />
-            </div>
-
-            {/* Format next — it's the most consequential visual choice (shape/aspect
-                drives everything else), so it leads the rest of the control column. */}
-            {familyOptions.length > 0 && (
-              <div>
-                <ControlLabel>Format</ControlLabel>
-                <OptionRow options={familyOptions} value={layoutFamily} onChange={setLayoutFamily} />
+          {/* Hidden off-screen clones, measured (not shown) to compute the auto-fit
+              above — one at the font ceiling, one at the floor, both with every visible
+              member and the same chrome as the real block. */}
+          {level === "street" && visibleHousehold.length > 0 && (
+            <div
+              ref={householdMeasureWrapRef}
+              aria-hidden="true"
+              style={{ position: "fixed", top: -9999, left: -9999, visibility: "hidden", width: 520 }}
+            >
+              <div ref={householdCeilingMeasureRef} className="pt-[4%]">
+                {renderHouseholdBlockContent(visibleHousehold, HOUSEHOLD_TABLE_CEILING_FONT_PX)}
               </div>
-            )}
-
-            <div>
-              <ControlLabel>Map level</ControlLabel>
-              <OptionRow
-                options={availableLevels(deepestLevel).map((l) => ({
-                  id: l,
-                  label: MODERN_PRESETS[l].label,
-                }))}
-                value={level}
-                onChange={changeLevel}
-              />
-              <p className="mt-2 text-xs text-neutral-500">{preset.description}</p>
+              <div ref={householdMinMeasureRef} className="pt-[4%]">
+                {renderHouseholdBlockContent(visibleHousehold, HOUSEHOLD_TABLE_MIN_FONT_PX)}
+              </div>
             </div>
+          )}
 
-            {level === "street" && household.length > 0 && (
-              <div>
-                <ControlLabel>Household Information</ControlLabel>
-                <OptionRow
-                  options={[
-                    { id: "table" as const, label: "Table" },
-                    { id: "list" as const, label: "List" },
-                  ]}
-                  value={householdDisplayMode}
-                  onChange={setHouseholdDisplayMode}
-                />
-                <p className="mt-2 text-xs text-neutral-500">
-                  {householdDisplayMode === "table"
-                    ? "Name, age and the fields below in columns — best for a shorter household."
-                    : "Everyone grouped by surname in a couple of lines of prose — best for a longer household."}
+          {/* ── Poster toolbar ── */}
+          <div className="absolute right-4 top-1/2 flex -translate-y-1/2 flex-col gap-2 lg:right-6">
+            {posterToolbar.map((tool) => (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={tool.onClick}
+                disabled={busy !== ""}
+                title={tool.label}
+                className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-md border border-stone-200 bg-white text-stone-700 shadow-sm transition-colors hover:bg-stone-50 disabled:opacity-40"
+              >
+                {tool.icon}
+                <span className="text-[9px] font-medium uppercase tracking-wide">{tool.label}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShowHelp((v) => !v)}
+              title="Help"
+              aria-pressed={showHelp}
+              className={`flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-md border shadow-sm transition-colors ${
+                showHelp
+                  ? "border-stone-900 bg-stone-900 text-white"
+                  : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+              }`}
+            >
+              <HelpIcon size={18} />
+              <span className="text-[9px] font-medium uppercase tracking-wide">Help</span>
+            </button>
+          </div>
+
+          {showHelp && (
+            <div className="absolute bottom-6 left-6 max-w-xs rounded-md border border-stone-200 bg-white p-4 text-[13px] leading-relaxed text-stone-700 shadow-lg">
+              <p className="mb-2 font-semibold text-stone-900">Framing your print</p>
+              <p>
+                Drag the map to move it and scroll to zoom. Use <strong>Refit</strong> to
+                return to the original framing, and <strong>Save</strong> to download the
+                exact file we send to print.
+              </p>
+              <button
+                type="button"
+                onClick={() => void exportAsImage()}
+                className="mt-3 text-[13px] font-medium text-stone-900 underline"
+              >
+                Open a full preview
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ── Control rail ── */}
+        <aside className="flex min-h-0 w-full flex-none border-t border-stone-200 bg-white lg:w-[560px] lg:border-l lg:border-t-0">
+          <SectionRail sections={sections} openId={openSection} onSelect={setOpenSection} />
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {mapError && (
+                <p className="m-5 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+                  {mapError}
                 </p>
-              </div>
-            )}
-
-            {preset.basemaps.length > 1 && (
-              <div>
-                <ControlLabel>Basemap</ControlLabel>
-                <OptionRow
-                  options={preset.basemaps.map((b) => ({
-                    id: b,
-                    label: b === "contours" ? "Contours" : "Streets",
-                  }))}
-                  value={basemap}
-                  onChange={setBasemap}
-                />
-              </div>
-            )}
-
-            {basemap === "contours" && (
-              <div>
-                <ControlLabel>Contour density</ControlLabel>
-                <input
-                  type="range"
-                  min={CONTOUR_DENSITY_MIN}
-                  max={CONTOUR_DENSITY_MAX}
-                  step={CONTOUR_DENSITY_STEP}
-                  value={contourDensity}
-                  onChange={(e) => setContourDensity(Number(e.target.value))}
-                  className="control-slider w-full"
-                  style={
-                    {
-                      "--fill": `${
-                        ((contourDensity - CONTOUR_DENSITY_MIN) /
-                          (CONTOUR_DENSITY_MAX - CONTOUR_DENSITY_MIN)) *
-                        100
-                      }%`,
-                    } as React.CSSProperties
-                  }
-                  aria-label="Contour density"
-                />
-                <div className="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-neutral-400">
-                  <span>Fine</span>
-                  <span>Standard</span>
-                  <span>Coarse</span>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <ControlLabel>Accent</ControlLabel>
-              <div className="flex flex-wrap gap-2">
-                {ACCENT_OPTIONS.map((option) => (
-                  <AccentSwatch
-                    key={option.id}
-                    page={option.page}
-                    accent={option.accent}
-                    label={option.label}
-                    selected={accentId === option.id}
-                    onClick={() => setAccentId(option.id)}
-                  />
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-neutral-500">{selectedAccent.label}</p>
-            </div>
-
-            <div>
-              <ControlLabel>Polygon colour</ControlLabel>
-              <div className="flex flex-wrap gap-2">
-                <ColourSwatch
-                  colour={accentHex}
-                  label="Match accent"
-                  selected={polygonColourId === null}
-                  onClick={() => setPolygonColourId(null)}
-                />
-                {POLYGON_COLOUR_OPTIONS.map((option) => (
-                  <ColourSwatch
-                    key={option.id}
-                    colour={option.hex}
-                    label={option.label}
-                    selected={polygonColourId === option.id}
-                    onClick={() => setPolygonColourId(option.id)}
-                  />
-                ))}
-                <ColourSwatch
-                  colour="transparent"
-                  label="No fill"
-                  selected={polygonColourId === NO_FILL_POLYGON_COLOUR_ID}
-                  onClick={() => setPolygonColourId(NO_FILL_POLYGON_COLOUR_ID)}
-                />
-              </div>
-              <p className="mt-2 text-xs text-neutral-500">
-                {polygonColourId === NO_FILL_POLYGON_COLOUR_ID
-                  ? "No fill — outline only"
-                  : polygonColourId
-                    ? getPolygonColourById(polygonColourId)?.label
-                    : `Match accent (${selectedAccent.label})`}
+              )}
+              <SectionAccordion
+                sections={sections}
+                openId={openSection}
+                onToggle={(id) => setOpenSection((current) => (current === id ? "" : id))}
+              />
+              <p className="px-5 py-4 text-[11px] leading-relaxed text-stone-400">
+                Map data © OpenStreetMap contributors. Elevation from Terrain Tiles.
               </p>
             </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={showLabels}
-                  onChange={(e) => setShowLabels(e.target.checked)}
-                />
-                Show place and road names
-              </label>
-              {preset.allowsPin && (
-                <div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={showPin}
-                      onChange={(e) => togglePin(e.target.checked)}
-                    />
-                    Mark the household with a pin (drag to place)
-                  </label>
-                  {showPin && pinSource && (
-                    <p className="mt-1 pl-6 text-xs text-neutral-500">
-                      {pinSource === "geocoder" && "Located from the 1901 address — drag to fine-tune."}
-                      {pinSource === "centroid" && "Approximate — please drag to place."}
-                      {pinSource === "manual" && "Placed manually."}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ── Size & order ── */}
-            <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
-              <div>
-                <ControlLabel>Product</ControlLabel>
-                <OptionRow
-                  options={[
-                    { id: "Printed" as ProductCategory, label: "Print" },
-                    { id: "Framed" as ProductCategory, label: "Framed" },
-                  ]}
-                  value={productCategory}
-                  onChange={setProductCategory}
-                />
-              </div>
-
-              <div>
-                <ControlLabel>Type</ControlLabel>
-                <OptionRow
-                  options={PRODUCTS_FOR_CATEGORY[productCategory].map((kind) => ({ id: kind, label: kind }))}
-                  value={productKind}
-                  onChange={(kind) => {
-                    setProductKind(kind);
-                    setSelectedSkuId(null);
-                  }}
-                />
-              </div>
-
-              {productKind !== "Stretched Canvas" && productKind !== "Art Print" && (
-                <div>
-                  <ControlLabel>Frame colour</ControlLabel>
-                  <OptionRow
-                    options={[
-                      { id: "black" as const, label: "Black" },
-                      { id: "white" as const, label: "White" },
-                    ]}
-                    value={frameColour}
-                    onChange={setFrameColour}
-                  />
-                </div>
-              )}
-
-              <div>
-                <ControlLabel>Size</ControlLabel>
-                {sizeOptions.length === 0 ? (
-                  <p className="text-xs text-neutral-500">
-                    No sizes available in this shape and product combination.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {sizeOptions.map((sku) => (
-                      <button
-                        key={sku.id}
-                        type="button"
-                        onClick={() => setSelectedSkuId(sku.id)}
-                        className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                          selectedSku?.id === sku.id
-                            ? "border-neutral-900 bg-neutral-900 text-white"
-                            : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-                        }`}
-                      >
-                        <span className="block">{sku.size_label}</span>
-                        <span className="block text-xs opacity-70">
-                          £{Number(sku.price_gbp).toFixed(2)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {printSize && (
-                <p className="text-xs text-neutral-500">
-                  Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px (300dpi).
+            {/* ── Price bar — pinned, so the total never scrolls away ── */}
+            <div className="flex-none border-t border-stone-200 bg-white px-5 py-4">
+              {exportNote && <p className="mb-2 text-[12px] text-stone-500">{exportNote}</p>}
+              {orderError && (
+                <p className="mb-2 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                  {orderError}
                 </p>
               )}
-
-              {exportNote && <p className="text-xs text-neutral-500">{exportNote}</p>}
-              {orderError && (
-                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{orderError}</p>
-              )}
-
-              <div className="flex flex-col gap-2">
+              <div className="flex items-end justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[26px] font-semibold leading-none tracking-tight">
+                    {selectedSku ? `£${Number(selectedSku.price_gbp).toFixed(2)}` : "—"}
+                  </p>
+                  <p className="mt-1 truncate text-[13px] text-stone-700">
+                    {selectedSku
+                      ? `${selectedSku.size_label} ${selectedSku.product}${
+                          selectedSku.framed && selectedSku.frame_colour
+                            ? ` · ${selectedSku.frame_colour} frame`
+                            : ""
+                        }`
+                      : "Choose a size to see the price"}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-stone-500">
+                    Made to order — typically 5–8 working days
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={orderPrint}
+                  onClick={() => void orderPrint()}
                   disabled={!selectedSku || busy !== ""}
-                  className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 disabled:opacity-50"
+                  className="flex-none rounded-full bg-stone-900 px-6 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {busy === "order" ? "Preparing your print…" : "Order this print"}
+                  {busy === "order" ? "Preparing…" : "Add to cart"}
                 </button>
               </div>
             </div>
-
-            <p className="text-[11px] leading-relaxed text-neutral-400">
-              Map data © OpenStreetMap contributors. Elevation from Terrain Tiles.
-            </p>
           </div>
-        </div>
+        </aside>
       </div>
     </main>
   );
@@ -1740,7 +2079,7 @@ function ModernDesignContent() {
 
 export default function ModernDesignPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-neutral-50 px-6 py-10" />}>
+    <Suspense fallback={<main className="min-h-screen bg-[#F5F4F1]" />}>
       <ModernDesignContent />
     </Suspense>
   );

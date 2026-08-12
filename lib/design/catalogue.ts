@@ -246,7 +246,49 @@ export function layoutFamilyLabel(family: string): string {
   return "ISO / A-Series Portrait";
 }
 
-export const GALLERY_FAMILY_ORDER = ["7:5/√2", "1:1", "5:4", "4:3", "3:2"];
+/**
+ * Every layout family the calibration data and border artwork still support.
+ *
+ * ARCHIVED — not offered for sale. Kept because the per-family calibration in the
+ * Historic designer's LAYOUT_PRESETS and the matching border SVGs under
+ * public/artwork/Borders/ are all still present and correct for these shapes; restoring
+ * a family is a matter of listing it in GALLERY_FAMILY_ORDER below again, not of redoing
+ * the calibration work.
+ */
+export const ALL_LAYOUT_FAMILIES = ["7:5/√2", "1:1", "5:4", "4:3", "3:2"];
+
+/**
+ * The shapes actually on sale: ISO/A-series and Square.
+ *
+ * The 5:4, 4:3 and 3:2 families were retired deliberately. Every extra family multiplies
+ * the calibration surface — each needs its own border artwork, its own preset numbers and
+ * its own preview testing — for a choice customers were making mostly at random. Two
+ * shapes, one portrait and one square, cover the wall.
+ */
+export const GALLERY_FAMILY_ORDER = ["7:5/√2", "1:1"];
+
+/**
+ * Ratio families retired alongside the layout families above.
+ *
+ * "7:5" needs naming separately because it is not a layout family of its own — the
+ * American 5×7, 8×11, 10×14 and 16×22 sizes are filed *inside* the "7:5/√2" layout
+ * family next to the true ISO ones, so filtering on layout family alone would leave
+ * them on sale. They are also the only sizes in that family whose real proportions
+ * differ from √2, which is what used to force the preview to follow per-SKU dimensions
+ * rather than the family's canonical ratio.
+ */
+const ARCHIVED_RATIO_FAMILIES = ["7:5"];
+
+/** True if a SKU is a shape currently on sale. */
+export function isActiveLayoutFamily(sku: {
+  layout_family: string;
+  ratio_family: string;
+}): boolean {
+  return (
+    GALLERY_FAMILY_ORDER.includes(sku.layout_family) &&
+    !ARCHIVED_RATIO_FAMILIES.includes(sku.ratio_family)
+  );
+}
 
 // Groups portrait/square SKUs by layout family, then by unique size — shared by the Step 1
 // format cards (all categories combined) and the Step 2 board (filtered to one category).
@@ -275,5 +317,7 @@ export async function loadCatalogueSkus(): Promise<CatalogueSku[]> {
     .order("layout_family")
     .order("short_in");
 
-  return (data as CatalogueSku[] | null) ?? [];
+  // Retired shapes are filtered out here rather than in the database, so re-offering a
+  // family is a one-line change in GALLERY_FAMILY_ORDER with its SKUs and prices intact.
+  return ((data as CatalogueSku[] | null) ?? []).filter(isActiveLayoutFamily);
 }

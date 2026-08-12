@@ -4,7 +4,14 @@
 import { addProtocol, setWorkerUrl } from "maplibre-gl";
 import mlcontour from "maplibre-contour";
 
-import { buildModernStyle, DEM_TILE_URL, type ModernBasemap } from "./mapStyle";
+import {
+  buildModernStyle,
+  DEM_TILE_URL,
+  type ElevationUnit,
+  type MapLayerToggles,
+  type ModernBasemap,
+  type ModernPalette,
+} from "./mapStyle";
 
 // maplibre-gl v6 is ESM-only and spawns a *module* worker whose URL it derives from
 // import.meta.url. Under Turbopack that URL isn't served, so the worker's
@@ -42,44 +49,45 @@ function getDemSource() {
 }
 
 /**
- * Contour spacing per zoom, as [minor, major] metres, at "standard" density.
+ * Contour spacing, as the real vertical interval in metres between lines.
+ *
+ * The customer picks the interval itself rather than an abstract "density" — 10m is a
+ * meaningful, checkable number on a topographic print in a way that "0.7" never was,
+ * and it is what the contour label on the map actually steps by.
  *
  * Ireland is low relief — outside a handful of uplands most of the country sits under
- * 150m — so intervals that look sensible on a mountainous map produce almost no lines
- * here. A large lowland county framed at z8 (Cork) rendered essentially blank at a 50m
- * interval while a small upland one (Antrim, z9.5) looked fine, which made the problem
- * look like "the map isn't loading". These are deliberately tight.
- *
- * A zoom with no entry uses the next lower one, so the lowest key must sit below the zoom
- * the largest county fits at.
+ * 150m — so the coarse end of this range produces almost nothing at county extent. That
+ * is a legitimate choice (a near-empty map is a look), but 50m is the default because it
+ * reads well from a whole county down to a townland.
  */
-const BASE_CONTOUR_THRESHOLDS: Record<number, [number, number]> = {
-  6: [50, 250],
-  8: [25, 100],
-  10: [20, 100],
-  12: [10, 50],
-  14: [5, 25],
-};
+export const CONTOUR_INTERVALS = [500, 200, 100, 50, 20, 10] as const;
+
+export type ContourDensity = (typeof CONTOUR_INTERVALS)[number];
+
+export const DEFAULT_CONTOUR_DENSITY: ContourDensity = 50;
+
+/** Nearest supported interval to an arbitrary number (e.g. a restored older design). */
+export function nearestContourInterval(value: number): ContourDensity {
+  return CONTOUR_INTERVALS.reduce((best, interval) =>
+    Math.abs(interval - value) < Math.abs(best - value) ? interval : best
+  );
+}
+
+export function contourIntervalLabel(interval: ContourDensity): string {
+  return `${interval}m`;
+}
 
 /**
- * A multiplier on the base spacing above — below 1 tightens it (more contour lines),
- * above 1 loosens it (fewer). Continuous rather than a fixed set of presets, so the
- * density slider can be dragged rather than clicked between three stops.
+ * maplibre-contour wants [minor, major] metres per zoom. The interval the customer picked
+ * is the minor spacing; every 5th line is drawn as an index line, the usual topographic
+ * convention, so major is simply 5×.
+ *
+ * The same interval is used at every zoom — the point of naming the interval is that it
+ * doesn't silently change under the customer as they zoom. A zoom key with no entry
+ * inherits the next lower one, so a single low key covers the whole range.
  */
-export type ContourDensity = number;
-
-export const CONTOUR_DENSITY_MIN = 0.5;
-export const CONTOUR_DENSITY_MAX = 2;
-export const CONTOUR_DENSITY_STEP = 0.1;
-export const DEFAULT_CONTOUR_DENSITY: ContourDensity = 1;
-
-function scaledThresholds(density: ContourDensity): Record<number, [number, number]> {
-  const scale = Math.min(CONTOUR_DENSITY_MAX, Math.max(CONTOUR_DENSITY_MIN, density));
-  const scaled: Record<number, [number, number]> = {};
-  for (const [zoom, [minor, major]] of Object.entries(BASE_CONTOUR_THRESHOLDS)) {
-    scaled[Number(zoom)] = [Math.max(1, Math.round(minor * scale)), Math.max(2, Math.round(major * scale))];
-  }
-  return scaled;
+function thresholdsFor(interval: ContourDensity): Record<number, [number, number]> {
+  return { 5: [interval, interval * 5] };
 }
 
 /** Registers the worker URL and contour protocol. Safe to call repeatedly. */
@@ -90,31 +98,58 @@ export function ensureMapRuntime() {
 
 export function contourTilesUrl(density: ContourDensity = DEFAULT_CONTOUR_DENSITY) {
   return getDemSource().contourProtocolUrl({
-    thresholds: scaledThresholds(density),
+    thresholds: thresholdsFor(density),
     elevationKey: "ele",
     levelKey: "level",
     contourLayer: "contours",
   });
 }
 
+/** Everything that decides what the basemap looks like, as one object. */
+export type ModernStyleOptions = {
+  basemap: ModernBasemap;
+  layers: MapLayerToggles;
+  contourDensity?: ContourDensity;
+  elevationUnit?: ElevationUnit;
+  palette?: ModernPalette;
+};
+
 /** The style for a given basemap choice, with contours wired up. */
-export function modernStyle(
-  basemap: ModernBasemap,
-  showLabels: boolean,
-  contourDensity: ContourDensity = DEFAULT_CONTOUR_DENSITY
-) {
+export function modernStyle({
+  basemap,
+  layers,
+  contourDensity = DEFAULT_CONTOUR_DENSITY,
+  elevationUnit = "m",
+  palette,
+}: ModernStyleOptions) {
   ensureMapRuntime();
   return buildModernStyle({
     basemap,
-    showLabels,
+    layers,
+    elevationUnit,
+    palette,
     contourTilesUrl: contourTilesUrl(contourDensity),
   });
 }
 
-export function modernStyleKey(
-  basemap: ModernBasemap,
-  showLabels: boolean,
-  contourDensity: ContourDensity = DEFAULT_CONTOUR_DENSITY
-) {
-  return `${basemap}|${showLabels}|${contourDensity}`;
+/**
+ * Identity of a style, used to tell a real style change from a StrictMode re-run.
+ * Must cover every input to modernStyle above, or a change that only affects one of
+ * them (a palette swap, say) will not be applied to the live map.
+ */
+export function modernStyleKey({
+  basemap,
+  layers,
+  contourDensity = DEFAULT_CONTOUR_DENSITY,
+  elevationUnit = "m",
+  palette,
+}: ModernStyleOptions) {
+  const toggles = [
+    layers.placeNames,
+    layers.mountainPeaks,
+    layers.riversStreams,
+    layers.roads,
+  ].join(",");
+  const paletteKey = palette ? `${palette.land}${palette.water}${palette.label}` : "default";
+  return `${basemap}|${toggles}|${contourDensity}|${elevationUnit}|${paletteKey}`;
 }

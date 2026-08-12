@@ -8,7 +8,7 @@
 // density. Source is currently the keyless hosted endpoint; swapping to a self-hosted
 // Ireland PMTiles extract means changing TILE_SOURCE_URL and nothing else.
 
-import type { StyleSpecification } from "maplibre-gl";
+import type { ExpressionSpecification, StyleSpecification } from "maplibre-gl";
 
 // World rectangle minus the union of every county in county_geometries — i.e. everything
 // that ISN'T Ireland. Painted over the whole base style as the very last layer so nothing
@@ -79,9 +79,35 @@ export const GREYSCALE_PALETTE: ModernPalette = {
   labelHalo: "#fafafa",
 };
 
+/**
+ * Which optional map furniture is drawn. Each maps to a group of style layers the
+ * customer can turn on and off from the Map style panel; the basemap itself (land,
+ * water, coastline) is never optional.
+ */
+export type MapLayerToggles = {
+  /** Town, village and water body names. */
+  placeNames: boolean;
+  /** Named summits with their elevation. */
+  mountainPeaks: boolean;
+  /** Rivers and streams. */
+  riversStreams: boolean;
+  /** The road and rail network. */
+  roads: boolean;
+};
+
+export type ElevationUnit = "m" | "ft";
+
+export const DEFAULT_LAYER_TOGGLES: MapLayerToggles = {
+  placeNames: true,
+  mountainPeaks: false,
+  riversStreams: true,
+  roads: true,
+};
+
 type BuildOptions = {
   basemap: ModernBasemap;
-  showLabels: boolean;
+  layers: MapLayerToggles;
+  elevationUnit?: ElevationUnit;
   palette?: ModernPalette;
   /** From maplibre-contour's demSource.contourProtocolUrl(); omit to skip contour layers. */
   contourTilesUrl?: string;
@@ -96,9 +122,22 @@ function width(stops: [number, number][]) {
   };
 }
 
+/** Elevation in the requested unit, as a MapLibre expression over the `ele` field (metres). */
+function elevationLabel(unit: ElevationUnit): ExpressionSpecification {
+  if (unit === "ft") {
+    return [
+      "concat",
+      ["number-format", ["round", ["*", ["get", "ele"], 3.28084]], {}],
+      " ft",
+    ];
+  }
+  return ["concat", ["number-format", ["get", "ele"], {}], " m"];
+}
+
 export function buildModernStyle({
   basemap,
-  showLabels,
+  layers: toggles,
+  elevationUnit = "m",
   palette = GREYSCALE_PALETTE,
   contourTilesUrl,
 }: BuildOptions): StyleSpecification {
@@ -120,7 +159,10 @@ export function buildModernStyle({
       filter: ["!=", ["get", "brunnel"], "tunnel"],
       paint: { "fill-color": palette.water },
     },
-    {
+  ];
+
+  if (toggles.riversStreams) {
+    layers.push({
       id: "waterway",
       type: "line",
       source: "openmaptiles",
@@ -134,19 +176,20 @@ export function buildModernStyle({
           [18, 3],
         ]),
       },
+    });
+  }
+
+  layers.push({
+    id: "building",
+    type: "fill",
+    source: "openmaptiles",
+    "source-layer": "building",
+    minzoom: 13,
+    paint: {
+      "fill-color": palette.building,
+      "fill-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0, 14.5, 1],
     },
-    {
-      id: "building",
-      type: "fill",
-      source: "openmaptiles",
-      "source-layer": "building",
-      minzoom: 13,
-      paint: {
-        "fill-color": palette.building,
-        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0, 14.5, 1],
-      },
-    },
-  ];
+  });
 
   if (wantContours) {
     layers.push(
@@ -174,7 +217,7 @@ export function buildModernStyle({
         filter: ["all", [">", ["get", "level"], 0], [">=", ["get", "ele"], 0]],
         layout: {
           "symbol-placement": "line",
-          "text-field": ["concat", ["number-format", ["get", "ele"], {}], " m"],
+          "text-field": elevationLabel(elevationUnit),
           "text-font": ["Noto Sans Regular"],
           "text-size": 9,
           "text-max-angle": 25,
@@ -189,6 +232,7 @@ export function buildModernStyle({
   }
 
   // ── Roads, drawn narrowest-first so majors sit on top at junctions ──
+  if (toggles.roads) {
   layers.push(
     {
       id: "road-path",
@@ -297,28 +341,34 @@ export function buildModernStyle({
       },
     }
   );
+  }
 
-  if (showLabels) {
-    layers.push(
-      {
-        id: "road-label",
-        type: "symbol",
-        source: "openmaptiles",
-        "source-layer": "transportation_name",
-        minzoom: 14,
-        layout: {
-          "symbol-placement": "line",
-          "text-field": ["get", "name"],
-          "text-font": ["Noto Sans Regular"],
-          "text-size": 10,
-          "text-letter-spacing": 0.05,
-        },
-        paint: {
-          "text-color": palette.label,
-          "text-halo-color": palette.labelHalo,
-          "text-halo-width": 1.4,
-        },
+  // Road names ride the road network — without roads drawn there is nothing to label,
+  // so they follow both toggles rather than place names alone.
+  if (toggles.placeNames && toggles.roads) {
+    layers.push({
+      id: "road-label",
+      type: "symbol",
+      source: "openmaptiles",
+      "source-layer": "transportation_name",
+      minzoom: 14,
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 10,
+        "text-letter-spacing": 0.05,
       },
+      paint: {
+        "text-color": palette.label,
+        "text-halo-color": palette.labelHalo,
+        "text-halo-width": 1.4,
+      },
+    });
+  }
+
+  if (toggles.placeNames) {
+    layers.push(
       {
         id: "water-label",
         type: "symbol",
@@ -357,6 +407,32 @@ export function buildModernStyle({
         },
       }
     );
+  }
+
+  // Named summits with their height — the one label class that earns its place on a
+  // contour print, so it toggles independently of the other place names.
+  if (toggles.mountainPeaks) {
+    layers.push({
+      id: "mountain-peak-label",
+      type: "symbol",
+      source: "openmaptiles",
+      "source-layer": "mountain_peak",
+      minzoom: 8,
+      filter: ["==", ["get", "class"], "peak"],
+      layout: {
+        "text-field": ["concat", ["get", "name"], "\n", elevationLabel(elevationUnit)],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 10,
+        "text-line-height": 1.1,
+        "text-anchor": "top",
+        "text-offset": [0, 0.4],
+      },
+      paint: {
+        "text-color": palette.label,
+        "text-halo-color": palette.labelHalo,
+        "text-halo-width": 1.5,
+      },
+    });
   }
 
   // Last layer, so it sits on top of every base-style layer above (water, building,

@@ -13,7 +13,12 @@ import { useEffect, useRef } from "react";
 import { Map as MapLibreMap, Marker, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import type { ModernBasemap } from "@/lib/modern/mapStyle";
+import type {
+  ElevationUnit,
+  MapLayerToggles,
+  ModernBasemap,
+  ModernPalette,
+} from "@/lib/modern/mapStyle";
 import {
   ensureMapRuntime,
   modernStyle,
@@ -21,6 +26,7 @@ import {
   DEFAULT_CONTOUR_DENSITY,
   type ContourDensity,
 } from "@/lib/modern/mapRuntime";
+import { markerSvg, type MarkerShape } from "@/lib/modern/marker";
 import { IRELAND_PAN_BOUNDS } from "@/lib/modern/bounds";
 import {
   applyModernOverlays,
@@ -39,9 +45,17 @@ export type LngLat = { lng: number; lat: number };
 
 export type ModernMapCanvasProps = {
   basemap: ModernBasemap;
-  showLabels: boolean;
+  layers: MapLayerToggles;
+  elevationUnit?: ElevationUnit;
+  palette?: ModernPalette;
   contourDensity?: ContourDensity;
   accentColour: string;
+  /** District border colour. Defaults to accentColour when not given. */
+  borderColour?: string;
+  /** Shape, colour and height of the draggable house marker. */
+  markerShape?: MarkerShape;
+  markerColour?: string;
+  markerSize?: number;
   /** false = outline only, no interior fill. Defaults true. */
   showFill?: boolean;
   /** DED polygons to shade, as GeoJSON geometries with a 0..1 weight. */
@@ -60,15 +74,23 @@ export type ModernMapCanvasProps = {
   pin?: LngLat | null;
   onPinChange?: (pin: LngLat) => void;
   onViewChange?: (view: { center: [number, number]; zoom: number }) => void;
+  /** Handed the map once, so the page's own toolbar can drive zoom and re-framing. */
+  onReady?: (map: MapLibreMap | null) => void;
   interactive?: boolean;
   className?: string;
 };
 
 export default function ModernMapCanvas({
   basemap,
-  showLabels,
+  layers,
+  elevationUnit = "m",
+  palette,
   contourDensity = DEFAULT_CONTOUR_DENSITY,
   accentColour,
+  borderColour,
+  markerShape = "pin",
+  markerColour = "#C08497",
+  markerSize = 34,
   showFill = true,
   highlights,
   outline,
@@ -81,6 +103,7 @@ export default function ModernMapCanvas({
   pin,
   onPinChange,
   onViewChange,
+  onReady,
   interactive = true,
   className,
 }: ModernMapCanvasProps) {
@@ -99,10 +122,12 @@ export default function ModernMapCanvas({
     highlights,
     outline,
     accentColour,
+    borderColour,
     showFill,
     highlightLineWidth,
     onPinChange,
     onViewChange,
+    onReady,
   });
 
   useEffect(() => {
@@ -110,10 +135,12 @@ export default function ModernMapCanvas({
       highlights,
       outline,
       accentColour,
+      borderColour,
       showFill,
       highlightLineWidth,
       onPinChange,
       onViewChange,
+      onReady,
     };
   });
 
@@ -125,7 +152,7 @@ export default function ModernMapCanvas({
 
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: modernStyle(basemap, showLabels, contourDensity),
+      style: modernStyle({ basemap, layers, contourDensity, elevationUnit, palette }),
       center: initialCenter,
       zoom: initialZoom,
       attributionControl: false,
@@ -141,7 +168,13 @@ export default function ModernMapCanvas({
     });
 
     mapRef.current = map;
-    appliedStyleKey.current = modernStyleKey(basemap, showLabels, contourDensity);
+    appliedStyleKey.current = modernStyleKey({
+      basemap,
+      layers,
+      contourDensity,
+      elevationUnit,
+      palette,
+    });
 
     // Overlays live outside the style object, so they must be re-applied every time the
     // style is swapped (basemap toggle) — "style.load" fires once for the initial style
@@ -158,12 +191,19 @@ export default function ModernMapCanvas({
     // soon as the new style's sources and layers are registered — before any tile fetching
     // starts — which is the actual precondition for addSource/addLayer to succeed.
     const applyOverlays = () => {
-      const { highlights: h, outline: o, accentColour: accent, showFill: fill, highlightLineWidth: width } =
-        propsRef.current;
+      const {
+        highlights: h,
+        outline: o,
+        accentColour: accent,
+        borderColour: border,
+        showFill: fill,
+        highlightLineWidth: width,
+      } = propsRef.current;
       applyModernOverlays(map, {
         highlights: h,
         outline: o,
         accentColour: accent,
+        borderColour: border,
         showFill: fill,
         highlightLineWidth: width,
       });
@@ -182,7 +222,10 @@ export default function ModernMapCanvas({
       propsRef.current.onViewChange?.({ center: [c.lng, c.lat], zoom: map.getZoom() });
     });
 
+    propsRef.current.onReady?.(map);
+
     return () => {
+      propsRef.current.onReady?.(null);
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
@@ -201,12 +244,13 @@ export default function ModernMapCanvas({
     const map = mapRef.current;
     if (!map) return;
 
-    const key = modernStyleKey(basemap, showLabels, contourDensity);
+    const options = { basemap, layers, contourDensity, elevationUnit, palette };
+    const key = modernStyleKey(options);
     if (appliedStyleKey.current === key) return;
     appliedStyleKey.current = key;
 
-    map.setStyle(modernStyle(basemap, showLabels, contourDensity));
-  }, [basemap, showLabels, contourDensity]);
+    map.setStyle(modernStyle(options));
+  }, [basemap, layers, contourDensity, elevationUnit, palette]);
 
   // ── Overlay data ───────────────────────────────────────────────────
   useEffect(() => {
@@ -229,18 +273,20 @@ export default function ModernMapCanvas({
     const map = mapRef.current;
     if (!map) return;
 
+    const line = borderColour ?? accentColour;
+
     if (map.getLayer(HIGHLIGHT_FILL_LAYER)) {
       map.setPaintProperty(HIGHLIGHT_FILL_LAYER, "fill-color", accentColour);
       map.setPaintProperty(HIGHLIGHT_FILL_LAYER, "fill-opacity", fillOpacityFor(showFill));
     }
     if (map.getLayer(HIGHLIGHT_LINE_LAYER)) {
-      map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", accentColour);
+      map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", line);
       map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-width", highlightLineWidth ?? 2.4);
     }
     if (map.getLayer(OUTLINE_LINE_LAYER)) {
-      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", accentColour);
+      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", line);
     }
-  }, [accentColour, showFill, highlightLineWidth]);
+  }, [accentColour, borderColour, showFill, highlightLineWidth]);
 
   // ── Fit bounds, but only on an explicit request ────────────────────
   useEffect(() => {
@@ -256,32 +302,41 @@ export default function ModernMapCanvas({
     map.fitBounds(fitBounds, { padding: fitPadding, duration: 600 });
   }, [fitBounds, fitKey, fitPadding]);
 
-  // ── Draggable pin ──────────────────────────────────────────────────
+  // ── Draggable house marker ─────────────────────────────────────────
+  // Rebuilt (rather than restyled in place) whenever shape, colour or size changes:
+  // MapLibre reads the element's dimensions when the marker is constructed to work out
+  // its anchor offset, so mutating the SVG afterwards leaves the marker anchored to the
+  // old size and it drifts off the point the customer placed it on.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (!pin) {
-      markerRef.current?.remove();
-      markerRef.current = null;
-      return;
-    }
+    markerRef.current?.remove();
+    markerRef.current = null;
 
-    if (!markerRef.current) {
-      const marker = new Marker({ draggable: true, color: accentColour })
-        .setLngLat([pin.lng, pin.lat])
-        .addTo(map);
+    if (!pin) return;
 
-      marker.on("dragend", () => {
-        const p = marker.getLngLat();
-        propsRef.current.onPinChange?.({ lng: p.lng, lat: p.lat });
-      });
+    const element = document.createElement("div");
+    element.innerHTML = markerSvg(markerShape, markerColour, markerSize);
+    element.style.cursor = "grab";
 
-      markerRef.current = marker;
-    } else {
-      markerRef.current.setLngLat([pin.lng, pin.lat]);
-    }
-  }, [pin, accentColour]);
+    const marker = new Marker({ element, draggable: true, anchor: "bottom" })
+      .setLngLat([pin.lng, pin.lat])
+      .addTo(map);
 
-  return <div ref={containerRef} className={className} style={{ width: "100%", height: "100%" }} />;
+    marker.on("dragend", () => {
+      const p = marker.getLngLat();
+      propsRef.current.onPinChange?.({ lng: p.lng, lat: p.lat });
+    });
+
+    markerRef.current = marker;
+  }, [pin, markerShape, markerColour, markerSize]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`designer-map ${className ?? ""}`}
+      style={{ width: "100%", height: "100%" }}
+    />
+  );
 }

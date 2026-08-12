@@ -6,23 +6,39 @@
 
 import type { Map as MapLibreMap, GeoJSONSource, DataDrivenPropertyValueSpecification } from "maplibre-gl";
 
+import { markerSvg, type MarkerShape } from "./marker";
+
 export const OVERLAY_SOURCE = "modern-highlights";
 export const OUTLINE_SOURCE = "modern-outline";
+export const MARKER_SOURCE = "modern-marker";
 
 export const HIGHLIGHT_FILL_LAYER = "modern-highlight-fill";
 export const HIGHLIGHT_LINE_LAYER = "modern-highlight-line";
 export const OUTLINE_LINE_LAYER = "modern-outline-line";
+export const MARKER_LAYER = "modern-marker-symbol";
+export const MARKER_IMAGE = "modern-marker-icon";
 
 export type Highlight = { geometry: unknown; weight: number };
+
+export type MarkerState = {
+  lng: number;
+  lat: number;
+  shape: MarkerShape;
+  colour: string;
+  /** Rendered height in CSS pixels, matching the live DOM marker. */
+  size: number;
+};
 
 export type OverlayState = {
   highlights?: Highlight[];
   outline?: unknown | null;
+  /** Interior fill colour for the districts. */
   accentColour: string;
+  /** District border colour. Falls back to the fill colour when not set. */
+  borderColour?: string;
   /** false = outline only, no interior fill. Defaults true. */
   showFill?: boolean;
-  /** Stroke width for the highlighted polygon(s) — District/Street need a heavier line
-   *  since it's the only outline drawn at those levels (no separate county OUTLINE_LINE_LAYER). */
+  /** Stroke width for the highlighted polygon(s), in px. 0 draws no border at all. */
   highlightLineWidth?: number;
 };
 
@@ -78,6 +94,7 @@ export function outlineToFeatureCollection(outline?: unknown | null) {
  */
 export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
   const { highlights, outline, accentColour, showFill, highlightLineWidth } = state;
+  const borderColour = state.borderColour ?? accentColour;
   const fillOpacity = fillOpacityFor(showFill);
   const lineWidth = highlightLineWidth ?? DEFAULT_HIGHLIGHT_LINE_WIDTH;
 
@@ -120,10 +137,10 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
       id: HIGHLIGHT_LINE_LAYER,
       type: "line",
       source: OVERLAY_SOURCE,
-      paint: { "line-color": accentColour, "line-width": lineWidth, "line-opacity": 0.9 },
+      paint: { "line-color": borderColour, "line-width": lineWidth, "line-opacity": 0.9 },
     });
   } else {
-    map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", accentColour);
+    map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", borderColour);
     map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-width", lineWidth);
   }
 
@@ -132,9 +149,72 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
       id: OUTLINE_LINE_LAYER,
       type: "line",
       source: OUTLINE_SOURCE,
-      paint: { "line-color": accentColour, "line-width": 3, "line-opacity": 0.85 },
+      paint: { "line-color": borderColour, "line-width": 3, "line-opacity": 0.85 },
     });
   } else {
-    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", accentColour);
+    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", borderColour);
+  }
+}
+
+/**
+ * Draws the house marker *into the map canvas*, for the print export only.
+ *
+ * The live designer uses a draggable DOM Marker instead, which sits outside the WebGL
+ * canvas — so it is not in the pixels `captureMapImage` reads back, and the print-
+ * resolution capture that gets layered over the live map during export would hide it.
+ * Adding it as a real symbol layer here is what puts the marker on the customer's print.
+ *
+ * The icon is rasterised at `pixelRatio` times its CSS size and registered with that
+ * ratio, so it stays sharp at print density instead of being an upscaled screen-size
+ * bitmap.
+ */
+export async function applyMarkerLayer(
+  map: MapLibreMap,
+  marker: MarkerState,
+  pixelRatio: number
+): Promise<void> {
+  const ratio = Math.max(1, pixelRatio);
+  const svg = markerSvg(marker.shape, marker.colour, marker.size * ratio);
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Marker icon failed to load"));
+    img.src = url;
+  });
+
+  if (map.hasImage(MARKER_IMAGE)) map.removeImage(MARKER_IMAGE);
+  map.addImage(MARKER_IMAGE, image, { pixelRatio: ratio });
+
+  const data = {
+    type: "FeatureCollection" as const,
+    features: [
+      {
+        type: "Feature" as const,
+        properties: {},
+        geometry: { type: "Point" as const, coordinates: [marker.lng, marker.lat] },
+      },
+    ],
+  };
+
+  const source = map.getSource(MARKER_SOURCE) as GeoJSONSource | undefined;
+  if (source) source.setData(data);
+  else map.addSource(MARKER_SOURCE, { type: "geojson", data });
+
+  if (!map.getLayer(MARKER_LAYER)) {
+    map.addLayer({
+      id: MARKER_LAYER,
+      type: "symbol",
+      source: MARKER_SOURCE,
+      layout: {
+        "icon-image": MARKER_IMAGE,
+        "icon-anchor": "bottom",
+        // The marker is the one thing on the print that must never be dropped for
+        // want of room, so it ignores MapLibre's collision detection entirely.
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+    });
   }
 }
