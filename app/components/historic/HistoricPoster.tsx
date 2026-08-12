@@ -17,7 +17,7 @@ import IrelandArtworkMap from "@/app/components/IrelandArtworkMap";
 import type { DedRow } from "@/lib/design/fetching";
 import { layoutFamilyAspect, layoutFamilyToGroup, type SizeGroup } from "@/lib/design/catalogue";
 import { lightenHex } from "@/lib/design/appearance";
-import { DEFAULT_HOTSPOT_INTENSITY, type HotspotIntensity } from "@/lib/hotspotStyle";
+import type { HotspotIntensity } from "@/lib/hotspotStyle";
 
 const titleFont = Cormorant_Garamond({
   subsets: ["latin"],
@@ -147,11 +147,9 @@ const HISTORIC_LAYOUTS: HistoricLayout[] = [
 
 function layoutForFamily(family: string): HistoricLayout {
   const group = layoutFamilyToGroup(family);
-  return (
-    HISTORIC_LAYOUTS.find((l) => l.group === group) ??
-    HISTORIC_LAYOUTS.find((l) => l.group === "metric") ??
-    HISTORIC_LAYOUTS[0]
-  );
+  // HISTORIC_LAYOUTS[0] is the metric layout, which is also the sensible fallback for
+  // any shape without one of its own.
+  return HISTORIC_LAYOUTS.find((l) => l.group === group) ?? HISTORIC_LAYOUTS[0];
 }
 
 /* ── SVG asset loading ──────────────────────────────────────────────── */
@@ -162,19 +160,15 @@ const svgAssetCache = new Map<string, string | null>();
 const svgAssetPromises = new Map<string, Promise<string | null>>();
 
 function useSvgAsset(url: string | null): string | null {
-  const [markup, setMarkup] = useState<string | null>(
-    url ? svgAssetCache.get(url) ?? null : null
-  );
+  // The cache is read during render rather than copied into state, so a file that is
+  // already cached — the common case, since the same border and symbol are requested by
+  // every instance — is returned on the first render with no state update at all.
+  // State exists only to re-render once a genuinely new fetch resolves.
+  const [fetched, setFetched] = useState<{ url: string; markup: string | null } | null>(null);
 
   useEffect(() => {
-    if (!url) {
-      setMarkup(null);
-      return;
-    }
-    if (svgAssetCache.has(url)) {
-      setMarkup(svgAssetCache.get(url) ?? null);
-      return;
-    }
+    if (!url || svgAssetCache.has(url)) return;
+
     let cancelled = false;
     let promise = svgAssetPromises.get(url);
     if (!promise) {
@@ -183,17 +177,20 @@ function useSvgAsset(url: string | null): string | null {
         .catch(() => null);
       svgAssetPromises.set(url, promise);
     }
-    promise.then((text) => {
+    void promise.then((text) => {
       svgAssetCache.set(url, text);
       svgAssetPromises.delete(url);
-      if (!cancelled) setMarkup(text);
+      if (!cancelled) setFetched({ url, markup: text });
     });
     return () => {
       cancelled = true;
     };
   }, [url]);
 
-  return markup;
+  if (!url) return null;
+  if (svgAssetCache.has(url)) return svgAssetCache.get(url) ?? null;
+  // Tagged with its url so a stale result from the previous url is never returned.
+  return fetched?.url === url ? fetched.markup : null;
 }
 
 /** Recolours the artwork's authored palette to the chosen ink. */
@@ -221,16 +218,25 @@ function BorderOverlay({
     borderStyle ? `/artwork/Borders/${folder}/${borderStyle}${suffix}.svg` : null
   );
 
-  if (!borderStyle || !svgMarkup) return null;
+  const sized = useMemo(
+    () => svgMarkup?.replace(/<svg(\s)/, '<svg width="100%" height="100%"$1') ?? null,
+    [svgMarkup]
+  );
 
-  const sized = svgMarkup.replace(/<svg(\s)/, '<svg width="100%" height="100%"$1');
-  const coloured = sized.replace(/#676241/gi, inkColour).replace(/#c0b69a/gi, inkSecondary);
+  if (!borderStyle || !sized) return null;
 
+  // The border artwork paints with var(--border-ink) / var(--border-secondary), so the
+  // ink is applied by setting those custom properties on the wrapper rather than by
+  // rewriting the markup. That keeps a colour change from reparsing 60KB of SVG — and
+  // it is the only thing that works, since the files carry no literal hex to swap.
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0"
+      style={
+        { "--border-ink": inkColour, "--border-secondary": inkSecondary } as React.CSSProperties
+      }
       aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: coloured }}
+      dangerouslySetInnerHTML={{ __html: sized }}
     />
   );
 }
@@ -466,8 +472,6 @@ export type HistoricPosterProps = {
   /** Opacity of the flat district fill, used when hotspotStyle is off. */
   shadingOpacity: number;
   hotspotColour: string;
-  /** Set on the node that gets rasterised for print. */
-  posterRef?: React.Ref<HTMLDivElement>;
   emptyMessage?: string;
 };
 
@@ -482,10 +486,9 @@ export default function HistoricPoster({
   symbolChoice,
   showSymbol,
   hotspotStyle,
-  hotspotIntensity = DEFAULT_HOTSPOT_INTENSITY,
+  hotspotIntensity,
   shadingOpacity,
   hotspotColour,
-  posterRef,
   emptyMessage,
 }: HistoricPosterProps) {
   const layout = layoutForFamily(layoutFamily);
@@ -570,17 +573,12 @@ export default function HistoricPoster({
     [polygons]
   );
 
-  const setRefs = (node: HTMLDivElement | null) => {
-    sizeRef.current = node;
-    if (typeof posterRef === "function") posterRef(node);
-    else if (posterRef && typeof posterRef === "object") {
-      (posterRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
-    }
-  };
-
   return (
+    // The caller wraps this in the node it rasterises for print, rather than being
+    // handed a ref to this one — that keeps the print boundary the caller's decision
+    // (it also has to place the physical frame around it) instead of this component's.
     <div
-      ref={setRefs}
+      ref={sizeRef}
       className="relative w-full overflow-hidden"
       style={{ aspectRatio: `${canvasAW} / ${canvasAH}`, backgroundColor: pageColour }}
     >
@@ -607,29 +605,17 @@ export default function HistoricPoster({
         className="pointer-events-none absolute left-0 right-0 z-10 text-center"
         style={{ top: censusLabelTopPx }}
       >
-        {isSquare ? (
+        {/* Square is short on vertical room, so it sets the label on one line; the
+            portrait shapes stack it over two. */}
+        {(isSquare ? ["Irish Census 1901"] : ["1901", "Irish Census"]).map((line) => (
           <p
+            key={line}
             className={`${titleFont.className} uppercase`}
             style={{ letterSpacing: "0.3em", color: inkColour, fontSize: censusLabelSizePx }}
           >
-            Irish Census 1901
+            {line}
           </p>
-        ) : (
-          <>
-            <p
-              className={`${titleFont.className} uppercase`}
-              style={{ letterSpacing: "0.3em", color: inkColour, fontSize: censusLabelSizePx }}
-            >
-              1901
-            </p>
-            <p
-              className={`${titleFont.className} uppercase`}
-              style={{ letterSpacing: "0.3em", color: inkColour, fontSize: censusLabelSizePx }}
-            >
-              Irish Census
-            </p>
-          </>
-        )}
+        ))}
       </div>
 
       {/* Hidden clone at the ceiling size, measured for the auto-fit above. */}

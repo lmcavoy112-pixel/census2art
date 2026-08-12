@@ -14,6 +14,7 @@
 // in mapStyle.ts — but each palette names the polygon colour it was tuned against, used
 // as the default until the customer overrides it.
 
+import { mixHex } from "@/lib/design/appearance";
 import type { ModernPalette } from "./mapStyle";
 
 export type PrintPalette = {
@@ -282,19 +283,6 @@ export const DEFAULT_PALETTE_ID = "monochrome";
 
 export function getPaletteById(id: string | undefined): PrintPalette {
   return PRINT_PALETTES.find((p) => p.id === id) ?? PRINT_PALETTES[0];
-}
-
-/** Mixes two hex colours; t=0 returns `from`, t=1 returns `to`. */
-function mixHex(from: string, to: string, t: number): string {
-  const parse = (hex: string) => [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
-  ];
-  const [r1, g1, b1] = parse(from);
-  const [r2, g2, b2] = parse(to);
-  const to2 = (n: number) => Math.round(n).toString(16).padStart(2, "0");
-  return `#${to2(r1 + (r2 - r1) * t)}${to2(g1 + (g2 - g1) * t)}${to2(b1 + (b2 - b1) * t)}`;
 }
 
 /**

@@ -42,7 +42,8 @@ export type OverlayState = {
   highlightLineWidth?: number;
 };
 
-const DEFAULT_HIGHLIGHT_LINE_WIDTH = 2.4;
+/** Exported so the live canvas and the print export cannot disagree on it. */
+export const DEFAULT_HIGHLIGHT_LINE_WIDTH = 2.4;
 
 /** The same weight-interpolated fill-opacity used whenever the fill is shown. */
 const FILL_OPACITY_EXPRESSION: DataDrivenPropertyValueSpecification<number> = [

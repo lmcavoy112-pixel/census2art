@@ -8,7 +8,7 @@
 // bounds: the designer frames the print by hand, so once the user pans or zooms we
 // leave the camera alone. Bounds are fitted only when `fitKey` changes.
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 // maplibre-gl v6 ships named exports only — there is no default export.
 import { Map as MapLibreMap, Marker, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -33,6 +33,7 @@ import {
   highlightsToFeatureCollection,
   outlineToFeatureCollection,
   fillOpacityFor,
+  DEFAULT_HIGHLIGHT_LINE_WIDTH,
   HIGHLIGHT_FILL_LAYER,
   HIGHLIGHT_LINE_LAYER,
   OUTLINE_LINE_LAYER,
@@ -111,6 +112,12 @@ export default function ModernMapCanvas({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
   const lastFitKey = useRef<string>("");
+  // A fit that has been asked for but not yet applied, because the container had no
+  // size when it was requested. Cleared once actually performed.
+  const pendingFitRef = useRef<
+    { bounds: [[number, number], [number, number]]; padding: number; duration: number } | null
+  >(null);
+  const hasFittedRef = useRef(false);
   // Style currently applied to the map, so the swap effect can tell a real change
   // from a StrictMode remount.
   const appliedStyleKey = useRef<string>("");
@@ -125,6 +132,10 @@ export default function ModernMapCanvas({
     borderColour,
     showFill,
     highlightLineWidth,
+    pin,
+    markerColour,
+    fitBounds,
+    fitPadding,
     onPinChange,
     onViewChange,
     onReady,
@@ -138,11 +149,19 @@ export default function ModernMapCanvas({
       borderColour,
       showFill,
       highlightLineWidth,
+      pin,
+      markerColour,
+      fitBounds,
+      fitPadding,
       onPinChange,
       onViewChange,
       onReady,
     };
   });
+
+  // Whether a marker exists at all, as a primitive — the marker effect must rebuild when
+  // one is added or removed, but not when an existing one merely moves.
+  const pinPresent = pin !== null && pin !== undefined;
 
   // ── Create the map once ────────────────────────────────────────────
   useEffect(() => {
@@ -168,6 +187,20 @@ export default function ModernMapCanvas({
     });
 
     mapRef.current = map;
+
+    // This is a brand-new camera, so the record of what has already been framed belongs
+    // to the previous map, not this one. Without the reset, a remount that arrives after
+    // the data has settled — switching template away and back, or React StrictMode's
+    // double-mount — leaves lastFitKey holding the current key, so the fit effect sees
+    // "already fitted" and never frames this map at all. It stays on the default centre
+    // in the middle of Ireland, and the customer's print is of the wrong place.
+    lastFitKey.current = "";
+    hasFittedRef.current = false;
+    const { fitBounds: initialFit, fitPadding: initialPadding } = propsRef.current;
+    if (initialFit) {
+      pendingFitRef.current = { bounds: initialFit, padding: initialPadding, duration: 0 };
+    }
+
     appliedStyleKey.current = modernStyleKey({
       basemap,
       layers,
@@ -215,7 +248,13 @@ export default function ModernMapCanvas({
       console.error("[ModernMapCanvas]", event?.error?.message ?? event);
     });
 
-    map.on("style.load", applyOverlays);
+    map.on("style.load", () => {
+      applyOverlays();
+      // Applies the initial fit queued above. Doing it here rather than inline means the
+      // container has been laid out and the style is ready, so fitBounds computes against
+      // real dimensions.
+      runPendingFit();
+    });
 
     map.on("moveend", () => {
       const c = map.getCenter();
@@ -281,7 +320,11 @@ export default function ModernMapCanvas({
     }
     if (map.getLayer(HIGHLIGHT_LINE_LAYER)) {
       map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", line);
-      map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-width", highlightLineWidth ?? 2.4);
+      map.setPaintProperty(
+        HIGHLIGHT_LINE_LAYER,
+        "line-width",
+        highlightLineWidth ?? DEFAULT_HIGHLIGHT_LINE_WIDTH
+      );
     }
     if (map.getLayer(OUTLINE_LINE_LAYER)) {
       map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", line);
@@ -289,39 +332,79 @@ export default function ModernMapCanvas({
   }, [accentColour, borderColour, showFill, highlightLineWidth]);
 
   // ── Fit bounds, but only on an explicit request ────────────────────
-  useEffect(() => {
+  //
+  // The fit is held as a pending request rather than performed immediately, because a
+  // fit computed against a zero-sized container silently produces a nonsense camera and
+  // nothing ever asks again. That is the normal case on mount: the poster's height comes
+  // from an aspect-ratio on an ancestor, so the map's container can still be 0px high on
+  // the tick the map is constructed. It bit hardest when switching templates, where the
+  // canvas remounts into a container that has not been laid out yet, and the print came
+  // back framed on an arbitrary patch of countryside.
+  const runPendingFit = useCallback(() => {
     const map = mapRef.current;
-    if (!map || !fitBounds || !fitKey || fitKey === lastFitKey.current) return;
+    const container = containerRef.current;
+    const pending = pendingFitRef.current;
+    if (!map || !container || !pending) return;
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+
+    pendingFitRef.current = null;
+    map.resize();
+    map.fitBounds(pending.bounds, { padding: pending.padding, duration: pending.duration });
+  }, []);
+
+  useEffect(() => {
+    if (!fitBounds || !fitKey || fitKey === lastFitKey.current) return;
 
     lastFitKey.current = fitKey;
-    // A fitKey change can arrive from a container resize (paper format changed size/
-    // shape) in the same tick — resize() reads the container's current dimensions
-    // synchronously, so fitBounds below always computes against the up-to-date shape
-    // rather than racing MapLibre's own ResizeObserver-driven resize.
-    map.resize();
-    map.fitBounds(fitBounds, { padding: fitPadding, duration: 600 });
-  }, [fitBounds, fitKey, fitPadding]);
+    // No animation for the very first fit of this map instance — there is no previous
+    // camera to travel from, so easing out of the default centre just shows the wrong
+    // place for 600ms.
+    const duration = hasFittedRef.current ? 600 : 0;
+    hasFittedRef.current = true;
+    pendingFitRef.current = { bounds: fitBounds, padding: fitPadding, duration };
+    runPendingFit();
+  }, [fitBounds, fitKey, fitPadding, runPendingFit]);
+
+  // Retry the pending fit once the container actually has a size, and keep the map's own
+  // dimensions in step when the poster changes shape.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.resize();
+      runPendingFit();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [runPendingFit]);
 
   // ── Draggable house marker ─────────────────────────────────────────
-  // Rebuilt (rather than restyled in place) whenever shape, colour or size changes:
-  // MapLibre reads the element's dimensions when the marker is constructed to work out
-  // its anchor offset, so mutating the SVG afterwards leaves the marker anchored to the
-  // old size and it drifts off the point the customer placed it on.
+  // Created and destroyed only on shape/size changes: MapLibre reads the element's
+  // dimensions when the marker is constructed to work out its anchor offset, so a
+  // change to the element's box has to go through a rebuild or the marker drifts off
+  // the point the customer placed it on.
+  //
+  // Position and colour are deliberately NOT deps here. Both change far too often for a
+  // rebuild — position on every drag (which would destroy the marker the user is still
+  // holding) and colour on every tick of the native colour picker, which fires
+  // continuously while dragging in the OS dialog. Neither changes the element's box, so
+  // both are applied in place by the effects below.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    markerRef.current?.remove();
-    markerRef.current = null;
-
-    if (!pin) return;
+    if (!map || !pinPresent) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      return;
+    }
 
     const element = document.createElement("div");
-    element.innerHTML = markerSvg(markerShape, markerColour, markerSize);
+    element.innerHTML = markerSvg(markerShape, propsRef.current.markerColour, markerSize);
     element.style.cursor = "grab";
 
+    const start = propsRef.current.pin;
     const marker = new Marker({ element, draggable: true, anchor: "bottom" })
-      .setLngLat([pin.lng, pin.lat])
+      .setLngLat(start ? [start.lng, start.lat] : [0, 0])
       .addTo(map);
 
     marker.on("dragend", () => {
@@ -330,7 +413,27 @@ export default function ModernMapCanvas({
     });
 
     markerRef.current = marker;
-  }, [pin, markerShape, markerColour, markerSize]);
+
+    return () => {
+      marker.remove();
+      markerRef.current = null;
+    };
+  }, [pinPresent, markerShape, markerSize]);
+
+  // Move the existing marker rather than rebuilding it — this also runs right after a
+  // drag, where the marker is already at the reported position and setLngLat is a no-op.
+  useEffect(() => {
+    if (!pin) return;
+    markerRef.current?.setLngLat([pin.lng, pin.lat]);
+  }, [pin]);
+
+  // Recolour in place. The SVG's box is fixed by shape and size, so rewriting its fill
+  // cannot invalidate the anchor MapLibre measured at construction.
+  useEffect(() => {
+    const element = markerRef.current?.getElement();
+    if (!element) return;
+    element.innerHTML = markerSvg(markerShape, markerColour, markerSize);
+  }, [markerColour, markerShape, markerSize]);
 
   return (
     <div

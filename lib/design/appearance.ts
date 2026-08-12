@@ -61,13 +61,22 @@ export function buildSubtitle(dedDisplay: string, county: string) {
   return "";
 }
 
+/**
+ * Mixes two hex colours. `t` of 0 returns `from`, 1 returns `to`.
+ *
+ * The one place in the app that does colour arithmetic, so "half-way to X" means the
+ * same thing for the Historic border ink and the Modern map's contour greys.
+ */
+export function mixHex(from: string, to: string, t: number): string {
+  const channel = (hex: string, at: number) => parseInt(hex.slice(at, at + 2), 16);
+  const pair = (at: number) =>
+    Math.round(channel(from, at) + (channel(to, at) - channel(from, at)) * t)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${pair(1)}${pair(3)}${pair(5)}`;
+}
+
 /** Mixes a hex colour toward white by `factor` (0 = unchanged, 1 = white). */
 export function lightenHex(hex: string, factor: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const lr = Math.round(r + (255 - r) * factor);
-  const lg = Math.round(g + (255 - g) * factor);
-  const lb = Math.round(b + (255 - b) * factor);
-  return `#${lr.toString(16).padStart(2, "0")}${lg.toString(16).padStart(2, "0")}${lb.toString(16).padStart(2, "0")}`;
+  return mixHex(hex, "#ffffff", factor);
 }

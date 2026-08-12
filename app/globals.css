@@ -84,13 +84,6 @@ body {
   outline: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .designer-slider,
-  .designer-slider::-webkit-slider-thumb {
-    transition: none;
-  }
-}
-
 /* ── Control rail (single-page designer sidebar) ── */
 .control-slider {
   -webkit-appearance: none;

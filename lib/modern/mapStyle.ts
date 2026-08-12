@@ -232,8 +232,10 @@ export function buildModernStyle({
   }
 
   // ── Roads, drawn narrowest-first so majors sit on top at junctions ──
-  if (toggles.roads) {
-  layers.push(
+  // Built as a list and spread in, rather than pushed from inside an `if` — layer order
+  // here is load-bearing, and a hundred lines of layers indented inside a conditional
+  // reads as unconditional to anyone landing in the middle of it.
+  const roadLayers: StyleSpecification["layers"] = [
     {
       id: "road-path",
       type: "line",
@@ -340,8 +342,9 @@ export function buildModernStyle({
         ]),
       },
     }
-  );
-  }
+  ];
+
+  if (toggles.roads) layers.push(...roadLayers);
 
   // Road names ride the road network — without roads drawn there is nothing to label,
   // so they follow both toggles rather than place names alone.

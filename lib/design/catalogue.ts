@@ -247,23 +247,16 @@ export function layoutFamilyLabel(family: string): string {
 }
 
 /**
- * Every layout family the calibration data and border artwork still support.
- *
- * ARCHIVED — not offered for sale. Kept because the per-family calibration in the
- * Historic designer's LAYOUT_PRESETS and the matching border SVGs under
- * public/artwork/Borders/ are all still present and correct for these shapes; restoring
- * a family is a matter of listing it in GALLERY_FAMILY_ORDER below again, not of redoing
- * the calibration work.
- */
-export const ALL_LAYOUT_FAMILIES = ["7:5/√2", "1:1", "5:4", "4:3", "3:2"];
-
-/**
  * The shapes actually on sale: ISO/A-series and Square.
  *
  * The 5:4, 4:3 and 3:2 families were retired deliberately. Every extra family multiplies
  * the calibration surface — each needs its own border artwork, its own preset numbers and
  * its own preview testing — for a choice customers were making mostly at random. Two
  * shapes, one portrait and one square, cover the wall.
+ *
+ * Their calibration is not lost: the Historic designer's LAYOUT_PRESETS and the border
+ * SVGs under public/artwork/Borders/ still cover every retired shape, so re-offering one
+ * is a matter of listing it here again.
  */
 export const GALLERY_FAMILY_ORDER = ["7:5/√2", "1:1"];
 
@@ -278,6 +271,13 @@ export const GALLERY_FAMILY_ORDER = ["7:5/√2", "1:1"];
  * rather than the family's canonical ratio.
  */
 const ARCHIVED_RATIO_FAMILIES = ["7:5"];
+
+// NOTE: unlike the layout families above, re-offering "7:5" is NOT just a matter of
+// removing it from this list. layoutFamilyAspect() returns one ratio per *layout*
+// family, and returns √2 for "7:5/√2" — correct only because these rows are excluded.
+// Put them back and the preview, and the exported file, would be rasterised at √2 for a
+// print that is actually 7:5. Restoring them means making the aspect per-SKU first
+// (from the row's own ratio_family/short_in/long_in), not just editing this array.
 
 /** True if a SKU is a shape currently on sale. */
 export function isActiveLayoutFamily(sku: {

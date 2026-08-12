@@ -84,12 +84,13 @@ export function TextField({
 /* ── Stepper: −  ──────●────────  +  ────────────────────────────────── */
 
 /**
- * A slider flanked by decrement/increment buttons.
+ * A slider flanked by decrement/increment buttons, over a fixed list of stops.
  *
- * The buttons exist because the values these control (a contour interval, a marker size)
- * are ones people nudge one step at a time; dragging a slider to an exact stop is
- * needlessly fiddly for that. `values` drives a stepped control over a fixed list of
- * stops; `min`/`max`/`step` drives a continuous one.
+ * The caller owns the list and passes the selected `index` and the `count`, plus the
+ * `valueLabel` to show for it — so one control serves a contour interval in metres, a
+ * marker size in pixels and a 1-5 intensity without knowing anything about any of them.
+ * The buttons exist because these are values people nudge one step at a time, where
+ * dragging a slider onto an exact stop is needlessly fiddly.
  */
 export function Stepper({
   label,

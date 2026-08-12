@@ -38,7 +38,8 @@ export const DEFAULT_MARKER_SIZE = 34;
  * shifting the thing the customer just placed.
  */
 export function markerSvg(shape: MarkerShape, colour: string, heightPx: number): string {
-  const width = Math.round(heightPx * (24 / 24));
+  // Both shapes are drawn in a square 24x24 box, so width tracks height exactly.
+  const width = Math.round(heightPx);
   const stroke = "rgba(0,0,0,0.28)";
 
   const path =

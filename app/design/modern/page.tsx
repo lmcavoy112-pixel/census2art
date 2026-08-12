@@ -30,9 +30,10 @@ import {
   buildGalleryGroups,
   GALLERY_FAMILY_ORDER,
   layoutFamilyAspect,
-  layoutFamilyLabel,
+  layoutFamilyToGroup,
   loadCatalogueSkus,
   printSizeForSku,
+  PRODUCTS_FOR_CATEGORY,
   type CatalogueSku,
   type ProductKind,
 } from "@/lib/design/catalogue";
@@ -55,7 +56,11 @@ import {
   type ModernLevel,
 } from "@/lib/modern/presets";
 import type { MapLayerToggles, ModernBasemap, ElevationUnit } from "@/lib/modern/mapStyle";
-import { DEFAULT_LAYER_TOGGLES, POLYGON_COLOUR_OPTIONS } from "@/lib/modern/mapStyle";
+import {
+  DEFAULT_LAYER_TOGGLES,
+  getPolygonColourById,
+  POLYGON_COLOUR_OPTIONS,
+} from "@/lib/modern/mapStyle";
 import {
   DEFAULT_PALETTE_ID,
   PRINT_PALETTES,
@@ -75,6 +80,7 @@ import {
   CONTOUR_INTERVALS,
   DEFAULT_CONTOUR_DENSITY,
   contourIntervalLabel,
+  nearestContourInterval,
   type ContourDensity,
 } from "@/lib/modern/mapRuntime";
 import { applyMarkerLayer, applyModernOverlays } from "@/lib/modern/overlays";
@@ -82,6 +88,7 @@ import {
   DEFAULT_MARKER_COLOUR,
   DEFAULT_MARKER_SIZE,
   MARKER_COLOUR_PRESETS,
+  MARKER_SHAPES,
   MARKER_SIZE_MAX,
   MARKER_SIZE_MIN,
   markerSvg,
@@ -246,10 +253,76 @@ const MARKER_SIZES = [
   MARKER_SIZE_MAX,
 ] as const;
 
+// Short cards for the framed products. The set of products comes from the catalogue
+// (PRODUCTS_FOR_CATEGORY), so retiring one there removes its card here too; this only
+// supplies the wording, since the catalogue's own names are too long for a card.
+const FRAMED_PRODUCT_LABELS: Partial<Record<ProductKind, { label: string; detail: string }>> = {
+  "Classic Frame": { label: "Classic", detail: "Framed print" },
+  "Framed Canvas": { label: "Canvas", detail: "Float frame" },
+  "Stretched Canvas": { label: "Stretched", detail: "No frame" },
+};
+
 const FRAME_COLOURS: { id: "black" | "white"; label: string; hex: string }[] = [
   { id: "black", label: "Black", hex: "#1B1B1B" },
   { id: "white", label: "White", hex: "#F7F7F5" },
 ];
+
+/**
+ * One row of district colour swatches: an "inherit" dot, the fixed palette, and a
+ * struck-through dot for none. Fill and border are the same control with different
+ * wording, so they are the same component — the pair drifting apart is exactly what
+ * makes a colour panel look unconsidered.
+ *
+ * `value` is null for inherit, NO_BORDER_COLOUR_ID for none, or a palette option id.
+ */
+function PolygonSwatchRow({
+  label,
+  inheritColour,
+  inheritLabel,
+  clearLabel,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  inheritColour: string;
+  inheritLabel: string;
+  clearLabel: string;
+  value: string | null;
+  onChange: (id: string | null) => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-5">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="flex flex-wrap items-start gap-2">
+        <ColourDot
+          colour={inheritColour}
+          label={inheritLabel}
+          selected={value === null}
+          onClick={() => onChange(null)}
+        />
+        {POLYGON_COLOUR_OPTIONS.map((option) => (
+          <ColourDot
+            key={option.id}
+            colour={option.hex}
+            label={option.label}
+            selected={value === option.id}
+            onClick={() => onChange(option.id)}
+          />
+        ))}
+        <ColourDot
+          colour="transparent"
+          label={clearLabel}
+          empty
+          selected={value === NO_BORDER_COLOUR_ID}
+          onClick={() => onChange(NO_BORDER_COLOUR_ID)}
+        />
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function ModernDesignContent() {
   const router = useRouter();
@@ -419,8 +492,11 @@ function ModernDesignContent() {
 
     setHeadingText(nextSurname || "Irish Family History");
 
+    // Only accept a shape still on sale: an older bookmark can carry a retired family
+    // (?layoutFamily=3:2), which would otherwise preview at that ratio with no sizes,
+    // no price and a dead Add to cart.
     const family = getParam(params, "layoutFamily");
-    if (family) setLayoutFamily(family);
+    if (family && GALLERY_FAMILY_ORDER.includes(family)) setLayoutFamily(family);
 
     if (isAccentId(saved?.accent)) setAccentId(saved.accent);
 
@@ -431,17 +507,20 @@ function ModernDesignContent() {
     void loadCatalogueSkus().then(setCatalogueSkus);
   }, []);
 
-  // Switching how the print is delivered changes which products are on offer — drop any
-  // size already picked under the old one.
+  // Switching how the print is delivered changes which products are on offer. The size
+  // is not reset here: selectedSku already falls back to the first available option when
+  // the held id isn't on offer, so keeping the id means going Print → Framed → Print
+  // restores the size the customer had picked.
   useEffect(() => {
-    setSelectedSkuId(null);
-    if (fulfilment === "print") setProductKind("Art Print");
-    if (fulfilment === "framed") setProductKind("Classic Frame");
+    if (fulfilment === "print") setProductKind(PRODUCTS_FOR_CATEGORY.Printed[0]);
+    if (fulfilment === "framed") setProductKind(PRODUCTS_FOR_CATEGORY.Framed[0]);
   }, [fulfilment]);
 
-  // DED polygons for the county.
+  // DED polygons for the county. Modern only — Historic is a nationwide plate that never
+  // reads them, and fetching anyway would let a county-level failure write mapError,
+  // which Historic surfaces both in the rail and on the poster itself.
   useEffect(() => {
-    if (!loaded || !surnameSearch || !county) return;
+    if (!loaded || !surnameSearch || !county || template === "historic") return;
 
     async function loadPolygons() {
       setMapError("");
@@ -461,7 +540,7 @@ function ModernDesignContent() {
     }
 
     void loadPolygons();
-  }, [loaded, surnameSearch, county]);
+  }, [loaded, surnameSearch, county, template]);
 
   // Nationwide DEDs, fetched lazily the first time something actually needs them —
   // the Country level, or the Historic template, which is nationwide by definition.
@@ -566,10 +645,9 @@ function ModernDesignContent() {
     [polygons]
   );
 
-  const visibleOutline = useMemo(() => {
-    if (level === "county") return outline;
-    return null;
-  }, [level, outline]);
+  // Only the county view draws a separate boundary line; deeper levels have the
+  // highlight stroke as their only outline.
+  const visibleOutline = level === "county" ? outline : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -627,21 +705,22 @@ function ModernDesignContent() {
   const pageHex = palette.paper;
   const inkHex = palette.ink;
 
-  const polygonHex =
-    POLYGON_COLOUR_OPTIONS.find((o) => o.id === polygonColourId)?.hex ?? palette.polygon;
+  const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
-  const borderHex =
-    POLYGON_COLOUR_OPTIONS.find((o) => o.id === borderColourId)?.hex ?? polygonHex;
+  const borderHex = getPolygonColourById(borderColourId)?.hex ?? polygonHex;
   const borderWidth =
     borderColourId === NO_BORDER_COLOUR_ID ? 0 : BORDER_WIDTHS[borderWidthIndex];
 
   const familyOptions = useMemo(() => {
     const groups = buildGalleryGroups(catalogueSkus, GALLERY_FAMILY_ORDER);
-    return GALLERY_FAMILY_ORDER.filter((f) => (groups.get(f)?.size ?? 0) > 0).map((f) => ({
-      id: f,
-      label: layoutFamilyLabel(f) === "Square" ? "Square" : "Portrait",
-      detail: layoutFamilyLabel(f) === "Square" ? "1:1" : "ISO / A-series",
-    }));
+    return GALLERY_FAMILY_ORDER.filter((f) => (groups.get(f)?.size ?? 0) > 0).map((f) => {
+      const square = layoutFamilyToGroup(f) === "square";
+      return {
+        id: f,
+        label: square ? "Square" : "Portrait",
+        detail: square ? "1:1" : "ISO / A-series",
+      };
+    });
   }, [catalogueSkus]);
 
   // ── Sizes ──────────────────────────────────────────────────────────
@@ -1006,7 +1085,7 @@ function ModernDesignContent() {
     const observer = new ResizeObserver(() => measure());
     observer.observe(posterEl);
     return () => observer.disconnect();
-  }, [level, visibleHousehold, visibleHouseholdFields, houseNoText, headingText, aspect.w, aspect.h]);
+  }, [level, visibleHousehold, visibleHouseholdFields, householdDisplayMode, houseNoText, headingText, aspect.w, aspect.h]);
 
   /**
    * Re-renders the map offscreen at print resolution, swaps that image into the poster in
@@ -1161,11 +1240,21 @@ function ModernDesignContent() {
             dedDisplay: dedDisplayText,
             product: selectedSku.product,
             template: template === "historic" ? "Historic" : "Modern",
-            // Historic-only settings, recorded so an order can be reproduced exactly.
+            sizeLabel: selectedSku.size_label,
+            frameColour: selectedSku.frame_colour,
+            headingText,
+            dedDisplayText,
+            townlandText,
+            houseNoText,
+            exportPixelWidth: canvas.width,
+            exportPixelHeight: canvas.height,
+            // Only the settings the chosen template actually used. Recording both sets
+            // would leave every order carrying a camera position for a map that was
+            // never drawn, with nothing to say which half is authoritative.
             ...(template === "historic"
               ? {
                   basemapStyle: historicBasemap,
-                  borderStyle: historicBorder,
+                  borderStyle: effectiveBorder,
                   symbol: historicShowSymbol ? historicSymbol : null,
                   accent: accentId,
                   hotspotStyle,
@@ -1173,30 +1262,23 @@ function ModernDesignContent() {
                   shadingOpacity,
                   hotspotColour,
                 }
-              : {}),
-            sizeLabel: selectedSku.size_label,
-            frameColour: selectedSku.frame_colour,
-            level,
-            basemap,
-            contourDensity,
-            mapLayers,
-            elevationUnit,
-            palette: paletteId,
-            polygonColour: polygonColourId,
-            borderColour: borderColourId,
-            borderWidth,
-            headingText,
-            dedDisplayText,
-            townlandText,
-            houseNoText,
-            centre: viewRef.current?.center ?? centre,
-            zoom: viewRef.current?.zoom ?? preset.fallbackZoom,
-            pin,
-            markerShape,
-            markerColour,
-            markerSize,
-            exportPixelWidth: canvas.width,
-            exportPixelHeight: canvas.height,
+              : {
+                  level,
+                  basemap,
+                  contourDensity,
+                  mapLayers,
+                  elevationUnit,
+                  palette: paletteId,
+                  polygonColour: polygonColourId,
+                  borderColour: borderColourId,
+                  borderWidth,
+                  centre: viewRef.current?.center ?? centre,
+                  zoom: viewRef.current?.zoom ?? preset.fallbackZoom,
+                  pin,
+                  markerShape,
+                  markerColour,
+                  markerSize,
+                }),
           },
         });
         return result.orderId;
@@ -1274,7 +1356,7 @@ function ModernDesignContent() {
               ))}
             </div>
             <HelpText>
-              Greyed-out fields weren&apos;t part of your search. Go back to search to add them.
+              Greyed-out fields weren&apos;t part of your search. Use Back to search to add them.
             </HelpText>
 
             <div>
@@ -1404,66 +1486,29 @@ function ModernDesignContent() {
         <div className="border-t border-stone-200 pt-5">
           <GroupLabel>Districts</GroupLabel>
 
-          <div className="mb-5">
-            <FieldLabel>Fill colour</FieldLabel>
-            <div className="flex flex-wrap items-start gap-2">
-              <ColourDot
-                colour={palette.polygon}
-                label="Match palette"
-                selected={polygonColourId === null}
-                onClick={() => setPolygonColourId(null)}
-              />
-              {POLYGON_COLOUR_OPTIONS.map((option) => (
-                <ColourDot
-                  key={option.id}
-                  colour={option.hex}
-                  label={option.label}
-                  selected={polygonColourId === option.id}
-                  onClick={() => setPolygonColourId(option.id)}
-                />
-              ))}
-              <ColourDot
-                colour="transparent"
-                label="No fill"
-                empty
-                selected={polygonColourId === NO_BORDER_COLOUR_ID}
-                onClick={() => setPolygonColourId(NO_BORDER_COLOUR_ID)}
-              />
-            </div>
+          <PolygonSwatchRow
+            label="Fill colour"
+            inheritColour={palette.polygon}
+            inheritLabel="Match palette"
+            clearLabel="No fill"
+            value={polygonColourId}
+            onChange={setPolygonColourId}
+          >
             <HelpText>
               {polygonColourId === NO_BORDER_COLOUR_ID
                 ? "No fill — the district border alone."
                 : "Districts are shaded by how many of your name lived there."}
             </HelpText>
-          </div>
+          </PolygonSwatchRow>
 
-          <div className="mb-5">
-            <FieldLabel>Border colour</FieldLabel>
-            <div className="flex flex-wrap items-start gap-2">
-              <ColourDot
-                colour={polygonHex}
-                label="Match fill"
-                selected={borderColourId === null}
-                onClick={() => setBorderColourId(null)}
-              />
-              {POLYGON_COLOUR_OPTIONS.map((option) => (
-                <ColourDot
-                  key={option.id}
-                  colour={option.hex}
-                  label={option.label}
-                  selected={borderColourId === option.id}
-                  onClick={() => setBorderColourId(option.id)}
-                />
-              ))}
-              <ColourDot
-                colour="transparent"
-                label="No border"
-                empty
-                selected={borderColourId === NO_BORDER_COLOUR_ID}
-                onClick={() => setBorderColourId(NO_BORDER_COLOUR_ID)}
-              />
-            </div>
-          </div>
+          <PolygonSwatchRow
+            label="Border colour"
+            inheritColour={polygonHex}
+            inheritLabel="Match fill"
+            clearLabel="No border"
+            value={borderColourId}
+            onChange={setBorderColourId}
+          />
 
           <Stepper
             label="Border thickness"
@@ -1479,10 +1524,9 @@ function ModernDesignContent() {
     ),
   };
 
-  const contourIndex = Math.max(
-    0,
-    CONTOUR_INTERVALS.indexOf(contourDensity as (typeof CONTOUR_INTERVALS)[number])
-  );
+  // Via nearestContourInterval so a value that isn't one of the stops (a design restored
+  // from an older build) lands on the closest one rather than on index 0, the coarsest.
+  const contourIndex = CONTOUR_INTERVALS.indexOf(nearestContourInterval(contourDensity));
 
   const mapStyleSection: DesignerSection = {
     id: "map-style",
@@ -1635,22 +1679,22 @@ function ModernDesignContent() {
         <div>
           <FieldLabel>Shape</FieldLabel>
           <div className="grid grid-cols-2 gap-2">
-            {(["pin", "heart"] as MarkerShape[]).map((shape) => (
+            {MARKER_SHAPES.map((shape) => (
               <button
-                key={shape}
+                key={shape.id}
                 type="button"
-                aria-label={shape}
-                aria-pressed={markerShape === shape}
-                onClick={() => setMarkerShape(shape)}
+                aria-label={shape.label}
+                aria-pressed={markerShape === shape.id}
+                onClick={() => setMarkerShape(shape.id)}
                 className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
-                  markerShape === shape
+                  markerShape === shape.id
                     ? "border-stone-900 ring-1 ring-stone-900"
                     : "border-stone-300 hover:bg-stone-50"
                 }`}
               >
                 <span
                   aria-hidden="true"
-                  dangerouslySetInnerHTML={{ __html: markerSvg(shape, markerColour, 30) }}
+                  dangerouslySetInnerHTML={{ __html: markerSvg(shape.id, markerColour, 30) }}
                 />
               </button>
             ))}
@@ -1736,15 +1780,12 @@ function ModernDesignContent() {
               columns={3}
               ariaLabel="Frame style"
               value={productKind}
-              onChange={(kind) => {
-                setProductKind(kind);
-                setSelectedSkuId(null);
-              }}
-              options={[
-                { id: "Classic Frame" as ProductKind, label: "Classic", detail: "Framed print" },
-                { id: "Framed Canvas" as ProductKind, label: "Canvas", detail: "Float frame" },
-                { id: "Stretched Canvas" as ProductKind, label: "Stretched", detail: "No frame" },
-              ]}
+              onChange={setProductKind}
+              options={PRODUCTS_FOR_CATEGORY.Framed.map((kind) => ({
+                id: kind,
+                label: FRAMED_PRODUCT_LABELS[kind]?.label ?? kind,
+                detail: FRAMED_PRODUCT_LABELS[kind]?.detail,
+              }))}
             />
           </div>
         )}
@@ -1807,17 +1848,16 @@ function ModernDesignContent() {
 
   // ── Historic sections ──────────────────────────────────────────────
 
-  const isSquare = layoutFamily === "1:1";
+  const isSquare = layoutFamilyToGroup(layoutFamily) === "square";
   const borderChoices = isSquare ? SQUARE_BORDER_STYLES : HISTORIC_BORDER_STYLES;
   const historicAccent = getAccentById(accentId);
 
-  // Square has no border artwork drawn for the finer styles — fall back rather than
-  // leaving a style selected that renders nothing.
-  useEffect(() => {
-    if (isSquare && (historicBorder === "Fine Knotwork" || historicBorder === "Rose Scrollwork")) {
-      setHistoricBorder("Celtic Spirals");
-    }
-  }, [isSquare, historicBorder]);
+  // Derived, not synced in an effect: a border the current shape has no artwork for
+  // falls back to the first one it does. Asking the list itself means adding square
+  // artwork for a style is a one-line change there, with nothing here to keep in step.
+  const effectiveBorder = borderChoices.some((b) => b.id === historicBorder)
+    ? historicBorder
+    : borderChoices[0].id;
 
   const historicMapStyleSection: DesignerSection = {
     id: "historic-map",
@@ -1842,7 +1882,7 @@ function ModernDesignContent() {
           <ChoiceCards
             columns={2}
             ariaLabel="Border style"
-            value={historicBorder ?? "none"}
+            value={effectiveBorder ?? "none"}
             onChange={(id) => setHistoricBorder(id === "none" ? null : id)}
             options={borderChoices.map((b) => ({
               id: b.id ?? "none",
@@ -2002,11 +2042,10 @@ function ModernDesignContent() {
           sizeSection,
         ];
 
-  // Keep the open section valid when the template changes the section list.
-  useEffect(() => {
-    if (!sections.some((s) => s.id === openSection)) setOpenSection("template");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [template]);
+  // Switching template changes which sections exist, so the open one may no longer be
+  // in the list. Derived rather than corrected in an effect — an effect would cost an
+  // extra render, and a frame with nothing open, on every template switch.
+  const activeSection = sections.some((s) => s.id === openSection) ? openSection : "template";
 
   // ── Poster toolbar ─────────────────────────────────────────────────
 
@@ -2075,12 +2114,16 @@ function ModernDesignContent() {
             {template === "modern" ? "Design your map print" : "Design your record print"}
           </h1>
         </div>
+        {/* Not "change template" — that now lives in section 1 and switches in place,
+            and two controls with the same name doing different things is how you get a
+            customer losing their design to a page change. This is the way back to the
+            search, which is the only thing this page can't do for itself. */}
         <button
           type="button"
-          onClick={() => router.push("/design")}
+          onClick={() => router.push("/create")}
           className="rounded-md border border-stone-300 bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-stone-50"
         >
-          Change template
+          Back to search
         </button>
       </header>
 
@@ -2104,15 +2147,15 @@ function ModernDesignContent() {
             }}
           >
             {template === "historic" ? (
+              <div ref={posterRef} className="w-full">
               <HistoricPoster
-                posterRef={posterRef}
                 layoutFamily={layoutFamily}
                 polygons={countryPolygons}
                 surnameDisplay={headingText}
                 pageColour={historicAccent.page}
                 inkColour={historicAccent.accent}
                 basemapId={historicBasemap}
-                borderStyle={historicBorder}
+                borderStyle={effectiveBorder}
                 symbolChoice={historicSymbol}
                 showSymbol={historicShowSymbol}
                 hotspotStyle={hotspotStyle}
@@ -2121,6 +2164,7 @@ function ModernDesignContent() {
                 hotspotColour={hotspotColour}
                 emptyMessage={mapError || "Loading the Ireland-wide surname map…"}
               />
+              </div>
             ) : (
             <div
               ref={posterRef}
@@ -2290,7 +2334,7 @@ function ModernDesignContent() {
 
         {/* ── Control rail ── */}
         <aside className="flex min-h-0 w-full flex-none border-t border-stone-200 bg-white lg:w-[560px] lg:border-l lg:border-t-0">
-          <SectionRail sections={sections} openId={openSection} onSelect={setOpenSection} />
+          <SectionRail sections={sections} openId={activeSection} onSelect={setOpenSection} />
 
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2301,7 +2345,7 @@ function ModernDesignContent() {
               )}
               <SectionAccordion
                 sections={sections}
-                openId={openSection}
+                openId={activeSection}
                 onToggle={(id) => setOpenSection((current) => (current === id ? "" : id))}
               />
               <p className="px-5 py-4 text-[11px] leading-relaxed text-stone-400">
