@@ -114,10 +114,27 @@ import {
   MarkerIcon,
   ResizeIcon,
   SaveIcon,
+  SymbolIcon,
   TemplateIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from "@/app/components/designer/icons";
+import HistoricPoster, {
+  DEFAULT_HOTSPOT_COLOUR,
+  HISTORIC_BASEMAPS,
+  HISTORIC_BORDER_STYLES,
+  HISTORIC_SYMBOLS,
+  HOTSPOT_COLOURS,
+  SQUARE_BORDER_STYLES,
+} from "@/app/components/historic/HistoricPoster";
+import {
+  ACCENT_OPTIONS,
+  DEFAULT_ACCENT_ID,
+  getAccentById,
+  isAccentId,
+  type AccentId,
+} from "@/lib/design/appearance";
+import { DEFAULT_HOTSPOT_INTENSITY, type HotspotIntensity } from "@/lib/hotspotStyle";
 
 const ModernMapCanvas = dynamic(() => import("@/app/components/modern/ModernMapCanvas"), {
   ssr: false,
@@ -275,6 +292,22 @@ function ModernDesignContent() {
 
   const [layoutFamily, setLayoutFamily] = useState("7:5/√2");
 
+  // ── Historic template ──────────────────────────────────────────────
+  // Separate from the Modern state above on purpose: the two templates share only the
+  // surname and the size, so switching back and forth must not have one quietly
+  // overwrite the other's choices.
+  const [historicBasemap, setHistoricBasemap] = useState("style-1");
+  const [historicBorder, setHistoricBorder] = useState<string | null>("Celtic Spirals");
+  const [historicSymbol, setHistoricSymbol] = useState("Celtic Harp");
+  const [historicShowSymbol, setHistoricShowSymbol] = useState(true);
+  const [accentId, setAccentId] = useState<AccentId>(DEFAULT_ACCENT_ID);
+  const [hotspotStyle, setHotspotStyle] = useState(true);
+  const [hotspotIntensity, setHotspotIntensity] = useState<HotspotIntensity>(
+    DEFAULT_HOTSPOT_INTENSITY
+  );
+  const [shadingOpacity, setShadingOpacity] = useState(0.5);
+  const [hotspotColour, setHotspotColour] = useState(DEFAULT_HOTSPOT_COLOUR);
+
   // ── Detail fields — how deep the selection drilled ─────────────────
   const [dedDisplayText, setDedDisplayText] = useState("");
   const [townlandText, setTownlandText] = useState("");
@@ -389,6 +422,8 @@ function ModernDesignContent() {
     const family = getParam(params, "layoutFamily");
     if (family) setLayoutFamily(family);
 
+    if (isAccentId(saved?.accent)) setAccentId(saved.accent);
+
     setLoaded(true);
   }, [searchParams]);
 
@@ -428,10 +463,11 @@ function ModernDesignContent() {
     void loadPolygons();
   }, [loaded, surnameSearch, county]);
 
-  // Nationwide DEDs for the Country level, fetched lazily the first time that level is
-  // actually opened rather than eagerly alongside the county data above.
+  // Nationwide DEDs, fetched lazily the first time something actually needs them —
+  // the Country level, or the Historic template, which is nationwide by definition.
   useEffect(() => {
-    if (!loaded || !surnameSearch || level !== "country" || countryLoaded) return;
+    if (!loaded || !surnameSearch || countryLoaded) return;
+    if (level !== "country" && template !== "historic") return;
 
     let cancelled = false;
 
@@ -456,7 +492,7 @@ function ModernDesignContent() {
     return () => {
       cancelled = true;
     };
-  }, [loaded, surnameSearch, level, countryLoaded]);
+  }, [loaded, surnameSearch, level, template, countryLoaded]);
 
   // The true county boundary, dissolved from its DEDs server-side. Without it the county
   // view frames only the districts the surname appears in, which crops the county badly
@@ -982,8 +1018,19 @@ function ModernDesignContent() {
     consume: (canvas: HTMLCanvasElement) => Promise<T>
   ): Promise<T> {
     const poster = posterRef.current;
+    if (!poster || !printSize) throw new Error("Nothing to export yet.");
+
+    // Historic draws its map as inline SVG, which html2canvas rasterises at whatever
+    // resolution it is asked for — so there is nothing to swap and the poster can be
+    // rendered straight out.
+    if (template === "historic") {
+      const canvas = await renderPrintReadyCanvas(poster, printSize.pixelWidth);
+      setExportNote("");
+      return consume(canvas);
+    }
+
     const mapArea = mapAreaRef.current;
-    if (!poster || !mapArea || !printSize) throw new Error("Nothing to export yet.");
+    if (!mapArea) throw new Error("Nothing to export yet.");
 
     const posterRect = poster.getBoundingClientRect();
     const mapRect = mapArea.getBoundingClientRect();
@@ -1101,7 +1148,7 @@ function ModernDesignContent() {
         const blob = await canvasToPngBlob(canvas);
         const result = await submitPrintOrder({
           blob,
-          fileName: `${safeFileNamePart(headingText || "modern-map")}.png`,
+          fileName: `${safeFileNamePart(headingText || "artwork")}.png`,
           sku: selectedSku.sku,
           priceGbp: selectedSku.price_gbp,
           attributes:
@@ -1113,7 +1160,20 @@ function ModernDesignContent() {
             county,
             dedDisplay: dedDisplayText,
             product: selectedSku.product,
-            template: "Modern",
+            template: template === "historic" ? "Historic" : "Modern",
+            // Historic-only settings, recorded so an order can be reproduced exactly.
+            ...(template === "historic"
+              ? {
+                  basemapStyle: historicBasemap,
+                  borderStyle: historicBorder,
+                  symbol: historicShowSymbol ? historicSymbol : null,
+                  accent: accentId,
+                  hotspotStyle,
+                  hotspotIntensity,
+                  shadingOpacity,
+                  hotspotColour,
+                }
+              : {}),
             sizeLabel: selectedSku.size_label,
             frameColour: selectedSku.frame_colour,
             level,
@@ -1745,23 +1805,202 @@ function ModernDesignContent() {
     ),
   };
 
-  const historicPlaceholder: DesignerSection = {
-    id: "symbol",
-    title: "Symbol",
-    summary: "Choose the emblem printed below your surname.",
+  // ── Historic sections ──────────────────────────────────────────────
+
+  const isSquare = layoutFamily === "1:1";
+  const borderChoices = isSquare ? SQUARE_BORDER_STYLES : HISTORIC_BORDER_STYLES;
+  const historicAccent = getAccentById(accentId);
+
+  // Square has no border artwork drawn for the finer styles — fall back rather than
+  // leaving a style selected that renders nothing.
+  useEffect(() => {
+    if (isSquare && (historicBorder === "Fine Knotwork" || historicBorder === "Rose Scrollwork")) {
+      setHistoricBorder("Celtic Spirals");
+    }
+  }, [isSquare, historicBorder]);
+
+  const historicMapStyleSection: DesignerSection = {
+    id: "historic-map",
+    title: "Map style",
+    summary: "Choose the basemap and the border around it.",
     icon: <MapStyleIcon />,
     body: (
-      <p className="rounded-md bg-amber-50 px-3 py-2.5 text-[13px] leading-relaxed text-amber-900">
-        The Historic template still lives on its own page while it is being moved across.
-        Use <strong>Change template</strong> at the top to open it.
-      </p>
+      <div className="space-y-5">
+        <div>
+          <FieldLabel>Basemap</FieldLabel>
+          <ChoiceCards
+            columns={3}
+            ariaLabel="Basemap"
+            value={historicBasemap}
+            onChange={setHistoricBasemap}
+            options={HISTORIC_BASEMAPS.map((b) => ({ id: b.id, label: b.label }))}
+          />
+        </div>
+
+        <div>
+          <FieldLabel>Border</FieldLabel>
+          <ChoiceCards
+            columns={2}
+            ariaLabel="Border style"
+            value={historicBorder ?? "none"}
+            onChange={(id) => setHistoricBorder(id === "none" ? null : id)}
+            options={borderChoices.map((b) => ({
+              id: b.id ?? "none",
+              label: b.label,
+            }))}
+          />
+          {isSquare && (
+            <HelpText>
+              Square prints are drawn with Celtic Spirals only — the finer borders need a
+              portrait plate.
+            </HelpText>
+          )}
+        </div>
+      </div>
+    ),
+  };
+
+  const historicColourSection: DesignerSection = {
+    id: "historic-colour",
+    title: "Colour",
+    summary: "Choose the paper, ink and district shading.",
+    icon: <ColourIcon />,
+    body: (
+      <div className="space-y-6">
+        <div>
+          <FieldLabel>Paper &amp; ink</FieldLabel>
+          <div className="grid grid-cols-3 gap-2">
+            {ACCENT_OPTIONS.map((option) => (
+              <PaletteTile
+                key={option.id}
+                label={option.label}
+                paper={option.page}
+                ink={option.accent}
+                land={option.page}
+                water={option.accent}
+                selected={accentId === option.id}
+                onClick={() => setAccentId(option.id)}
+              />
+            ))}
+          </div>
+          <HelpText>
+            Paper and ink are chosen together — the border artwork is drawn in the ink the
+            paper tone was tuned against.
+          </HelpText>
+        </div>
+
+        <div className="border-t border-stone-200 pt-5">
+          <GroupLabel>District shading</GroupLabel>
+
+          <div className="mb-5">
+            <FieldLabel>Style</FieldLabel>
+            <ChoiceCards
+              columns={2}
+              ariaLabel="Shading style"
+              value={hotspotStyle ? "hotspot" : "flat"}
+              onChange={(id) => setHotspotStyle(id === "hotspot")}
+              options={[
+                { id: "hotspot", label: "Hotspots", detail: "Soft glow per district" },
+                { id: "flat", label: "Districts", detail: "Filled shapes" },
+              ]}
+            />
+          </div>
+
+          {hotspotStyle ? (
+            <Stepper
+              label="Hotspot intensity"
+              valueLabel={`${hotspotIntensity} / 5`}
+              index={hotspotIntensity - 1}
+              count={5}
+              onIndexChange={(i) => setHotspotIntensity((i + 1) as HotspotIntensity)}
+              minLabel="Subtle"
+              maxLabel="Strong"
+            />
+          ) : (
+            <Stepper
+              label="Shading strength"
+              valueLabel={`${Math.round(shadingOpacity * 100)}%`}
+              index={Math.round((shadingOpacity - 0.1) / 0.1)}
+              count={10}
+              onIndexChange={(i) => setShadingOpacity(0.1 + i * 0.1)}
+              minLabel="Light"
+              maxLabel="Solid"
+            />
+          )}
+
+          <div className="mt-5">
+            <FieldLabel>Shading colour</FieldLabel>
+            <div className="flex flex-wrap items-start gap-2">
+              {HOTSPOT_COLOURS.map((option) => (
+                <ColourDot
+                  key={option.id}
+                  colour={option.hex}
+                  label={option.label}
+                  selected={hotspotColour.toLowerCase() === option.hex.toLowerCase()}
+                  onClick={() => setHotspotColour(option.hex)}
+                />
+              ))}
+              <CustomColourDot
+                value={hotspotColour}
+                onChange={setHotspotColour}
+                selected={
+                  !HOTSPOT_COLOURS.some(
+                    (o) => o.hex.toLowerCase() === hotspotColour.toLowerCase()
+                  )
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  };
+
+  const historicSymbolSection: DesignerSection = {
+    id: "historic-symbol",
+    title: "Symbol",
+    summary: "Choose the emblem printed above your surname.",
+    icon: <SymbolIcon />,
+    body: (
+      <div className="space-y-4">
+        {isSquare ? (
+          <p className="rounded-md bg-stone-50 px-3 py-2.5 text-[13px] leading-relaxed text-stone-600">
+            Square prints have no room for the symbol divider between the map and the
+            surname, so it isn&apos;t printed on this shape.
+          </p>
+        ) : (
+          <>
+            <Toggle
+              label="Print a symbol"
+              checked={historicShowSymbol}
+              onChange={setHistoricShowSymbol}
+            />
+            {historicShowSymbol && (
+              <ChoiceCards
+                columns={2}
+                ariaLabel="Symbol"
+                value={historicSymbol}
+                onChange={setHistoricSymbol}
+                options={HISTORIC_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
+              />
+            )}
+          </>
+        )}
+      </div>
     ),
   };
 
   const sections: DesignerSection[] =
     template === "modern"
       ? [templateSection, familySection, colourSection, mapStyleSection, markerSection, sizeSection]
-      : [templateSection, familySection, historicPlaceholder, sizeSection];
+      : [
+          templateSection,
+          familySection,
+          historicMapStyleSection,
+          historicColourSection,
+          historicSymbolSection,
+          sizeSection,
+        ];
 
   // Keep the open section valid when the template changes the section list.
   useEffect(() => {
@@ -1777,18 +2016,34 @@ function ModernDesignContent() {
     map.easeTo({ zoom: map.getZoom() + delta, duration: 250 });
   }, []);
 
+  // Zoom and refit drive the live map, so they only exist on Modern — the Historic
+  // artwork is a fixed nationwide plate with no camera to move.
   const posterToolbar = [
-    { id: "zoom-in", label: "Zoom in", icon: <ZoomInIcon size={18} />, onClick: () => zoomBy(0.6) },
-    { id: "zoom-out", label: "Zoom out", icon: <ZoomOutIcon size={18} />, onClick: () => zoomBy(-0.6) },
-    {
-      id: "refit",
-      label: "Refit",
-      icon: <ResizeIcon size={18} />,
-      onClick: () => {
-        setView(null);
-        setRefitNonce((n) => n + 1);
-      },
-    },
+    ...(template === "modern"
+      ? [
+          {
+            id: "zoom-in",
+            label: "Zoom in",
+            icon: <ZoomInIcon size={18} />,
+            onClick: () => zoomBy(0.6),
+          },
+          {
+            id: "zoom-out",
+            label: "Zoom out",
+            icon: <ZoomOutIcon size={18} />,
+            onClick: () => zoomBy(-0.6),
+          },
+          {
+            id: "refit",
+            label: "Refit",
+            icon: <ResizeIcon size={18} />,
+            onClick: () => {
+              setView(null);
+              setRefitNonce((n) => n + 1);
+            },
+          },
+        ]
+      : []),
     {
       id: "save",
       label: busy === "export" ? "Saving…" : "Save",
@@ -1848,6 +2103,25 @@ function ModernDesignContent() {
               ["--poster-aspect" as string]: `${aspect.w / aspect.h}`,
             }}
           >
+            {template === "historic" ? (
+              <HistoricPoster
+                posterRef={posterRef}
+                layoutFamily={layoutFamily}
+                polygons={countryPolygons}
+                surnameDisplay={headingText}
+                pageColour={historicAccent.page}
+                inkColour={historicAccent.accent}
+                basemapId={historicBasemap}
+                borderStyle={historicBorder}
+                symbolChoice={historicSymbol}
+                showSymbol={historicShowSymbol}
+                hotspotStyle={hotspotStyle}
+                hotspotIntensity={hotspotIntensity}
+                shadingOpacity={shadingOpacity}
+                hotspotColour={hotspotColour}
+                emptyMessage={mapError || "Loading the Ireland-wide surname map…"}
+              />
+            ) : (
             <div
               ref={posterRef}
               className="w-full"
@@ -1943,6 +2217,7 @@ function ModernDesignContent() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
           {/* Hidden off-screen clones, measured (not shown) to compute the auto-fit
