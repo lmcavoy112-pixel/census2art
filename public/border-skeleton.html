@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Border Skeleton — Tiered Corner Knot</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{
+    --ink:#2E2A24;
+    --paper:#F6F1E7;
+    --panel:#232019;
+    --panel-line:#3a352c;
+    --accent:#C9A15D;
+    --muted:#9C948A;
+    --red:#C9522F;
+    --green:#4caf78;
+    --amber:#e0a030;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--panel);color:#eee;font-family:'Inter',sans-serif;display:flex;min-height:100vh;}
+
+  /* ── Sidebar ── */
+  #sidebar{width:300px;flex-shrink:0;background:#1c1a15;padding:20px;border-right:1px solid var(--panel-line);overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  #sidebar h1{font-size:16px;font-weight:600;color:#eee;}
+  #sidebar .sub{font-size:11px;color:var(--muted);line-height:1.55;}
+
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{display:flex;justify-content:space-between;align-items:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+  .field label .val{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:12px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{width:100%;background:#141210;border:1px solid var(--panel-line);color:#eee;padding:7px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;}
+
+  hr{border:none;border-top:1px solid var(--panel-line);}
+
+  /* computed panel */
+  .computed-panel{background:#141210;border:1px solid var(--panel-line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+  .computed-panel .row{display:flex;justify-content:space-between;align-items:center;font-size:12px;}
+  .computed-panel .row .k{color:var(--muted);}
+  .computed-panel .row .v{font-family:'JetBrains Mono',monospace;color:#eee;}
+  .tier-badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+  .tier-badge.exact{background:rgba(76,175,120,.18);color:var(--green);}
+  .tier-badge.nearest{background:rgba(224,160,48,.18);color:var(--amber);}
+
+  /* reference table */
+  .ref-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .ref-table th{text-align:left;color:var(--muted);font-weight:500;padding:3px 6px;border-bottom:1px solid var(--panel-line);font-size:10px;text-transform:uppercase;letter-spacing:.04em;}
+  .ref-table td{padding:3px 6px;color:#ccc;font-family:'JetBrains Mono',monospace;}
+  .ref-table tr.active td{color:#fff;background:rgba(201,161,93,.1);}
+  .ref-table .tier-col{font-weight:600;}
+  .t4{color:#88b4ff;}.t5{color:#4caf78;}.t6{color:#e0a030;}.t8{color:#e06060;}
+
+  /* edge tile warning */
+  .warn-box{background:rgba(224,160,48,.1);border:1px solid rgba(224,160,48,.35);border-radius:6px;padding:12px;font-size:11px;line-height:1.6;color:#d4b060;}
+  .warn-box strong{color:var(--amber);display:block;margin-bottom:4px;}
+
+  /* legend */
+  .legend-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);}
+  .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
+  /* main canvas area */
+  #main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px;overflow:auto;}
+  #stage{display:inline-block;}
+  #stage svg{display:block;}
+  #size-hint{font-size:11px;color:var(--muted);text-align:center;margin-top:10px;font-family:'JetBrains Mono',monospace;}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div>
+    <h1>Border Skeleton</h1>
+    <p class="sub">Two-line frame with tiered corner knot artwork. Line weight computed from page size; corner tier selected automatically.</p>
+  </div>
+
+  <hr>
+
+  <!-- Page size -->
+  <div class="field">
+    <label>Page size</label>
+    <select id="size-select">
+      <option value="5x7">5 × 7 in</option>
+      <option value="A5">A5 — 148 × 210 mm</option>
+      <option value="8x10">8 × 10 in</option>
+      <option value="A4" selected>A4 — 210 × 297 mm</option>
+      <option value="LETTER">US Letter — 8.5 × 11 in</option>
+      <option value="11x14">11 × 14 in</option>
+      <option value="12x16">12 × 16 in</option>
+      <option value="A3">A3 — 297 × 420 mm</option>
+      <option value="16x20">16 × 20 in</option>
+      <option value="SQUARE10">Square — 10 × 10 in</option>
+      <option value="18x24">18 × 24 in</option>
+      <option value="A2">A2 — 420 × 594 mm</option>
+      <option value="A1">A1 — 594 × 841 mm</option>
+    </select>
+  </div>
+
+  <!-- Computed weight + tier -->
+  <div class="computed-panel">
+    <div class="row"><span class="k">Formula</span><span class="v" style="font-size:10px;color:var(--muted)">1.6 + 0.0042 × minPx</span></div>
+    <div class="row"><span class="k">min(W, H)</span><span class="v" id="min-dim-val">— px</span></div>
+    <div class="row"><span class="k">Computed weight</span><span class="v" id="computed-thick">— px</span></div>
+    <div class="row"><span class="k">Corner tier</span><span id="tier-badge" class="tier-badge nearest">—</span></div>
+  </div>
+
+  <hr>
+
+  <!-- Sliders -->
+  <div class="field">
+    <label>Outer line inset (% of min) <span class="val" id="inset-val">3</span>%</label>
+    <input type="range" id="inset-range" min="1" max="12" step="0.25" value="3">
+  </div>
+
+  <div class="field">
+    <label>Gap between lines (% of min) <span class="val" id="gap-val">1.5</span>%</label>
+    <input type="range" id="gap-range" min="0.25" max="10" step="0.25" value="1.5">
+  </div>
+
+  <div class="field">
+    <label>Corner knot size (% of min) <span class="val" id="corner-val">6.5</span>%</label>
+    <input type="range" id="corner-range" min="2" max="20" step="0.25" value="6.5">
+  </div>
+
+  <div class="field">
+    <label>Mid-edge anchor size (% of min) <span class="val" id="box-val">4</span>%</label>
+    <input type="range" id="box-range" min="1" max="15" step="0.25" value="4">
+  </div>
+
+  <hr>
+
+  <!-- Reference table -->
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px;">All sizes — tier selection</div>
+  <table class="ref-table" id="ref-table">
+    <thead>
+      <tr><th>Size</th><th>min px</th><th>weight</th><th>tier</th></tr>
+    </thead>
+    <tbody>
+      <tr data-key="5x7"><td>5×7 in</td><td>480</td><td class="w">3.62</td><td class="tier-col t4">4</td></tr>
+      <tr data-key="A5"><td>A5</td><td>559</td><td class="w">3.95</td><td class="tier-col t4">4</td></tr>
+      <tr data-key="8x10"><td>8×10 in</td><td>768</td><td class="w">4.82</td><td class="tier-col t5">5</td></tr>
+      <tr data-key="A4"><td>A4</td><td>794</td><td class="w">4.94</td><td class="tier-col t5">5</td></tr>
+      <tr data-key="LETTER"><td>Letter</td><td>816</td><td class="w">5.03</td><td class="tier-col t5">5</td></tr>
+      <tr data-key="11x14"><td>11×14 in</td><td>1056</td><td class="w">6.04</td><td class="tier-col t6">6</td></tr>
+      <tr data-key="12x16"><td>12×16 in</td><td>1152</td><td class="w">6.44</td><td class="tier-col t6">6</td></tr>
+      <tr data-key="A3"><td>A3</td><td>1122</td><td class="w">6.31</td><td class="tier-col t6">6</td></tr>
+      <tr data-key="16x20"><td>16×20 in</td><td>1536</td><td class="w">8.05</td><td class="tier-col t8">8</td></tr>
+      <tr data-key="SQUARE10"><td>Sq 10×10</td><td>960</td><td class="w">5.63</td><td class="tier-col t6">6</td></tr>
+      <tr data-key="18x24"><td>18×24 in</td><td>1728</td><td class="w">8.86</td><td class="tier-col t8">8</td></tr>
+      <tr data-key="A2"><td>A2</td><td>1587</td><td class="w">8.27</td><td class="tier-col t8">8</td></tr>
+      <tr data-key="A1"><td>A1</td><td>2245</td><td class="w">11.03</td><td class="tier-col t8">8*</td></tr>
+      <tr><td colspan="4" style="color:var(--muted);font-size:10px;padding-top:4px;">* A1 rounds to tier 8 (nearest available)</td></tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- Edge tile warning -->
+  <div class="warn-box">
+    <strong>⚠ Edge tile tiers: not yet available</strong>
+    Corner tier files are in <code style="font-family:JetBrains Mono;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px;">Corners/</code> at weights 4, 5, 6, 8 px. No matching edge/chain tile files exist at these weights yet — do not CSS-scale the existing <code style="font-family:JetBrains Mono;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px;">Edges/Dara Knot.svg</code> to compensate, as scaling distorts rope geometry. Flag back when edge tiles are ready to cut at matching weights.
+  </div>
+
+  <!-- Legend -->
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <div class="legend-row"><div class="legend-dot" style="background:var(--red);"></div>Border centreline anchor (ref only)</div>
+    <div class="legend-row"><div class="legend-dot" style="background:rgba(201,161,93,.5);border:1px dashed var(--accent);border-radius:50%;"></div>Corner knot extent circle</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#888;border-radius:2px;transform:rotate(45deg);"></div>Mid-edge anchor (placeholder)</div>
+  </div>
+</div>
+
+<div id="main">
+  <div>
+    <div id="stage"></div>
+    <div id="size-hint"></div>
+  </div>
+</div>
+
+<script>
+// ── Tier data ─────────────────────────────────────────────────────────
+const TIERS = [
+  { weight: 4, src: 'artwork/Corners/dara-knot-corner-tier4.svg', cls: 't4' },
+  { weight: 5, src: 'artwork/Corners/dara-knot-corner-tier5.svg', cls: 't5' },
+  { weight: 6, src: 'artwork/Corners/dara-knot-corner-tier6.svg', cls: 't6' },
+  { weight: 8, src: 'artwork/Corners/dara-knot-corner-tier8.svg', cls: 't8' },
+];
+
+function computeThickness(minDim) {
+  return 1.6 + 0.0042 * minDim;
+}
+
+function nearestTier(t) {
+  return TIERS.reduce((best, tier) =>
+    Math.abs(tier.weight - t) < Math.abs(best.weight - t) ? tier : best
+  );
+}
+
+// ── Page size catalogue ───────────────────────────────────────────────
+const PAGE_SIZES = {
+  '5x7':    { w: 5,    h: 7,    unit: 'in' },
+  A5:       { w: 148,  h: 210,  unit: 'mm' },
+  '8x10':   { w: 8,    h: 10,   unit: 'in' },
+  A4:       { w: 210,  h: 297,  unit: 'mm' },
+  LETTER:   { w: 8.5,  h: 11,   unit: 'in' },
+  '11x14':  { w: 11,   h: 14,   unit: 'in' },
+  '12x16':  { w: 12,   h: 16,   unit: 'in' },
+  A3:       { w: 297,  h: 420,  unit: 'mm' },
+  '16x20':  { w: 16,   h: 20,   unit: 'in' },
+  SQUARE10: { w: 10,   h: 10,   unit: 'in' },
+  '18x24':  { w: 18,   h: 24,   unit: 'in' },
+  A2:       { w: 420,  h: 594,  unit: 'mm' },
+  A1:       { w: 594,  h: 841,  unit: 'mm' },
+};
+const MM_TO_PX = 96 / 25.4;
+const IN_TO_PX = 96;
+
+function pageSizePx(key) {
+  const s = PAGE_SIZES[key];
+  const f = s.unit === 'mm' ? MM_TO_PX : IN_TO_PX;
+  return { w: Math.round(s.w * f), h: Math.round(s.h * f) };
+}
+
+// ── SVG builder ───────────────────────────────────────────────────────
+function buildSkeleton(W, H, thickness, insetPx, gapPx, cornerSizePx, boxSizePx, tierSrc) {
+  // Two parallel border lines. "insetPx" = centre of outer line from each edge.
+  const outerInset = insetPx;
+  const innerInset = insetPx + gapPx + thickness;
+
+  // Centreline between the two strokes — where corner knot is anchored
+  const cx = insetPx + (gapPx + thickness) / 2;
+
+  const half = cornerSizePx / 2;
+  const bh   = boxSizePx / 2;
+
+  // Corner centres (cx from left/right, cx from top/bottom — square page border)
+  const corners = [
+    { tx: cx,   ty: cx,   sx:  1, sy:  1 },
+    { tx: W-cx, ty: cx,   sx: -1, sy:  1 },
+    { tx: W-cx, ty: H-cx, sx: -1, sy: -1 },
+    { tx: cx,   ty: H-cx, sx:  1, sy: -1 },
+  ];
+
+  // Mid-edge centres (on the centreline)
+  const edges = [
+    { x: W/2, y: cx    },  // top
+    { x: W/2, y: H-cx  },  // bottom
+    { x: cx,   y: H/2  },  // left
+    { x: W-cx, y: H/2  },  // right
+  ];
+
+  // Double-line rects
+  const lines = `
+    <rect x="${outerInset}" y="${outerInset}"
+      width="${W - 2*outerInset}" height="${H - 2*outerInset}"
+      fill="none" stroke="#163626" stroke-width="${thickness}"/>
+    <rect x="${innerInset}" y="${innerInset}"
+      width="${W - 2*innerInset}" height="${H - 2*innerInset}"
+      fill="none" stroke="#163626" stroke-width="${thickness}"/>`;
+
+  // Corner knot images, each centred on (tx, ty) then mirrored via scale
+  const cornerImages = corners.map(c => `
+    <g transform="translate(${c.tx},${c.ty}) scale(${c.sx},${c.sy})">
+      <image href="${tierSrc}"
+        x="${-half}" y="${-half}" width="${cornerSizePx}" height="${cornerSizePx}"
+        preserveAspectRatio="xMidYMid meet"/>
+    </g>`).join('');
+
+  // Reference ring around each corner (shows knot extent)
+  const cornerRings = corners.map(c => `
+    <circle cx="${c.tx}" cy="${c.ty}" r="${half}"
+      fill="none" stroke="${'#C9A15D'}" stroke-width="1"
+      stroke-dasharray="3 3" opacity="0.45"/>`).join('');
+
+  // Reference dot at each corner centre
+  const cornerDots = corners.map(c =>
+    `<circle cx="${c.tx}" cy="${c.ty}" r="2" fill="#C9522F" opacity="0.9"/>`
+  ).join('');
+
+  // Mid-edge placeholder diamonds (45° rotated squares)
+  const edgeDiamonds = edges.map(e => `
+    <rect x="${-bh}" y="${-bh}" width="${boxSizePx}" height="${boxSizePx}"
+      transform="translate(${e.x},${e.y}) rotate(45)"
+      fill="#F6F1E7" fill-opacity="0.7"
+      stroke="#163626" stroke-width="${thickness}" opacity="0.55"/>
+    <circle cx="${e.x}" cy="${e.y}" r="2" fill="#C9522F" opacity="0.9"/>`
+  ).join('');
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+      xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <rect width="${W}" height="${H}" fill="#F6F1E7"/>
+    ${lines}
+    ${cornerImages}
+    ${cornerRings}
+    ${edgeDiamonds}
+    ${cornerDots}
+  </svg>`;
+}
+
+// ── DOM refs ──────────────────────────────────────────────────────────
+const sizeSelect    = document.getElementById('size-select');
+const insetRange    = document.getElementById('inset-range');
+const gapRange      = document.getElementById('gap-range');
+const cornerRange   = document.getElementById('corner-range');
+const boxRange      = document.getElementById('box-range');
+const insetVal      = document.getElementById('inset-val');
+const gapVal        = document.getElementById('gap-val');
+const cornerVal     = document.getElementById('corner-val');
+const boxVal        = document.getElementById('box-val');
+const minDimEl      = document.getElementById('min-dim-val');
+const computedEl    = document.getElementById('computed-thick');
+const tierBadgeEl   = document.getElementById('tier-badge');
+const refTableEl    = document.getElementById('ref-table');
+const stage         = document.getElementById('stage');
+const sizeHint      = document.getElementById('size-hint');
+
+// ── Render ────────────────────────────────────────────────────────────
+function render() {
+  const key       = sizeSelect.value;
+  const { w: W, h: H } = pageSizePx(key);
+  const minDim    = Math.min(W, H);
+
+  // Formula: live-computed thickness
+  const thickness = computeThickness(minDim);
+  const tier      = nearestTier(thickness);
+  const isExact   = tier.weight === Math.round(thickness);
+
+  // Pixel values from sliders
+  const insetPct    = parseFloat(insetRange.value);
+  const gapPct      = parseFloat(gapRange.value);
+  const cornerPct   = parseFloat(cornerRange.value);
+  const boxPct      = parseFloat(boxRange.value);
+  const insetPx     = minDim * insetPct / 100;
+  const gapPx       = minDim * gapPct / 100;
+  const cornerSizePx= minDim * cornerPct / 100;
+  const boxSizePx   = minDim * boxPct / 100;
+
+  // Update labels
+  insetVal.textContent  = insetPct;
+  gapVal.textContent    = gapPct;
+  cornerVal.textContent = cornerPct;
+  boxVal.textContent    = boxPct;
+
+  // Update computed panel
+  minDimEl.textContent   = `${minDim} px`;
+  computedEl.textContent = `${thickness.toFixed(2)} px`;
+  tierBadgeEl.textContent = `Tier ${tier.weight} (${tier.weight} px rope)`;
+  tierBadgeEl.className  = 'tier-badge ' + (isExact ? 'exact' : 'nearest');
+
+  // Highlight active row in ref table
+  refTableEl.querySelectorAll('tr[data-key]').forEach(row => {
+    row.classList.toggle('active', row.dataset.key === key);
+  });
+
+  // Draw SVG
+  const svg = buildSkeleton(W, H, thickness, insetPx, gapPx, cornerSizePx, boxSizePx, tier.src);
+  stage.innerHTML = svg;
+  const svgEl = stage.querySelector('svg');
+  svgEl.style.width  = W + 'px';
+  svgEl.style.height = H + 'px';
+
+  sizeHint.textContent = `${W} × ${H} px @ 96 dpi (true 1:1 scale)  ·  line weight ${thickness.toFixed(2)} px  ·  corner tier ${tier.weight}`;
+}
+
+[sizeSelect, insetRange, gapRange, cornerRange, boxRange].forEach(el =>
+  el.addEventListener('input', render)
+);
+render();
+</script>
+</body>
+</html>

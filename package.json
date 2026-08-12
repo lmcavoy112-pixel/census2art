@@ -1,0 +1,34 @@
+{
+  "name": "irish-ancestry-art",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "sync:maplibre": "node -e \"const fs=require('fs');fs.mkdirSync('public/maplibre',{recursive:true});for(const f of ['maplibre-gl-worker.mjs','maplibre-gl-shared.mjs'])fs.copyFileSync('node_modules/maplibre-gl/dist/'+f,'public/maplibre/'+f);console.log('maplibre worker chunks synced')\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "html2canvas-pro": "^2.2.1",
+    "leaflet": "^1.9.4",
+    "maplibre-contour": "^0.1.0",
+    "maplibre-gl": "^6.3.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-leaflet": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5"
+  }
+}

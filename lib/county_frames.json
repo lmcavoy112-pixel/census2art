@@ -1,0 +1,358 @@
+{
+  "projection": "equirectangular",
+  "note": "x=(lon-minLon)/(maxLon-minLon)*width ; y=height-(lat-minLat)/(maxLat-minLat)*height. Bounds already include a 6% margin around the county bbox. Use each county's own bounds+width+height.",
+  "counties": {
+    "Antrim": {
+      "image": "County_Antrim.png",
+      "width": 1382,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.72786,
+        "maxLon": -5.62914,
+        "minLat": 54.426628,
+        "maxLat": 55.363172
+      }
+    },
+    "Armagh": {
+      "image": "County_Armagh.png",
+      "width": 1344,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.913874,
+        "maxLon": -6.244226,
+        "minLat": 54.00461,
+        "maxLat": 54.59989
+      }
+    },
+    "Carlow": {
+      "image": "County_Carlow.png",
+      "width": 1647,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.14408,
+        "maxLon": -6.46872,
+        "minLat": 52.436336,
+        "maxLat": 52.945264
+      }
+    },
+    "Cavan": {
+      "image": "County_Cavan.png",
+      "width": 2048,
+      "height": 1450,
+      "bounds": {
+        "minLon": -8.135972,
+        "maxLon": -6.684228,
+        "minLat": 53.73326,
+        "maxLat": 54.33694
+      }
+    },
+    "Clare": {
+      "image": "County_Clare.png",
+      "width": 2048,
+      "height": 1258,
+      "bounds": {
+        "minLon": -10.038078,
+        "maxLon": -8.183022,
+        "minLat": 52.517642,
+        "maxLat": 53.205658
+      }
+    },
+    "Cork": {
+      "image": "County_Cork.png",
+      "width": 2048,
+      "height": 1335,
+      "bounds": {
+        "minLon": -10.392944,
+        "maxLon": -7.696656,
+        "minLat": 51.361814,
+        "maxLat": 52.446086
+      }
+    },
+    "Donegal": {
+      "image": "County_Donegal.png",
+      "width": 2048,
+      "height": 1839,
+      "bounds": {
+        "minLon": -8.95226,
+        "maxLon": -6.80634,
+        "minLat": 54.399832,
+        "maxLat": 55.506168
+      }
+    },
+    "Down": {
+      "image": "County_Down.png",
+      "width": 1708,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.458144,
+        "maxLon": -5.374656,
+        "minLat": 53.98234,
+        "maxLat": 54.73946
+      }
+    },
+    "Dublin": {
+      "image": "County_Dublin.png",
+      "width": 1473,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.579936,
+        "maxLon": -5.963264,
+        "minLat": 53.15081,
+        "maxLat": 53.66209
+      }
+    },
+    "Fermanagh": {
+      "image": "County_Fermanagh.png",
+      "width": 2048,
+      "height": 1687,
+      "bounds": {
+        "minLon": -8.23993,
+        "maxLon": -7.08017,
+        "minLat": 54.083374,
+        "maxLat": 54.640126
+      }
+    },
+    "Galway": {
+      "image": "County_Galway.png",
+      "width": 2048,
+      "height": 1097,
+      "bounds": {
+        "minLon": -10.455014,
+        "maxLon": -7.826486,
+        "minLat": 52.923052,
+        "maxLat": 53.763948
+      }
+    },
+    "Kerry": {
+      "image": "County_Kerry.png",
+      "width": 2048,
+      "height": 1953,
+      "bounds": {
+        "minLon": -10.774944,
+        "maxLon": -9.025056,
+        "minLat": 51.633448,
+        "maxLat": 52.657352
+      }
+    },
+    "Kildare": {
+      "image": "County_Kildare.png",
+      "width": 1467,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.211434,
+        "maxLon": -6.417466,
+        "minLat": 52.821984,
+        "maxLat": 53.486816
+      }
+    },
+    "Kilkenny": {
+      "image": "County_Kilkenny.png",
+      "width": 1452,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.719676,
+        "maxLon": -6.868924,
+        "minLat": 52.203728,
+        "maxLat": 52.933072
+      }
+    },
+    "Laois": {
+      "image": "County_Laois.png",
+      "width": 2048,
+      "height": 1841,
+      "bounds": {
+        "minLon": -7.782868,
+        "maxLon": -6.883732,
+        "minLat": 52.755236,
+        "maxLat": 53.241764
+      }
+    },
+    "Leitrim": {
+      "image": "County_Leitrim.png",
+      "width": 1514,
+      "height": 2048,
+      "bounds": {
+        "minLon": -8.47831,
+        "maxLon": -7.53359,
+        "minLat": 53.765896,
+        "maxLat": 54.514504
+      }
+    },
+    "Limerick": {
+      "image": "County_Limerick.png",
+      "width": 2048,
+      "height": 1326,
+      "bounds": {
+        "minLon": -9.440278,
+        "maxLon": -8.083622,
+        "minLat": 52.251568,
+        "maxLat": 52.786032
+      }
+    },
+    "Londonderry": {
+      "image": "County_Londonderry.png",
+      "width": 1957,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.464312,
+        "maxLon": -6.400088,
+        "minLat": 54.59401,
+        "maxLat": 55.23409
+      }
+    },
+    "Longford": {
+      "image": "County_Longford.png",
+      "width": 1905,
+      "height": 2048,
+      "bounds": {
+        "minLon": -8.075666,
+        "maxLon": -7.335234,
+        "minLat": 53.496476,
+        "maxLat": 53.967324
+      }
+    },
+    "Louth": {
+      "image": "County_Louth.png",
+      "width": 1720,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.730838,
+        "maxLon": -6.067462,
+        "minLat": 53.67357,
+        "maxLat": 54.13893
+      }
+    },
+    "Mayo": {
+      "image": "County_Mayo.png",
+      "width": 2048,
+      "height": 1795,
+      "bounds": {
+        "minLon": -10.424968,
+        "maxLon": -8.478632,
+        "minLat": 53.418086,
+        "maxLat": 54.422614
+      }
+    },
+    "Meath": {
+      "image": "County_Meath.png",
+      "width": 2048,
+      "height": 1637,
+      "bounds": {
+        "minLon": -7.411566,
+        "maxLon": -6.144734,
+        "minLat": 53.349752,
+        "maxLat": 53.949848
+      }
+    },
+    "Monaghan": {
+      "image": "County_Monaghan.png",
+      "width": 1819,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.386888,
+        "maxLon": -6.502312,
+        "minLat": 53.869458,
+        "maxLat": 54.452642
+      }
+    },
+    "Offaly": {
+      "image": "County_Offaly.png",
+      "width": 2048,
+      "height": 1778,
+      "bounds": {
+        "minLon": -8.150272,
+        "maxLon": -6.911328,
+        "minLat": 52.813634,
+        "maxLat": 53.458866
+      }
+    },
+    "Roscommon": {
+      "image": "County_Roscommon.png",
+      "width": 1346,
+      "height": 2048,
+      "bounds": {
+        "minLon": -8.880574,
+        "maxLon": -7.818926,
+        "minLat": 53.220066,
+        "maxLat": 54.176434
+      }
+    },
+    "Sligo": {
+      "image": "County_Sligo.png",
+      "width": 2048,
+      "height": 1993,
+      "bounds": {
+        "minLon": -9.195616,
+        "maxLon": -8.093984,
+        "minLat": 53.8794,
+        "maxLat": 54.5066
+      }
+    },
+    "Tipperary": {
+      "image": "County_Tipperary.png",
+      "width": 1425,
+      "height": 2048,
+      "bounds": {
+        "minLon": -8.54658,
+        "maxLon": -7.30562,
+        "minLat": 52.144064,
+        "maxLat": 53.225536
+      }
+    },
+    "Tyrone": {
+      "image": "County_Tyrone.png",
+      "width": 2048,
+      "height": 1449,
+      "bounds": {
+        "minLon": -8.012264,
+        "maxLon": -6.316136,
+        "minLat": 54.288194,
+        "maxLat": 54.982706
+      }
+    },
+    "Waterford": {
+      "image": "County_Waterford.png",
+      "width": 2048,
+      "height": 1172,
+      "bounds": {
+        "minLon": -8.235462,
+        "maxLon": -6.877238,
+        "minLat": 51.912446,
+        "maxLat": 52.389454
+      }
+    },
+    "Westmeath": {
+      "image": "County_Westmeath.png",
+      "width": 2048,
+      "height": 1629,
+      "bounds": {
+        "minLon": -8.034092,
+        "maxLon": -6.893708,
+        "minLat": 53.289134,
+        "maxLat": 53.827966
+      }
+    },
+    "Wexford": {
+      "image": "County_Wexford.png",
+      "width": 1591,
+      "height": 2048,
+      "bounds": {
+        "minLon": -7.070844,
+        "maxLon": -6.088156,
+        "minLat": 52.067902,
+        "maxLat": 52.838798
+      }
+    },
+    "Wicklow": {
+      "image": "County_Wicklow.png",
+      "width": 1774,
+      "height": 2048,
+      "bounds": {
+        "minLon": -6.839852,
+        "maxLon": -5.950348,
+        "minLat": 52.648856,
+        "maxLat": 53.267544
+      }
+    }
+  }
+}

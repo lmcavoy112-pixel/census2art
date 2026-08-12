@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" preserveAspectRatio="none">
+  <!-- STRETCH ZONE - plain straight run, safe to scale horizontally to any width.
+       preserveAspectRatio="none" lets it stretch; because the stroke is a
+       horizontal line, its thickness is set by the rendered HEIGHT only, so it
+       stays identical to the inner/outer pieces however far it is stretched.
+       Give all three pieces the same rendered height. -->
+  <path d="M0,50 L160,50" fill="none" stroke="var(--divider-ink, #111111)"
+        stroke-width="2.8"/>
+</svg>
