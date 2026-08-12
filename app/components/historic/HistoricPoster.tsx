@@ -454,6 +454,44 @@ function SymbolOverlay({
   );
 }
 
+/**
+ * One symbol on its own, at a given height — used by the Symbol picker so the customer
+ * chooses from the artwork rather than from a list of names. Uses the same crop box as
+ * the divider, so the glyph shown is exactly the glyph that prints.
+ */
+export function HistoricSymbolGlyph({
+  symbol,
+  size = 22,
+  colour = "#1c1917",
+}: {
+  symbol: string;
+  size?: number;
+  colour?: string;
+}) {
+  const markup = useSvgAsset(`/artwork/Symbol/Icon ${symbol}.svg`);
+  const config = DIVIDER_SYMBOL_CONFIG[symbol] ?? DEFAULT_DIVIDER_CONFIG;
+  const width = size * (config.cropW / config.cropH);
+
+  if (!markup) {
+    return <span aria-hidden="true" style={{ display: "inline-block", width, height: size }} />;
+  }
+
+  const svg = colourSvg(markup, colour)
+    .replace(
+      /viewBox="[^"]*"/,
+      `viewBox="${config.cropX} ${config.cropY} ${config.cropW} ${config.cropH}"`
+    )
+    .replace(/<svg(\s)/, '<svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet"$1');
+
+  return (
+    <span
+      aria-hidden="true"
+      style={{ display: "inline-block", width, height: size, flexShrink: 0 }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 /* ── The poster ─────────────────────────────────────────────────────── */
 
 export type HistoricPosterProps = {
@@ -465,7 +503,6 @@ export type HistoricPosterProps = {
   basemapId: string;
   borderStyle: string | null;
   symbolChoice: string;
-  showSymbol: boolean;
   /** Hotspot shading (glowing centroids) vs flat district fills. */
   hotspotStyle: boolean;
   hotspotIntensity: HotspotIntensity;
@@ -484,7 +521,6 @@ export default function HistoricPoster({
   basemapId,
   borderStyle,
   symbolChoice,
-  showSymbol,
   hotspotStyle,
   hotspotIntensity,
   shadingOpacity,
@@ -589,8 +625,9 @@ export default function HistoricPoster({
         sizeGroup={sizeGroup}
       />
 
-      {/* Square has no room for the divider between map and title. */}
-      {showSymbol && !isSquare && (
+      {/* Square has no room for the divider between map and title, so it is the one
+          shape that prints without a symbol. */}
+      {!isSquare && (
         <SymbolOverlay
           symbolChoice={symbolChoice}
           inkColour={inkColour}

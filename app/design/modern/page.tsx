@@ -128,6 +128,7 @@ import {
 } from "@/app/components/designer/icons";
 import HistoricPoster, {
   DEFAULT_HOTSPOT_COLOUR,
+  HistoricSymbolGlyph,
   HISTORIC_BASEMAPS,
   HISTORIC_BORDER_STYLES,
   HISTORIC_SYMBOLS,
@@ -372,7 +373,6 @@ function ModernDesignContent() {
   const [historicBasemap, setHistoricBasemap] = useState("style-1");
   const [historicBorder, setHistoricBorder] = useState<string | null>("Celtic Spirals");
   const [historicSymbol, setHistoricSymbol] = useState("Celtic Harp");
-  const [historicShowSymbol, setHistoricShowSymbol] = useState(true);
   const [accentId, setAccentId] = useState<AccentId>(DEFAULT_ACCENT_ID);
   const [hotspotStyle, setHotspotStyle] = useState(true);
   const [hotspotIntensity, setHotspotIntensity] = useState<HotspotIntensity>(
@@ -710,6 +710,10 @@ function ModernDesignContent() {
   const borderHex = getPolygonColourById(borderColourId)?.hex ?? polygonHex;
   const borderWidth =
     borderColourId === NO_BORDER_COLOUR_ID ? 0 : BORDER_WIDTHS[borderWidthIndex];
+
+  // Shape is decided up front, in the Template section, because it gates what the rest
+  // of the designer can offer — square has no symbol divider and only one border.
+  const isSquare = layoutFamilyToGroup(layoutFamily) === "square";
 
   const familyOptions = useMemo(() => {
     const groups = buildGalleryGroups(catalogueSkus, GALLERY_FAMILY_ORDER);
@@ -1255,7 +1259,7 @@ function ModernDesignContent() {
               ? {
                   basemapStyle: historicBasemap,
                   borderStyle: effectiveBorder,
-                  symbol: historicShowSymbol ? historicSymbol : null,
+                  symbol: isSquare ? null : historicSymbol,
                   accent: accentId,
                   hotspotStyle,
                   hotspotIntensity,
@@ -1323,6 +1327,24 @@ function ModernDesignContent() {
             ? "A contour or street map of the place your family lived, printed above their census record."
             : "The county drawn as line art inside a Celtic border, with your surname and a chosen symbol."}
         </HelpText>
+
+        {familyOptions.length > 1 && (
+          <div className="border-t border-stone-200 pt-4">
+            <FieldLabel>Shape</FieldLabel>
+            <ChoiceCards
+              columns={2}
+              ariaLabel="Shape"
+              value={layoutFamily}
+              onChange={setLayoutFamily}
+              options={familyOptions}
+            />
+            <HelpText>
+              {template === "historic" && isSquare
+                ? "Square prints have no symbol and are drawn with Celtic Spirals only."
+                : "Sets the proportions of the print. Sizes follow in Size & frame."}
+            </HelpText>
+          </div>
+        )}
       </div>
     ),
   };
@@ -1760,19 +1782,6 @@ function ModernDesignContent() {
           />
         </div>
 
-        {familyOptions.length > 1 && (
-          <div>
-            <FieldLabel>Shape</FieldLabel>
-            <ChoiceCards
-              columns={2}
-              ariaLabel="Shape"
-              value={layoutFamily}
-              onChange={setLayoutFamily}
-              options={familyOptions}
-            />
-          </div>
-        )}
-
         {fulfilment === "framed" && (
           <div>
             <FieldLabel>Frame style</FieldLabel>
@@ -1848,7 +1857,6 @@ function ModernDesignContent() {
 
   // ── Historic sections ──────────────────────────────────────────────
 
-  const isSquare = layoutFamilyToGroup(layoutFamily) === "square";
   const borderChoices = isSquare ? SQUARE_BORDER_STYLES : HISTORIC_BORDER_STYLES;
   const historicAccent = getAccentById(accentId);
 
@@ -2000,32 +2008,45 @@ function ModernDesignContent() {
     id: "historic-symbol",
     title: "Symbol",
     summary: "Choose the emblem printed above your surname.",
+    // Square is shown greyed rather than hidden, so the choice a customer loses by
+    // picking Square is visible where they'd look for it — not silently absent.
+    note: isSquare ? "Only available on ISO sizes" : undefined,
     icon: <SymbolIcon />,
     body: (
-      <div className="space-y-4">
-        {isSquare ? (
-          <p className="rounded-md bg-stone-50 px-3 py-2.5 text-[13px] leading-relaxed text-stone-600">
+      <div className="space-y-3">
+        {isSquare && (
+          <p className="rounded-md bg-stone-100 px-3 py-2.5 text-[13px] leading-relaxed text-stone-600">
             Square prints have no room for the symbol divider between the map and the
-            surname, so it isn&apos;t printed on this shape.
+            surname. Choose the Portrait shape in Template to print one.
           </p>
-        ) : (
-          <>
-            <Toggle
-              label="Print a symbol"
-              checked={historicShowSymbol}
-              onChange={setHistoricShowSymbol}
-            />
-            {historicShowSymbol && (
-              <ChoiceCards
-                columns={2}
-                ariaLabel="Symbol"
-                value={historicSymbol}
-                onChange={setHistoricSymbol}
-                options={HISTORIC_SYMBOLS.map((s) => ({ id: s.id, label: s.label }))}
-              />
-            )}
-          </>
         )}
+        <div
+          className={`grid grid-cols-2 gap-2 ${isSquare ? "pointer-events-none opacity-40" : ""}`}
+          aria-disabled={isSquare}
+        >
+          {HISTORIC_SYMBOLS.map((option) => {
+            const selected = !isSquare && historicSymbol === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                disabled={isSquare}
+                aria-pressed={selected}
+                onClick={() => setHistoricSymbol(option.id)}
+                className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                  selected
+                    ? "border-stone-900 bg-white ring-1 ring-stone-900"
+                    : "border-stone-300 bg-white hover:bg-stone-50"
+                }`}
+              >
+                <HistoricSymbolGlyph symbol={option.id} size={20} colour={historicAccent.accent} />
+                <span className="min-w-0 flex-1 text-[13px] font-medium leading-tight text-stone-900">
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     ),
   };
@@ -2157,7 +2178,6 @@ function ModernDesignContent() {
                 basemapId={historicBasemap}
                 borderStyle={effectiveBorder}
                 symbolChoice={historicSymbol}
-                showSymbol={historicShowSymbol}
                 hotspotStyle={hotspotStyle}
                 hotspotIntensity={hotspotIntensity}
                 shadingOpacity={shadingOpacity}

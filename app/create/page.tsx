@@ -852,7 +852,9 @@ export default function CreatePage() {
       params.set("formAUrl", snapshot.formAUrl);
     }
 
-    router.push(`/design?${params.toString()}`);
+    // Straight into the designer — the old /design step only existed to pick Historic
+    // vs Modern, and that is now the first section of the designer itself.
+    router.push(`/design/modern?${params.toString()}`);
   }
 
   return (
@@ -883,7 +885,7 @@ export default function CreatePage() {
               How it works
             </a>
             <a
-              href="/design"
+              href="/design/modern"
               className="text-sm transition-colors"
               style={{ color: "#6b5f4a" }}
             >
