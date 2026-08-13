@@ -2,9 +2,9 @@
   "permissions": {
     "allow": [
       "Skill(run)",
-      "PowerShell(Get-ChildItem C:\\\\Users\\\\Luke\\\\irish-ancestry-art\\\\.claude\\\\skills -Recurse -Filter \"SKILL.md\" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -TotalCount 3 })",
-      "PowerShell(Start-Process -FilePath \"powershell\" -ArgumentList \"-Command\", \"npm run dev 2>&1 | Tee-Object -FilePath 'C:\\\\Users\\\\Luke\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Luke-irish-ancestry-art\\\\0aff50c7-ec01-4199-81f5-865847442613\\\\scratchpad\\\\devserver.log'\" -WindowStyle Hidden; Write-Host \"Dev server started\")",
-      "PowerShell(node -e \"const p = require\\('./node_modules/next/package.json'\\); console.log\\(p.version\\)\" 2>&1; cd C:\\\\Users\\\\Luke\\\\irish-ancestry-art; Get-Content .env.local | ForEach-Object { if \\($_ -match \"^[^#]\"\\) { $_.Split\\(\"=\"\\)[0] } })"
+      "PowerShell(Get-ChildItem C:\\\\Users\\\\Luke\\\\census2art\\\\.claude\\\\skills -Recurse -Filter \"SKILL.md\" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -TotalCount 3 })",
+      "PowerShell(Start-Process -FilePath \"powershell\" -ArgumentList \"-Command\", \"npm run dev 2>&1 | Tee-Object -FilePath 'C:\\\\Users\\\\Luke\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Luke-census2art\\\\0aff50c7-ec01-4199-81f5-865847442613\\\\scratchpad\\\\devserver.log'\" -WindowStyle Hidden; Write-Host \"Dev server started\")",
+      "PowerShell(node -e \"const p = require\\('./node_modules/next/package.json'\\); console.log\\(p.version\\)\" 2>&1; cd C:\\\\Users\\\\Luke\\\\census2art; Get-Content .env.local | ForEach-Object { if \\($_ -match \"^[^#]\"\\) { $_.Split\\(\"=\"\\)[0] } })"
     ]
   }
 }
