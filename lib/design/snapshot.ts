@@ -34,6 +34,12 @@ export type DesignSnapshot = {
   houseUid?: string;
   household?: HouseholdPerson[];
   formAUrl?: string;
+  /**
+   * House marker placed during the census search. Only the Modern template draws a
+   * marker, so the Historic print ignores this rather than trying to place a point
+   * on artwork that has no map beneath it.
+   */
+  pin?: { lng: number; lat: number; source: "geocoder" | "centroid" | "manual" };
   productKind?: string;
   printSizeId?: string;
   frameColour?: string;

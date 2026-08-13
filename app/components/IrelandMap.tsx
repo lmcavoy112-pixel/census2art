@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import {
   GeoJSON,
   MapContainer,
+  Marker,
   TileLayer,
   Tooltip,
   useMap,
@@ -30,9 +31,102 @@ type IrelandMapProps = {
   interactive?: boolean;
   greenPolygons?: boolean;
   mapHeight?: string;
+  /**
+   * Fill the parent instead of sitting in a rounded card. Used by the census
+   * workspace, where the map is the whole stage rather than a figure on a page.
+   */
+  fill?: boolean;
+  /** The draggable house marker, or null when none has been placed. */
+  pin?: { lng: number; lat: number } | null;
+  /** Fired as the marker is dragged, with its new position. */
+  onPinMove?: (position: { lng: number; lat: number }) => void;
+  /**
+   * Bumped by the parent when the marker has just been placed. The map flies to the
+   * pin only on a change of this token, so dragging the marker never yanks the view
+   * out from under the hand doing the dragging.
+   */
+  pinFocusToken?: number;
+  /**
+   * Camera target from the place search. The map moves when `token` changes, so
+   * re-picking the same place still works.
+   */
+  flyTo?: { lng: number; lat: number; zoom?: number; token: number } | null;
+  /** Reports the map centre as "lng,lat" so searches can be biased to the view. */
+  onCentreChange?: (centre: string) => void;
 };
 
 const IRELAND_GREEN = "#FF1493";
+
+/**
+ * The house marker, drawn as a divIcon rather than Leaflet's default image marker —
+ * the default pulls its icon from bundled asset URLs that don't survive the build,
+ * and this keeps the pin as inline markup with nothing to 404.
+ */
+const PIN_ICON = L.divIcon({
+  className: "",
+  html:
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" ` +
+    `style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35))">` +
+    `<path d="M12 23S3.5 14.6 3.5 9.2A8.5 8.5 0 0 1 20.5 9.2C20.5 14.6 12 23 12 23Z" ` +
+    `fill="#1e2b18" stroke="rgba(255,255,255,0.9)" stroke-width="1"/>` +
+    `<circle cx="12" cy="9.2" r="3" fill="#ffffff"/></svg>`,
+  iconSize: [28, 28],
+  // Anchored at the point of the teardrop, so the tip marks the spot.
+  iconAnchor: [14, 27],
+});
+
+/** Moves the camera to a searched place. Keyed on the token, not the coordinate. */
+function FlyToTarget({
+  target,
+}: {
+  target: { lng: number; lat: number; zoom?: number; token: number } | null;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!target || target.token <= 0) return;
+    map.flyTo([target.lat, target.lng], target.zoom ?? 14, { duration: 0.9 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target?.token]);
+
+  return null;
+}
+
+/** Reports the map centre as searches are biased toward whatever is on screen. */
+function CentreReporter({ onChange }: { onChange?: (centre: string) => void }) {
+  const map = useMap();
+
+  useMapEvents({
+    moveend() {
+      if (!onChange) return;
+      const centre = map.getCenter();
+      onChange(`${centre.lng.toFixed(5)},${centre.lat.toFixed(5)}`);
+    },
+  });
+
+  return null;
+}
+
+/** Flies to the marker when it is first placed, and only then. */
+function PinFocus({
+  pin,
+  token,
+}: {
+  pin: { lng: number; lat: number } | null;
+  token: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!pin || token <= 0) return;
+    map.flyTo([pin.lat, pin.lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
+    // Deliberately keyed on the token alone: dragging updates `pin` constantly and
+    // must not re-centre the map mid-drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  return null;
+}
 
 function wrapAsFeature(geojson: any) {
   if (!geojson || typeof geojson !== "object") {
@@ -202,6 +296,12 @@ export default function IrelandMap({
   interactive = true,
   greenPolygons = false,
   mapHeight = "420px",
+  fill = false,
+  pin = null,
+  onPinMove,
+  pinFocusToken = 0,
+  flyTo = null,
+  onCentreChange,
 }: IrelandMapProps) {
   const maxCount = useMemo(() => {
     if (polygons.length === 0) {
@@ -215,7 +315,11 @@ export default function IrelandMap({
   }, [polygons]);
 
   return (
-    <div className="ancestry-map overflow-hidden rounded-xl border border-neutral-200">
+    <div
+      className={`ancestry-map overflow-hidden ${
+        fill ? "h-full" : "rounded-xl border border-neutral-200"
+      }`}
+    >
       <style jsx global>{`
         .ancestry-map .leaflet-interactive:focus {
           outline: none !important;
@@ -243,21 +347,45 @@ export default function IrelandMap({
         boxZoom={interactive}
         keyboard={interactive}
         zoomControl={interactive}
-        style={{ height: mapHeight, width: "100%" }}
+        // OpenStreetMap's standard style only draws building house numbers from zoom
+        // 19, and Leaflet's own default cap is 18 — so without this the numbers a
+        // customer needs in order to find their door can never appear.
+        maxZoom={19}
+        style={{ height: fill ? "100%" : mapHeight, width: "100%" }}
       >
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
         />
 
         <MapSizeFix />
         <FitBounds polygons={polygons} selectedDedId={selectedDedId} />
+        <FlyToTarget target={flyTo} />
+        <CentreReporter onChange={onCentreChange} />
 
         <MapBackgroundClick
           interactive={interactive}
           onSelectDed={onSelectDed}
           onClearDed={onClearDed}
         />
+
+        {pin && (
+          <>
+            <PinFocus pin={pin} token={pinFocusToken} />
+            <Marker
+              position={[pin.lat, pin.lng]}
+              icon={PIN_ICON}
+              draggable={Boolean(onPinMove)}
+              eventHandlers={{
+                dragend: (event) => {
+                  const { lat, lng } = event.target.getLatLng();
+                  onPinMove?.({ lat, lng });
+                },
+              }}
+            />
+          </>
+        )}
 
         {polygons.map((polygon) => {
           const data = wrapAsFeature(polygon.geojson);

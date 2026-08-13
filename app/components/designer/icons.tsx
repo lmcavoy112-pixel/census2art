@@ -57,6 +57,17 @@ export function ColourIcon(props: IconProps) {
   );
 }
 
+/** Nested frames closing in — how wide a view the map is set to. */
+export function ExtentIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4.5" width="18" height="15" rx="1" />
+      <rect x="7.5" y="8.5" width="9" height="7" rx="0.5" />
+      <path d="M10.5 12h3" />
+    </Svg>
+  );
+}
+
 /** A contoured summit — the basemap's own subject. */
 export function MapStyleIcon(props: IconProps) {
   return (
@@ -93,6 +104,66 @@ export function SymbolIcon(props: IconProps) {
     <Svg {...props}>
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2v6M12 16v6M2 12h6M16 12h6" />
+    </Svg>
+  );
+}
+
+/* ── Census search rail ─────────────────────────────────────────────────
+   The narrowing steps on /irish-census-1901. Each one names its unit of place, so
+   the rail reads as a zoom from a whole country down to one front door. */
+
+/** A magnifier over a name — the surname the search starts from. */
+export function SurnameIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5L21 21" />
+      <path d="M8 12.5c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5" />
+      <circle cx="10.5" cy="8" r="1.6" />
+    </Svg>
+  );
+}
+
+/** A bordered territory — the county. */
+export function CountyIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 6.5l6-2.5 6 2.5 6-2.5v13l-6 2.5-6-2.5-6 2.5z" />
+      <path d="M9 4v13M15 6.5v13" />
+    </Svg>
+  );
+}
+
+/** A subdivided parcel — the district electoral division. */
+export function DistrictIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 4h16v16H4z" />
+      <path d="M4 12h9M13 4v16" />
+    </Svg>
+  );
+}
+
+/** A field boundary with a tree — the townland, the smallest land division. */
+export function TownlandIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 18.5h18" />
+      <path d="M7.5 18.5V13a3 3 0 016 0v5.5" />
+      <path d="M16 18.5v-3.5a2 2 0 014 0v3.5" />
+      <path d="M10.5 9.5V7" />
+    </Svg>
+  );
+}
+
+/** A front door — the individual household. */
+export function HouseholdIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 10.5L12 4l8 6.5" />
+      <path d="M6 9.8V20h12V9.8" />
+      <path d="M10 20v-5.5a2 2 0 014 0V20" />
+      <circle cx="13.2" cy="17" r="0.6" fill="currentColor" stroke="none" />
     </Svg>
   );
 }

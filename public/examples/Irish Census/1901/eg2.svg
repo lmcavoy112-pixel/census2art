@@ -40,9 +40,9 @@
       C -40,-115 -34,-128 -18,-138
       C -4,-146 4,-134 8,-130 Z
     " fill="#c8d5c0" stroke="#4a6741" stroke-width="1.5"/>
-    <!-- County highlight: Cork (south) -->
-    <ellipse cx="8" cy="138" rx="28" ry="20" fill="#4a6741" fill-opacity="0.45"/>
-    <circle cx="8" cy="138" r="7" fill="#1e2b18" fill-opacity="0.6"/>
+    <!-- County highlight: Dublin (east) -->
+    <ellipse cx="68" cy="14" rx="28" ry="20" fill="#4a6741" fill-opacity="0.45"/>
+    <circle cx="68" cy="14" r="7" fill="#1e2b18" fill-opacity="0.6"/>
   </g>
 
   <!-- Bottom divider -->
@@ -53,10 +53,10 @@
   <text x="200" y="435" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="8" letter-spacing="3" fill="#6b5f4a">THE</text>
 
   <!-- Family name -->
-  <text x="200" y="463" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="34" font-style="italic" fill="#1e2b18">Murphy</text>
+  <text x="200" y="463" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="34" font-style="italic" fill="#1e2b18">King</text>
 
   <!-- Location -->
-  <text x="200" y="484" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="9" letter-spacing="3" fill="#b8902a">FAMILY · CO. CORK</text>
+  <text x="200" y="484" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="9" letter-spacing="3" fill="#b8902a">FAMILY · CO. DUBLIN</text>
 
   <!-- Footer -->
   <text x="200" y="500" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="7.5" letter-spacing="2" fill="#9a9080">CENSUS TO ART</text>

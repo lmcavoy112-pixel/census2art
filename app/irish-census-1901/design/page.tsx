@@ -114,6 +114,7 @@ import {
 } from "@/app/components/designer/Controls";
 import {
   ColourIcon,
+  ExtentIcon,
   FamilyIcon,
   FrameIcon,
   HelpIcon,
@@ -200,17 +201,17 @@ function getHouseholdFieldValue(person: HouseholdPerson, field: HouseholdField):
   return value === null || value === undefined ? "" : String(value);
 }
 
-// True if any table cell's content is taller than its box — i.e. the line-clamp-2 span
-// inside it is actively cutting text off, not just wrapping it onto a second line. The
-// clamp lives on that inner span (not the td/th itself), since -webkit-line-clamp forces
-// display:-webkit-box, which breaks display:table-cell if applied to the cell directly.
-function hasClampedCell(container: HTMLElement): boolean {
-  const spans = container.querySelectorAll(".line-clamp-2");
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
-    if (span.scrollHeight > span.clientHeight + 1) return true;
-  }
-  return false;
+/**
+ * The width the household table wants when nothing is allowed to wrap.
+ *
+ * Cells are `whitespace-nowrap`, so this is the width every row needs to stay on one
+ * line; compared against the space actually available, it is what decides how far the
+ * font has to come down. `scrollWidth` is used rather than the bounding rect because
+ * the table may already be overflowing its container when measured.
+ */
+function naturalTableWidth(container: HTMLElement): number {
+  const table = container.querySelector("table");
+  return table ? table.scrollWidth : 0;
 }
 
 // Prefers surname_search (normalised, e.g. "kernohan") since that's what's actually
@@ -500,7 +501,20 @@ function ModernDesignContent() {
 
     if (isAccentId(saved?.accent)) setAccentId(saved.accent);
 
+    // A marker placed back on the census search carries over — but only onto the
+    // Modern template, which is the only one with a map to place it on. The Historic
+    // print is Celtic line art, so a coordinate means nothing there.
+    const savedPin = saved?.pin;
+    if (savedPin && template === "modern") {
+      setPin({ lng: savedPin.lng, lat: savedPin.lat });
+      setPinSource(savedPin.source);
+    }
+
     setLoaded(true);
+    // `template` is read to gate the marker restore, but this must run once per
+    // incoming link rather than again on every template switch — flipping to Historic
+    // and back should not resurrect a marker the customer has since removed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   useEffect(() => {
@@ -603,6 +617,12 @@ function ModernDesignContent() {
   const preset = MODERN_PRESETS[level];
 
   // Switching level resets the camera and drops any option the new level doesn't offer.
+  //
+  // The marker is deliberately *not* one of those options. A pin is real work — often
+  // a geocode plus a drag onto the right roof — and the wide extents simply have no
+  // room to show it, which is a reason to hide it, not to throw it away. It is kept in
+  // state and gated at render, so stepping out to County and back to Street returns
+  // the marker exactly where it was left.
   const changeLevel = useCallback((next: ModernLevel) => {
     const nextPreset = MODERN_PRESETS[next];
     setLevel(next);
@@ -610,12 +630,6 @@ function ModernDesignContent() {
     setBasemap((current) =>
       nextPreset.basemaps.includes(current) ? current : nextPreset.basemaps[0]
     );
-    if (!nextPreset.allowsPin) {
-      pinRequestRef.current += 1;
-      setPin(null);
-      setPinSource(null);
-      setGeocodeState("");
-    }
   }, []);
 
   const selectedPolygon = useMemo(
@@ -800,24 +814,38 @@ function ModernDesignContent() {
         house_no: houseNoText,
       })
     )
-      .then((result: { lng: number; lat: number; source: "geocoder" | "centroid" } | null) => {
-        // A newer request or a manual placement happened while this was in flight.
-        if (pinRequestRef.current !== requestId) return;
-        // A centroid result is not a located property — it is the middle of the district,
-        // which we can work out ourselves — so it is reported as a miss, not a hit.
-        if (!result || result.source === "centroid") {
-          setGeocodeState("not-found");
-          const c = viewRef.current?.center ?? (fitBounds ? boxCentre(fitBounds) : null);
-          if (c) {
-            setPin({ lng: c[0], lat: c[1] });
-            setPinSource("centroid");
+      .then(
+        (
+          result:
+            | {
+                lng: number;
+                lat: number;
+                source: "geocoder" | "neighbour" | "street" | "centroid";
+              }
+            | null
+        ) => {
+          // A newer request or a manual placement happened while this was in flight.
+          if (pinRequestRef.current !== requestId) return;
+          // A centroid result is not a located property — it is the middle of the district,
+          // which we can work out ourselves — so it is reported as a miss, not a hit.
+          if (!result || result.source === "centroid") {
+            setGeocodeState("not-found");
+            const c = viewRef.current?.center ?? (fitBounds ? boxCentre(fitBounds) : null);
+            if (c) {
+              setPin({ lng: c[0], lat: c[1] });
+              setPinSource("centroid");
+            }
+            return;
           }
-          return;
+          setPin({ lng: result.lng, lat: result.lat });
+          // A neighbouring house or the street is a real place but not this house.
+          // Treating it as "centroid" here reuses the existing wording that already
+          // tells the customer to drag the marker to the right spot — the detailed
+          // wording lives on the census page, where the house number is on screen.
+          setPinSource(result.source === "geocoder" ? "geocoder" : "centroid");
+          setGeocodeState(result.source === "geocoder" ? "found" : "not-found");
         }
-        setPin({ lng: result.lng, lat: result.lat });
-        setPinSource("geocoder");
-        setGeocodeState("found");
-      })
+      )
       .catch(() => {
         if (pinRequestRef.current !== requestId) return;
         setGeocodeState("not-found");
@@ -928,7 +956,7 @@ function ModernDesignContent() {
               className="pb-1 pr-3 text-left font-medium"
               style={{ color: inkHex, opacity: 0.6 }}
             >
-              <span className="line-clamp-2">Name</span>
+              <span className="whitespace-nowrap">Name</span>
             </th>
             {householdVisibleFieldOptions.map((f) => (
               <th
@@ -936,7 +964,7 @@ function ModernDesignContent() {
                 className="pb-1 pl-3 text-left font-medium"
                 style={{ color: inkHex, opacity: 0.6 }}
               >
-                <span className="line-clamp-2">{f.label}</span>
+                <span className="whitespace-nowrap">{f.label}</span>
               </th>
             ))}
           </tr>
@@ -945,11 +973,13 @@ function ModernDesignContent() {
           {rows.map((person, index) => (
             <tr key={`${person.full_name || "person"}-${index}`}>
               <td className="py-0.5 pr-3 font-medium" style={{ color: inkHex }}>
-                <span className="line-clamp-2">{person.full_name || ""}</span>
+                <span className="whitespace-nowrap">{person.full_name || ""}</span>
               </td>
               {householdVisibleFieldOptions.map((f) => (
                 <td key={f.id} className="py-0.5 pl-3" style={{ color: inkHex, opacity: 0.85 }}>
-                  <span className="line-clamp-2">{getHouseholdFieldValue(person, f.id)}</span>
+                  <span className="whitespace-nowrap">
+                    {getHouseholdFieldValue(person, f.id)}
+                  </span>
                 </td>
               ))}
             </tr>
@@ -1047,13 +1077,24 @@ function ModernDesignContent() {
 
       const naturalAtCeiling = ceilingEl.getBoundingClientRect().height;
 
-      // line-clamp-2 on every cell guarantees no row ever visually exceeds two lines, but
-      // a font that's already forcing a cell to clamp means text is being cut off —
-      // prefer shrinking over that even when the ceiling font would fit the height budget.
-      const ceilingClamped = hasClampedCell(ceilingEl);
+      // ── Width fit ──
+      // A row must never run onto a second line, so the font is capped at whatever
+      // keeps the widest row inside the poster. Unwrapped text scales very close to
+      // linearly with font size, so the ratio of wanted width to available width
+      // gives the cap directly. This is the ceiling every branch below works from.
+      const naturalWidthAtCeiling = naturalTableWidth(ceilingEl);
+      const widthCappedFont =
+        naturalWidthAtCeiling > posterWidthPx && naturalWidthAtCeiling > 0
+          ? Math.max(
+              HOUSEHOLD_TABLE_MIN_FONT_PX,
+              Math.floor(
+                HOUSEHOLD_TABLE_CEILING_FONT_PX * (posterWidthPx / naturalWidthAtCeiling)
+              )
+            )
+          : HOUSEHOLD_TABLE_CEILING_FONT_PX;
 
-      if (budgetPx <= 0 || (naturalAtCeiling <= budgetPx && !ceilingClamped)) {
-        setHouseholdTableFontPx(HOUSEHOLD_TABLE_CEILING_FONT_PX);
+      if (budgetPx <= 0 || naturalAtCeiling <= budgetPx) {
+        setHouseholdTableFontPx(widthCappedFont);
         setHouseholdMaxRows(null);
         return;
       }
@@ -1068,8 +1109,10 @@ function ModernDesignContent() {
         const t = (budgetPx - naturalAtMin) / (naturalAtCeiling - naturalAtMin);
         const interpolatedFont = HOUSEHOLD_TABLE_MIN_FONT_PX
           + t * (HOUSEHOLD_TABLE_CEILING_FONT_PX - HOUSEHOLD_TABLE_MIN_FONT_PX);
-        const appliedFont = Math.max(HOUSEHOLD_TABLE_MIN_FONT_PX, Math.floor(interpolatedFont) - 1);
-        setHouseholdTableFontPx(appliedFont);
+        const heightFont = Math.max(HOUSEHOLD_TABLE_MIN_FONT_PX, Math.floor(interpolatedFont) - 1);
+        // Whichever constraint bites harder wins. Height at a smaller font is never
+        // worse than at a larger one, so taking the minimum satisfies both.
+        setHouseholdTableFontPx(Math.min(heightFont, widthCappedFont));
         setHouseholdMaxRows(null);
         return;
       }
@@ -1123,9 +1166,12 @@ function ModernDesignContent() {
     const posterScale = printSize.pixelWidth / posterRect.width;
 
     const currentView = viewRef.current;
-    const markerState = pin
-      ? { lng: pin.lng, lat: pin.lat, shape: markerShape, colour: markerColour, size: markerSize }
-      : null;
+    // Matches the on-screen gate: a marker the customer cannot see at this extent must
+    // not appear in the printed file either.
+    const markerState =
+      pin && preset.allowsPin
+        ? { lng: pin.lng, lat: pin.lat, shape: markerShape, colour: markerColour, size: markerSize }
+        : null;
 
     const capture = await captureMapImage({
       style: modernStyle({
@@ -1227,7 +1273,7 @@ function ModernDesignContent() {
     setBusy("order");
     setOrderError("");
     try {
-      const orderId = await withPrintReadyPoster(async (canvas) => {
+      const imageUrl = await withPrintReadyPoster(async (canvas) => {
         const blob = await canvasToPngBlob(canvas);
         const result = await submitPrintOrder({
           blob,
@@ -1285,10 +1331,44 @@ function ModernDesignContent() {
                 }),
           },
         });
-        return result.orderId;
+        return result.imageUrl;
       });
 
-      router.push(`/checkout/${orderId}`);
+      // The rendered artwork is uploaded first because Shopify needs a real URL to
+      // show on the cart line and to carry through to fulfilment — the cart holds a
+      // reference to the print, not the pixels.
+      const response = await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          sku: selectedSku.sku,
+          quantity: 1,
+          // Visible attributes are what the customer reads back on the cart line;
+          // the underscore-prefixed one is kept for fulfilment and hidden from them.
+          attributes: [
+            { key: "Surname", value: headingText || "—" },
+            ...(county ? [{ key: "County", value: county }] : []),
+            ...(dedDisplayText ? [{ key: "District", value: dedDisplayText }] : []),
+            ...(townlandText ? [{ key: "Townland", value: townlandText }] : []),
+            ...(houseNoText ? [{ key: "House", value: houseNoText }] : []),
+            { key: "Style", value: template === "historic" ? "Historic" : "Modern" },
+            { key: "Size", value: selectedSku.size_label },
+            ...(selectedSku.frame_colour
+              ? [{ key: "Frame colour", value: selectedSku.frame_colour }]
+              : []),
+            { key: "_imageUrl", value: imageUrl },
+          ],
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || payload?.error) {
+        throw new Error(payload?.error || "Could not add this print to your cart.");
+      }
+
+      router.push("/cart");
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "Could not start your order.");
     } finally {
@@ -1381,21 +1461,6 @@ function ModernDesignContent() {
               Greyed-out fields weren&apos;t part of your search. Use Back to search to add them.
             </HelpText>
 
-            <div>
-              <FieldLabel>Map extent</FieldLabel>
-              <ChoiceCards
-                columns={2}
-                ariaLabel="Map extent"
-                value={level}
-                onChange={changeLevel}
-                options={availableLevels(deepestLevel).map((l) => ({
-                  id: l,
-                  label: MODERN_PRESETS[l].label,
-                }))}
-              />
-              <HelpText>{preset.description}</HelpText>
-            </div>
-
             {level === "street" && household.length > 0 && (
               <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
                 <GroupLabel>Household record</GroupLabel>
@@ -1478,6 +1543,44 @@ function ModernDesignContent() {
               </div>
             )}
           </>
+        )}
+      </div>
+    ),
+  };
+
+  /**
+   * How much of the country the map shows. Its own section rather than a field inside
+   * Family: it decides what the map is a picture of, and it gates which later options
+   * exist at all — the marker is only offered at the closer extents, and the basemap
+   * choices change with it.
+   */
+  const mapPresetSection: DesignerSection = {
+    id: "mapPreset",
+    title: "Map preset",
+    summary: "How much of the map to show.",
+    icon: <ExtentIcon />,
+    body: (
+      <div className="space-y-5">
+        <div>
+          <FieldLabel>Map extent</FieldLabel>
+          <ChoiceCards
+            columns={2}
+            ariaLabel="Map extent"
+            value={level}
+            onChange={changeLevel}
+            options={availableLevels(deepestLevel).map((l) => ({
+              id: l,
+              label: MODERN_PRESETS[l].label,
+            }))}
+          />
+          <HelpText>{preset.description}</HelpText>
+        </div>
+
+        {!preset.allowsPin && pin && (
+          <p className="rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
+            Your house marker is kept, but it isn&apos;t shown at this extent — there is
+            no room for it on a map this wide. Choose District or Street to see it again.
+          </p>
         )}
       </div>
     ),
@@ -2053,7 +2156,15 @@ function ModernDesignContent() {
 
   const sections: DesignerSection[] =
     template === "modern"
-      ? [templateSection, familySection, colourSection, mapStyleSection, markerSection, sizeSection]
+      ? [
+          templateSection,
+          familySection,
+          mapPresetSection,
+          colourSection,
+          mapStyleSection,
+          markerSection,
+          sizeSection,
+        ]
       : [
           templateSection,
           familySection,
@@ -2129,7 +2240,7 @@ function ModernDesignContent() {
       <header className="flex flex-none items-center justify-between gap-4 border-b border-stone-200 bg-[#F5F4F1] px-6 py-4">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500">
-            Irish Ancestry Art
+            Census to Art · 1901 Irish Census
           </p>
           <h1 className="mt-0.5 text-[22px] font-light tracking-tight">
             {template === "modern" ? "Design your map print" : "Design your record print"}
@@ -2141,7 +2252,7 @@ function ModernDesignContent() {
             search, which is the only thing this page can't do for itself. */}
         <button
           type="button"
-          onClick={() => router.push("/create")}
+          onClick={() => router.push("/irish-census-1901")}
           className="rounded-md border border-stone-300 bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-stone-50"
         >
           Back to search
@@ -2233,7 +2344,7 @@ function ModernDesignContent() {
                     fitKey={fitKey}
                     fitPadding={preset.fitPadding}
                     initialZoom={preset.fallbackZoom}
-                    pin={pin}
+                    pin={preset.allowsPin ? pin : null}
                     markerShape={markerShape}
                     markerColour={markerColour}
                     markerSize={markerSize}

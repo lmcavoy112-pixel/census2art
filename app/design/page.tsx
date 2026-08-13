@@ -1436,7 +1436,7 @@ function DesignPageContent() {
   function goToModernDesign(family: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("layoutFamily", family);
-    router.push(`/design/modern?${params.toString()}`);
+    router.push(`/irish-census-1901/design?${params.toString()}`);
   }
 
   // Step 1: the row of format cards inside each style box — the same
