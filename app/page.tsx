@@ -51,7 +51,7 @@ export default function Home() {
           >
             Your family was written down.
             <span className="block">
-              We worked out{" "}
+              We figured out{" "}
               <em style={{ color: GOLD, fontStyle: "italic" }}>where</em>.
             </span>
           </h1>
@@ -60,38 +60,10 @@ export default function Home() {
             className="mt-4 text-base leading-relaxed"
             style={{ color: MUTED, fontWeight: 300 }}
           >
-            Census records are published free by national archives, but they are
-            held as text — you can find your family without ever finding the place.
-            Matching those written addresses to real locations is the work behind
-            this site.
+            Census records are published free by national archives, but they're kept
+            as text. You can find your family without ever finding the place. What we
+            do is match those written addresses to real locations.
           </p>
-
-          {/* The caveat belongs beside the claim, but slimmed to a marginal note so
-              it does not cost the search box its position on the screen. */}
-          <aside
-            className="mt-6 border-l-2 pl-4"
-            style={{ borderColor: GOLD }}
-          >
-            <p
-              style={{
-                fontFamily: "var(--font-plex-mono)",
-                fontSize: "0.6rem",
-                letterSpacing: "0.16em",
-                textTransform: "uppercase",
-                color: GOLD,
-              }}
-            >
-              On accuracy
-            </p>
-            <p
-              className="mt-1.5 text-sm leading-relaxed"
-              style={{ color: MUTED, fontWeight: 300 }}
-            >
-              Townland and district boundaries have been redrawn, renamed and merged
-              many times since, and are not the areas in use today. Placements are
-              our best match against historic boundaries, so expect the odd error.
-            </p>
-          </aside>
         </div>
       </section>
 
@@ -99,6 +71,33 @@ export default function Home() {
           One block per country. England and the rest follow this same shape, which
           is why it is a component fed by lib/censusEditions.ts rather than markup. */}
       <CensusBlock collection={IRISH_CENSUS} />
+
+      {/* ── BLOCK 3 · ON ACCURACY ──────────────────────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-6 py-10 sm:py-12">
+        <div className="max-w-2xl">
+          <p
+            style={{
+              fontFamily: "var(--font-plex-mono)",
+              fontSize: "0.68rem",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              color: GOLD,
+            }}
+          >
+            On accuracy
+          </p>
+
+          <p
+            className="mt-4 text-base leading-relaxed"
+            style={{ color: MUTED, fontWeight: 300 }}
+          >
+            Townland and district boundaries have changed a lot over the years. They've been
+            redrawn, renamed, and merged many times. So the boundaries we use today aren't the same
+            as they were in 1901. We do our best to match addresses to the old boundaries, but
+            there will be mistakes.
+          </p>
+        </div>
+      </section>
 
       <SiteFooter />
     </div>

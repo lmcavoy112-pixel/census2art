@@ -1638,14 +1638,15 @@ function DesignPageContent() {
               </div>
 
               <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="flex items-start justify-center">
-              <div className="w-full max-w-[620px]">
+              <div className="flex items-start justify-center w-full">
+              <div className="w-full max-w-[620px] px-4 lg:px-0">
               <div
                 ref={artworkPreviewRef}
                 className="relative mx-auto overflow-hidden shadow-[0_10px_50px_rgba(0,0,0,0.12)]"
                 style={{
                   aspectRatio: `${canvasAW} / ${canvasAH}`,
                   backgroundColor: pageHex,
+                  width: "100%",
                   maxHeight: "880px",
                   maxWidth: "560px",
                 }}

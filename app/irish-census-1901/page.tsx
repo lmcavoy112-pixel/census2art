@@ -1373,9 +1373,9 @@ function CensusLanding() {
           screen; the footer sits below it and is reached by scrolling. Mirrors the
           designer's split exactly — stage left, rail right — so stepping through to
           the artwork keeps the map and the poster in the same place on screen. */}
-      <div className="flex min-h-0 flex-col lg:h-[calc(100dvh-73px)] lg:flex-row">
+      <div className="flex min-h-[calc(100dvh-73px)] flex-col lg:h-[calc(100dvh-73px)] lg:flex-row">
         {/* ── Map stage ── */}
-        <section className="relative flex min-h-[460px] min-w-0 flex-1 flex-col border-b border-stone-200 lg:min-h-0 lg:border-b-0">
+        <section className="relative flex min-h-0 min-w-0 flex-1 flex-col border-b border-stone-200 lg:border-b-0">
           <div className="relative min-h-0 flex-1">
             <IrelandMap
               fill
