@@ -15,20 +15,24 @@ Add to `.env.local` (and to the host's environment for production):
 ```
 SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
 SHOPIFY_STOREFRONT_TOKEN=<Storefront API access token>
+SHOPIFY_API_SECRET=<Admin API credential secret>
 SHOPIFY_PRINT_PRODUCT_HANDLE=custom-census-print
 SHOPIFY_API_VERSION=2025-01          # optional, defaults to 2025-01
 ```
 
-The Storefront token is created in Shopify admin under
-**Settings → Apps and sales channels → Develop apps → Create an app →
-Storefront API**. It needs these scopes:
+### Tokens & secrets
 
-- `unauthenticated_read_product_listings`
-- `unauthenticated_write_checkouts`
-- `unauthenticated_read_checkouts`
+**Storefront token** (for the headless cart):
+- Created in **Settings → Apps and sales channels → Develop apps → Configuration → Storefront API**
+- Needs scopes: `unauthenticated_read_product_listings`, `unauthenticated_write_checkouts`, `unauthenticated_read_checkouts`
+- Read server-side only (`lib/shopify.ts` and `app/api/cart/route.ts`)
+- Must **not** have a `NEXT_PUBLIC_` prefix
 
-This token is read server-side only (`lib/shopify.ts` and `app/api/cart/route.ts`).
-It must **not** be given a `NEXT_PUBLIC_` prefix.
+**Admin API credential secret** (for webhook verification):
+- Found in **Settings → Apps and sales channels → Develop apps → Configuration → Admin API**
+- Shows as "API credential" and "secret key" in the credentials section
+- Used to verify webhook signatures from Shopify order events
+- Server-side only (`app/api/shopify/webhook/`)
 
 ## 2 · The print product
 
@@ -77,12 +81,41 @@ The discount box on `/cart` applies Shopify discount codes directly, so codes ar
 created in Shopify admin (**Discounts → Create discount**) and work with no code
 change here. An unknown code is reported back as invalid rather than silently ignored.
 
-## 5 · Still to decide: fulfilment
+## 5 · Fulfilment: Shopify → Prodigi
 
-Orders currently reach Prodigi through `app/api/orders` and `/checkout/[id]`. Once
-Shopify is taking payment, that path is no longer the one customers travel, and
-fulfilment has to be re-pointed at Shopify orders — either a Shopify → Prodigi app, or
-a webhook on `orders/create` that calls Prodigi with the `_imageUrl` attribute.
+When a customer pays through Shopify Checkout, the order is created in Shopify with line items
+containing all the print details as attributes. A webhook automatically sends each item to
+Prodigi for printing.
 
-Nothing in this repo does that yet. Until it is built, paid orders will sit in Shopify
-with no print being made.
+### Register the webhook
+
+In your Shopify admin:
+
+1. **Settings → Apps and sales channels → Develop apps** (use the same app as your Storefront token)
+2. **Configuration** tab → **Webhooks** → **Create webhook**
+3. Set:
+   - **Topic**: `Orders` → `Order creation`
+   - **Delivery URL**: `https://your-domain.com/api/shopify/webhook/orders-create`
+   - **API version**: Match your `SHOPIFY_API_VERSION` (default 2025-01)
+
+The app's Admin API scopes must include `read_orders` to see webhook permissions.
+
+### What happens
+
+1. Customer completes checkout in Shopify Checkout
+2. Shopify creates the order and fires the webhook
+3. `/api/shopify/webhook/orders-create` receives it, verifies the HMAC signature
+4. For each line item (one per print variant), it calls Prodigi with:
+   - The SKU, quantity, and print file URL (`_imageUrl` attribute)
+   - All design details (Surname, County, etc.) as Prodigi item attributes
+   - The customer's shipping address
+5. Prodigi order ID is logged for reference (optional: store in a webhook events table)
+
+### When something goes wrong
+
+If a line item is missing a SKU or `_imageUrl`, it's skipped and logged. To debug:
+
+1. Check the Next.js server logs for webhook processing details
+2. Verify the SKU exists and matches a Prodigi product variant
+3. Confirm the image URL in `_imageUrl` is reachable
+4. Test manually with `/api/orders` if you need direct Prodigi error details
