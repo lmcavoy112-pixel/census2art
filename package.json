@@ -14,22 +14,22 @@
     "sync:maplibre": "node -e \"const fs=require('fs');fs.mkdirSync('public/maplibre',{recursive:true});for(const f of ['maplibre-gl-worker.mjs','maplibre-gl-shared.mjs'])fs.copyFileSync('node_modules/maplibre-gl/dist/'+f,'public/maplibre/'+f);console.log('maplibre worker chunks synced')\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.1",
+    "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^17.4.2",
-    "html2canvas-pro": "^2.2.1",
+    "html2canvas-pro": "^2.3.3",
     "leaflet": "^1.9.4",
     "maplibre-contour": "^0.1.0",
     "maplibre-gl": "^6.3.0",
     "next": "16.3.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-leaflet": "^5.0.0",
     "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
-    "@types/leaflet": "^1.9.21",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
