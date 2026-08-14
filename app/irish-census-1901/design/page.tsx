@@ -100,8 +100,11 @@ import {
 import {
   SectionAccordion,
   SectionRail,
+  SectionTabsHorizontal,
   type DesignerSection,
 } from "@/app/components/designer/Accordion";
+import { useMobileMapSheet } from "@/app/components/designer/useMobileMapSheet";
+import { MapSheetHandle, MapSheetToggleButton } from "@/app/components/designer/MapSheetControls";
 import {
   ChoiceCards,
   ColourDot,
@@ -640,6 +643,10 @@ function ModernDesignContent() {
   }, [loaded, county]);
 
   const preset = MODERN_PRESETS[level];
+
+  // Mobile-only: the drag-resizable split between the poster/map stage and the control
+  // sheet below it. Unused above `lg`, where the two sit side by side at full height.
+  const mobileMapSheet = useMobileMapSheet();
 
   // Switching level resets the camera and drops any option the new level doesn't offer.
   //
@@ -2363,9 +2370,15 @@ function ModernDesignContent() {
         }}
       />
 
-      <main className="flex h-[calc(100dvh-var(--site-header-h))] min-h-0 flex-col lg:flex-row">
-        {/* ── Poster stage ── */}
-        <section className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-6 pr-24 lg:p-10 lg:pr-28">
+      <main
+        ref={mobileMapSheet.containerRef}
+        style={mobileMapSheet.containerStyle}
+        className="relative flex h-[calc(100dvh-var(--site-header-h))] min-h-0 flex-col lg:flex-row"
+      >
+        {/* ── Poster stage ──
+            Height is drag-resizable below lg via useMobileMapSheet; from lg it's back
+            to a fixed-width rail beside a full-height stage. */}
+        <section className="relative flex h-[var(--mobile-map-pct)] min-h-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28">
           {/* Sized by whichever runs out first — the stage's width or its height — so a
               tall portrait and a square both sit fully in view without the stage
               scrolling.
@@ -2576,11 +2589,36 @@ function ModernDesignContent() {
           )}
         </section>
 
-        {/* ── Control rail ── */}
-        <aside className="flex min-h-0 w-full flex-none border-t border-stone-200 bg-white lg:w-[560px] lg:border-l lg:border-t-0">
-          <SectionRail sections={sections} openId={activeSection} onSelect={setOpenSection} />
+        {/* Mounted on `main`, not inside the poster stage — that section is
+            overflow-auto (the poster/map can exceed it), which would clip this if it
+            lived there. Positioned via the same --mobile-map-pct var the stage's own
+            height comes from, so it tracks the boundary exactly as it's dragged. */}
+        <MapSheetToggleButton
+          isEnlarged={mobileMapSheet.isEnlarged}
+          onClick={mobileMapSheet.toggle}
+          enlargeLabel="Enlarge map"
+          collapseLabel="Expand menu"
+          className="lg:hidden"
+          style={{ top: `var(${mobileMapSheet.cssVar})` }}
+        />
 
-          <div className="flex min-w-0 flex-1 flex-col">
+        {/* ── Control rail ── */}
+        <aside className="flex min-h-0 w-full flex-1 flex-col border-t border-stone-200 bg-white lg:w-[560px] lg:flex-none lg:flex-row lg:border-t-0 lg:border-l">
+          <MapSheetHandle {...mobileMapSheet.handleProps} className="lg:hidden" />
+          <SectionTabsHorizontal
+            sections={sections}
+            openId={activeSection}
+            onSelect={setOpenSection}
+            className="lg:hidden"
+          />
+          <SectionRail
+            sections={sections}
+            openId={activeSection}
+            onSelect={setOpenSection}
+            className="hidden lg:flex"
+          />
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
               {mapError && (
                 <p className="m-5 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-900">

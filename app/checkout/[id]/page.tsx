@@ -342,7 +342,7 @@ export default function CheckoutPage() {
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader showExamplesOnMobile />
       {content}
     </>
   );

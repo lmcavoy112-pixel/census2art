@@ -20,7 +20,7 @@ export default function Home() {
         minHeight: "100vh",
       }}
     >
-      <SiteHeader />
+      <SiteHeader showExamplesOnMobile />
 
       {/* ── BLOCK 1 · WHAT THIS IS ───────────────────────────────────────────
           Deliberately short. The search box in the block below is the thing people

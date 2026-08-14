@@ -62,4 +62,36 @@ export const IRISH_CENSUS: CensusCollection = {
   ],
 };
 
-export const CENSUS_COLLECTIONS: CensusCollection[] = [IRISH_CENSUS];
+// Scotland and England have no loaded editions yet — each is a single placeholder
+// entry so the collection still satisfies CensusCollection, but with nothing
+// `available` it renders as a bare "coming soon" wherever collections are listed
+// (the header's Examples menu) rather than a year selector with nothing to select.
+export const SCOTLAND_CENSUS: CensusCollection = {
+  label: "Scotland",
+  editions: [
+    {
+      year: "1901",
+      available: false,
+      blurb: "The Scottish returns are not loaded yet.",
+      recentPurchases: [],
+    },
+  ],
+};
+
+export const ENGLAND_CENSUS: CensusCollection = {
+  label: "England",
+  editions: [
+    {
+      year: "1901",
+      available: false,
+      blurb: "The England & Wales returns are not loaded yet.",
+      recentPurchases: [],
+    },
+  ],
+};
+
+export const CENSUS_COLLECTIONS: CensusCollection[] = [
+  IRISH_CENSUS,
+  SCOTLAND_CENSUS,
+  ENGLAND_CENSUS,
+];

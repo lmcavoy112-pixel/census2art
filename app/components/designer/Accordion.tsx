@@ -26,15 +26,17 @@ export function SectionRail({
   sections,
   openId,
   onSelect,
+  className = "",
 }: {
   sections: DesignerSection[];
   openId: string;
   onSelect: (id: string) => void;
+  className?: string;
 }) {
   return (
     <nav
       aria-label="Design sections"
-      className="flex w-[74px] flex-none flex-col border-r border-stone-200 bg-white"
+      className={`flex w-[74px] flex-none flex-col border-r border-stone-200 bg-white ${className}`}
     >
       {sections.map((section) => {
         const active = section.id === openId;
@@ -50,6 +52,51 @@ export function SectionRail({
           >
             <span aria-hidden="true">{section.icon}</span>
             <span className="text-center text-[10.5px] leading-tight">{section.title}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * Same sections, same selection model as SectionRail, laid out as a horizontally
+ * scrollable strip instead of a vertical column — the mobile counterpart, used where
+ * screen width is the resource to spend rather than height. Scrolls sideways on its own
+ * (no wrapping) when there are more sections than fit, with the scrollbar itself
+ * hidden — the row scrolling is discoverable by touch, a visible scrollbar under a
+ * one-line strip like this reads as clutter rather than affordance.
+ */
+export function SectionTabsHorizontal({
+  sections,
+  openId,
+  onSelect,
+  className = "",
+}: {
+  sections: DesignerSection[];
+  openId: string;
+  onSelect: (id: string) => void;
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="Design sections"
+      className={`flex shrink-0 gap-0.5 overflow-x-auto border-b border-stone-200 bg-white px-2 py-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}
+    >
+      {sections.map((section) => {
+        const active = section.id === openId;
+        return (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => onSelect(section.id)}
+            aria-current={active ? "step" : undefined}
+            className={`flex shrink-0 flex-col items-center gap-1 rounded-lg px-3 py-1.5 transition-colors ${
+              active ? "bg-stone-100 text-stone-900" : "text-stone-500"
+            }`}
+          >
+            <span aria-hidden="true">{section.icon}</span>
+            <span className="whitespace-nowrap text-[10.5px] leading-tight">{section.title}</span>
           </button>
         );
       })}
@@ -75,7 +122,7 @@ export function SectionAccordion({
   }, [openId]);
 
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-h-0 min-w-0 flex-1">
       {sections.map((section, index) => {
         const open = section.id === openId;
         return (

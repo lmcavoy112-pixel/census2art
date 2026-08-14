@@ -45,6 +45,7 @@ import { siteFontVars } from "../fonts";
 import {
   SectionAccordion,
   SectionRail,
+  SectionTabsHorizontal,
   type DesignerSection,
 } from "../components/designer/Accordion";
 import {
@@ -54,6 +55,8 @@ import {
   SurnameIcon,
   TownlandIcon,
 } from "../components/designer/icons";
+import { useMobileMapSheet } from "../components/designer/useMobileMapSheet";
+import { MapSheetHandle, MapSheetToggleButton } from "../components/designer/MapSheetControls";
 
 const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
   ssr: false,
@@ -170,6 +173,10 @@ function CensusLanding() {
   // a second district while an auto-chain from the first is still awaiting its townland
   // fetch could apply that first chain's result on top of the second click.
   const selectionRef = useRef(0);
+
+  // Mobile-only: the drag-resizable split between the map and the picker rail below it.
+  // See useMobileMapSheet — unused above `lg`, where the two sit side by side instead.
+  const mobileMapSheet = useMobileMapSheet();
 
   // Place search: where the camera should go next, and where it is now (which biases
   // results toward whatever is already on screen).
@@ -1259,15 +1266,19 @@ function CensusLanding() {
       {/* The workspace fills what is left of the viewport, so the map gets the whole
           screen; the footer sits below it and is reached by scrolling. Mirrors the
           designer's split exactly — stage left, rail right — so stepping through to
-          the artwork keeps the map and the poster in the same place on screen. */}
-      <div className="flex min-h-[calc(100dvh-var(--site-header-h))] flex-col lg:h-[calc(100dvh-var(--site-header-h))] lg:flex-row">
+          the artwork keeps the map and the poster in the same place on screen.
+          Below lg it's a fixed-height column instead: a map stage sized by
+          useMobileMapSheet, and the picker rail taking the rest, with only the rail's
+          own content scrolling internally — see the drag handle and toggle button
+          below for how the split between them is controlled. */}
+      <div
+        ref={mobileMapSheet.containerRef}
+        style={mobileMapSheet.containerStyle}
+        className="relative flex h-[calc(100dvh-var(--site-header-h))] flex-col lg:flex-row"
+      >
         {/* ── Map stage ──
-            On a phone the rail below is tall enough to eat the whole column, so the
-            map is given an explicit share of the viewport rather than being left to
-            grow into space that isn't there. It pins under the site header while the
-            rail scrolls past, so the polygons stay in view as the filters are worked.
             From lg the split goes back to stage-left / rail-right at full height. */}
-        <section className="sticky top-[var(--site-header-h)] z-20 flex h-[50dvh] min-w-0 shrink-0 flex-col border-b border-stone-200 bg-[#F5F4F1] lg:static lg:h-auto lg:min-h-0 lg:flex-1 lg:border-b-0">
+        <section className="relative flex min-h-0 min-w-0 h-[var(--mobile-map-pct)] shrink-0 flex-col border-b border-stone-200 bg-[#F5F4F1] lg:h-auto lg:flex-1 lg:border-b-0">
           <div className="relative min-h-0 flex-1">
             <IrelandMap
               fill
@@ -1303,9 +1314,13 @@ function CensusLanding() {
             />
 
             {/* Floating controls — the map's own title bar and place search. Offset to
-                clear Leaflet's zoom buttons, which own the top-left corner. */}
-            <div className="absolute left-16 top-4 z-[500] space-y-2">
-              <div className="pointer-events-none rounded-md bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+                clear Leaflet's zoom buttons, which own the top-left corner. The title
+                card is dropped below sm — the map stage is a fraction of the screen
+                there, the rail immediately below already says what's selected, and
+                "Where the X family lived" is redundant weight on a card that's
+                otherwise just a place search box. */}
+            <div className="absolute left-14 top-2 z-[500] space-y-1.5 sm:left-16 sm:top-4 sm:space-y-2">
+              <div className="hidden rounded-md bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm sm:block pointer-events-none">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
                   1901 Census
                 </p>
@@ -1332,9 +1347,9 @@ function CensusLanding() {
             </div>
 
             {(loadingMessage || error) && (
-              <div className="pointer-events-none absolute left-1/2 top-4 z-[500] -translate-x-1/2">
+              <div className="pointer-events-none absolute left-1/2 top-2 z-[500] -translate-x-1/2 sm:top-4">
                 <p
-                  className={`rounded-md px-3 py-2 text-[13px] shadow-sm ${
+                  className={`rounded-md px-2.5 py-1.5 text-[12px] shadow-sm sm:px-3 sm:py-2 sm:text-[13px] ${
                     error
                       ? "bg-red-50 text-red-800"
                       : "bg-white/90 text-stone-700 backdrop-blur-sm"
@@ -1346,23 +1361,43 @@ function CensusLanding() {
             )}
 
             {mapPolygons.length > 0 && (
-              <p className="pointer-events-none absolute bottom-4 right-4 z-[500] rounded-md bg-white/90 px-2.5 py-1.5 text-[12px] text-stone-600 shadow-sm backdrop-blur-sm">
+              <p className="pointer-events-none absolute bottom-2 right-2 z-[500] rounded-md bg-white/90 px-2 py-1 text-[11px] text-stone-600 shadow-sm backdrop-blur-sm sm:bottom-4 sm:right-4 sm:px-2.5 sm:py-1.5 sm:text-[12px]">
                 {mapPolygons.length} locations
               </p>
             )}
           </div>
-
         </section>
 
+        {/* Mounted on the outer flex column, not inside the map section — matches the
+            designer's placement (see its own comment) so both pages share the same
+            --mobile-map-pct/top positioning rather than two different transform
+            strategies that are easy to get subtly wrong against each other. */}
+        <MapSheetToggleButton
+          isEnlarged={mobileMapSheet.isEnlarged}
+          onClick={mobileMapSheet.toggle}
+          enlargeLabel="Enlarge map"
+          collapseLabel="Expand menu"
+          className="lg:hidden"
+          style={{ top: `var(${mobileMapSheet.cssVar})` }}
+        />
+
         {/* ── Selection rail ── */}
-        <aside className="flex min-h-0 w-full flex-none bg-white lg:w-[560px] lg:border-l lg:border-stone-200">
+        <aside className="flex min-h-0 w-full flex-1 flex-col bg-white lg:flex-none lg:flex-row lg:w-[560px] lg:border-l lg:border-stone-200">
+          <MapSheetHandle {...mobileMapSheet.handleProps} className="lg:hidden" />
+          <SectionTabsHorizontal
+            sections={sections}
+            openId={openSection}
+            onSelect={(id) => setOpenSection(id as SectionId)}
+            className="lg:hidden"
+          />
           <SectionRail
             sections={sections}
             openId={openSection}
             onSelect={(id) => setOpenSection(id as SectionId)}
+            className="hidden lg:flex"
           />
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
               <SectionAccordion
                 sections={sections}

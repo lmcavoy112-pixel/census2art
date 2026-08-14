@@ -332,6 +332,21 @@ function MapSizeFix() {
     };
   }, [map]);
 
+  // Beyond the initial-load timers above, the container can resize at any point —
+  // the mobile drag-to-resize sheet (useMobileMapSheet) changes its height by writing
+  // a CSS custom property straight to the DOM, deliberately bypassing React so the
+  // drag stays smooth, which means Leaflet is never told about it any other way.
+  // Without this, dragging the map taller just reveals more of the same already-
+  // rendered tiles as flat grey rather than requesting the newly-visible area.
+  useEffect(() => {
+    const container = map.getContainer();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+
   return null;
 }
 
