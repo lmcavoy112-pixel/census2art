@@ -7,15 +7,37 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   buildUrl,
   fetchJson,
-  normaliseDedRows,
   normaliseSurnameSearch,
-  pickNumber,
   pickString,
   readArray,
   smartSurnameDisplay,
-  type DedRow,
 } from "@/lib/design/fetching";
 import { polygonCentroid } from "@/lib/geoCentroid";
+import {
+  groupHouses,
+  type HouseGroup,
+  type PersonMatch,
+} from "@/lib/census/houseGroups";
+import {
+  fetchCounties,
+  fetchCountyPolygons,
+  fetchDeds,
+  fetchHousehold,
+  fetchPersonMatches,
+  fetchSurnamePolygons,
+  fetchTownlands,
+  normaliseCountyRows,
+  type CountyCount,
+  type DedCount,
+  type HouseholdPerson,
+  type TownlandCount,
+} from "@/lib/census/queries";
+import {
+  pruneDesignSnapshots,
+  readDesignSnapshot,
+  writeDesignSnapshot,
+  type DesignSnapshot,
+} from "@/lib/design/snapshot";
 import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
 import MapPlaceSearch from "../components/home/MapPlaceSearch";
@@ -36,197 +58,6 @@ import {
 const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
   ssr: false,
 });
-
-type CountyCount = {
-  county_display: string;
-  person_count: number;
-};
-
-type DedCount = DedRow;
-
-type TownlandCount = {
-  townland_display: string;
-  person_count: number;
-};
-
-type PersonMatch = {
-  full_name?: string;
-  forename_display?: string;
-  surname_display?: string;
-  surname_search?: string;
-  house_uid?: string;
-  house_no?: string;
-  age?: string;
-  relation_to_head?: string;
-  occupation?: string;
-};
-
-type HouseholdPerson = {
-  full_name?: string;
-  forename_display?: string;
-  surname_display?: string;
-  surname_search?: string;
-  house_uid?: string;
-  age?: string;
-  sex?: string;
-  relation_to_head?: string;
-  occupation?: string;
-  birthplace?: string;
-  education?: string;
-  religion?: string;
-  marriage_status?: string;
-  form_a_url?: string;
-};
-
-type HouseGroup = {
-  house_uid: string;
-  house_no: string;
-  people: PersonMatch[];
-};
-
-function ageNumber(age: string | number | null | undefined) {
-  if (age === null || age === undefined) {
-    return -1;
-  }
-
-  const match = String(age).match(/\d+/);
-
-  if (!match) {
-    return -1;
-  }
-
-  const parsed = Number(match[0]);
-
-  return Number.isFinite(parsed) ? parsed : -1;
-}
-
-function houseSortNumber(houseNo: string | null | undefined) {
-  if (!houseNo) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const digits = String(houseNo).replace(/\D/g, "");
-
-  if (!digits) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const parsed = Number(digits);
-
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-}
-
-function normaliseCountyRows(rows: any[]): CountyCount[] {
-  return rows
-    .map((item) => {
-      return {
-        county_display: pickString(item, [
-          "county_display",
-          "county",
-          "countyDisplay",
-          "name",
-        ]),
-        person_count: pickNumber(item, [
-          "person_count",
-          "count",
-          "total_count",
-          "total",
-        ]),
-      };
-    })
-    .filter((item) => item.county_display)
-    .sort((a, b) => b.person_count - a.person_count);
-}
-
-function normaliseTownlandRows(rows: any[]): TownlandCount[] {
-  return rows
-    .map((item) => {
-      return {
-        townland_display: pickString(item, [
-          "townland_display",
-          "townland",
-          "townlandDisplay",
-          "name",
-        ]),
-        person_count: pickNumber(item, [
-          "person_count",
-          "count",
-          "total_count",
-          "total",
-        ]),
-      };
-    })
-    .filter((item) => item.townland_display)
-    .sort((a, b) => b.person_count - a.person_count);
-}
-
-function normalisePersonRows(rows: any[]): PersonMatch[] {
-  return rows.map((item) => {
-    return {
-      full_name: pickString(item, ["full_name", "fullName", "name"]),
-      forename_display: pickString(item, [
-        "forename_display",
-        "forename",
-        "first_name",
-        "firstName",
-      ]),
-      surname_display: pickString(item, [
-        "surname_display",
-        "surname",
-        "surnameDisplay",
-      ]),
-      surname_search: pickString(item, ["surname_search", "surnameSearch"]),
-      house_uid: pickString(item, ["house_uid", "houseUid"]),
-      house_no: pickString(item, ["house_no", "houseNo"]),
-      age: pickString(item, ["age"]),
-      relation_to_head: pickString(item, [
-        "relation_to_head",
-        "relation",
-        "relationToHead",
-      ]),
-      occupation: pickString(item, ["occupation"]),
-    };
-  });
-}
-
-function normaliseHouseholdRows(rows: any[]): HouseholdPerson[] {
-  return rows
-    .map((item) => {
-      return {
-        full_name: pickString(item, ["full_name", "fullName", "name"]),
-        forename_display: pickString(item, [
-          "forename_display",
-          "forename",
-          "first_name",
-          "firstName",
-        ]),
-        surname_display: pickString(item, [
-          "surname_display",
-          "surname",
-          "surnameDisplay",
-        ]),
-        surname_search: pickString(item, ["surname_search", "surnameSearch"]),
-        house_uid: pickString(item, ["house_uid", "houseUid"]),
-        age: pickString(item, ["age"]),
-        sex: pickString(item, ["sex"]),
-        relation_to_head: pickString(item, [
-          "relation_to_head",
-          "relation",
-          "relationToHead",
-        ]),
-        occupation: pickString(item, ["occupation"]),
-        birthplace: pickString(item, ["birthplace"]),
-        education: pickString(item, ["education"]),
-        religion: pickString(item, ["religion"]),
-        marriage_status: pickString(item, [
-          "marriage_status",
-          "marriageStatus",
-        ]),
-        form_a_url: pickString(item, ["form_a_url", "formAUrl", "form_url"]),
-      };
-    })
-    .sort((a, b) => ageNumber(b.age) - ageNumber(a.age));
-}
 
 /** The narrowing steps, in the order the records themselves nest. */
 type SectionId = "surname" | "county" | "ded" | "townland" | "house";
@@ -251,6 +82,16 @@ function CensusLanding() {
   // never flashes before the results replace it.
   const deepLinkSurname = searchParams.get("surname")?.trim() ?? "";
 
+  // The rest of a previous selection, carried back from the designer's "Back to
+  // search" — see restoreSelection below. Read once at first render alongside the
+  // surname; the mount-once restore effect decides which of these (if any) to act on.
+  const deepLinkDesignKey = searchParams.get("designKey")?.trim() ?? "";
+  const deepLinkCounty = searchParams.get("county")?.trim() ?? "";
+  const deepLinkDedId = searchParams.get("dedId")?.trim() ?? "";
+  const deepLinkTownland = searchParams.get("townland")?.trim() ?? "";
+  const deepLinkHouseNo = searchParams.get("houseNo")?.trim() ?? "";
+  const deepLinkHouseUid = searchParams.get("houseUid")?.trim() ?? "";
+
   const [surname, setSurname] = useState(
     deepLinkSurname ? smartSurnameDisplay(deepLinkSurname) : ""
   );
@@ -268,6 +109,11 @@ function CensusLanding() {
   const [dropdownPortalStyle, setDropdownPortalStyle] = useState<{
     top: number; left: number; width: number;
   } | null>(null);
+
+  // The localStorage key this selection is (or will be) saved under. Reused rather than
+  // re-minted on every "Design this print" — a customer bouncing between the search and
+  // the designer a few times should leave one snapshot behind, not one per click.
+  const [designKey, setDesignKey] = useState(deepLinkDesignKey);
 
   const [counties, setCounties] = useState<CountyCount[]>([]);
   const [selectedCounty, setSelectedCounty] = useState("");
@@ -318,6 +164,13 @@ function CensusLanding() {
   const [pinFocusToken, setPinFocusToken] = useState(0);
   const pinRequestRef = useRef(0);
 
+  // Bumped on every entry into handleSelectDed/handleSelectTownland, so a chained
+  // auto-select (single townland, single house) can tell whether it is still the most
+  // recent selection in flight before acting on what it fetched. Without this, clicking
+  // a second district while an auto-chain from the first is still awaiting its townland
+  // fetch could apply that first chain's result on top of the second click.
+  const selectionRef = useRef(0);
+
   // Place search: where the camera should go next, and where it is now (which biases
   // results toward whatever is already on screen).
   const [flyTo, setFlyTo] = useState<{
@@ -346,45 +199,7 @@ function CensusLanding() {
     (selectedPolygon?.polygon_id || selectedDed?.polygon_id) && selectedCounty
   );
 
-  const houseGroups = useMemo(() => {
-    const groups = new Map<string, HouseGroup>();
-
-    personMatches.forEach((person) => {
-      const houseUid = person.house_uid || "";
-      const houseNo = person.house_no || "";
-      const key = houseUid || houseNo || "Unknown";
-
-      if (!groups.has(key)) {
-        groups.set(key, {
-          house_uid: houseUid,
-          house_no: houseNo,
-          people: [],
-        });
-      }
-
-      groups.get(key)?.people.push(person);
-    });
-
-    return Array.from(groups.values())
-      .map((group) => {
-        return {
-          ...group,
-          people: [...group.people].sort((a, b) => {
-            return ageNumber(b.age) - ageNumber(a.age);
-          }),
-        };
-      })
-      .sort((a, b) => {
-        const houseSortA = houseSortNumber(a.house_no);
-        const houseSortB = houseSortNumber(b.house_no);
-
-        if (houseSortA !== houseSortB) {
-          return houseSortA - houseSortB;
-        }
-
-        return String(a.house_no).localeCompare(String(b.house_no));
-      });
-  }, [personMatches]);
+  const houseGroups = useMemo(() => groupHouses(personMatches), [personMatches]);
 
   const formAUrls = useMemo(() => {
     const urls = household
@@ -429,11 +244,41 @@ function CensusLanding() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [formAEnlarged]);
 
-  // Loads the records for a deep-linked surname. Runs once, for whatever surname the
-  // page was opened with — later typing goes through runSurnameSearch as normal.
+  // Loads whatever the page was opened with. Runs once — later interaction goes
+  // through runSurnameSearch/the select handlers as normal. Two shapes of incoming
+  // link: a bare surname (search ads, a shared "look what I found" link), or the fuller
+  // trail the designer's "Back to search" carries — which restores the whole cascade
+  // rather than just re-running the surname search and making the customer re-pick
+  // county/district/townland/house by hand. The two are mutually exclusive: a link with
+  // a county or district on it always has a surname too, so there is nothing for
+  // runSurnameSearch to add once restoreSelection has taken it from there.
   useEffect(() => {
-    if (!deepLinkSurname) return;
-    void runSurnameSearch(deepLinkSurname);
+    pruneDesignSnapshots(deepLinkDesignKey || undefined);
+
+    if (!deepLinkCounty && !deepLinkDedId) {
+      if (deepLinkSurname) void runSurnameSearch(deepLinkSurname);
+      return;
+    }
+
+    const saved = readDesignSnapshot(deepLinkDesignKey);
+
+    // Restored without bumping pinFocusToken — PinFocus only flies the camera to the
+    // pin when that token changes, so the map stays framed on whatever FitBounds gave
+    // it (the district) rather than yanking straight to a close-in marker view.
+    const savedPin = saved?.pin;
+    if (savedPin) {
+      setPin({ lng: savedPin.lng, lat: savedPin.lat });
+      setPinSource(savedPin.source);
+    }
+
+    void restoreSelection({
+      county: deepLinkCounty,
+      dedId: deepLinkDedId,
+      townland: deepLinkTownland,
+      houseNo: deepLinkHouseNo,
+      houseUid: deepLinkHouseUid,
+      household: saved?.household,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -499,70 +344,18 @@ function CensusLanding() {
   }
 
   async function loadSurnamePolygons(searchValue: string) {
-    const payload = await fetchJson(
-      buildUrl("/api/surname-polygons", {
-        surname: searchValue,
-        surname_search: searchValue,
-        surnameSearch: searchValue,
-        q: searchValue,
-        query: searchValue,
-        search: searchValue,
-        name: searchValue,
-      })
-    );
-
-    const rows = normaliseDedRows(
-      readArray(payload, ["polygons", "deds", "results", "data"])
-    ).filter((item) => item.geojson);
-
+    const rows = await fetchSurnamePolygons(searchValue);
     setMapPolygons(rows);
   }
 
   async function loadCountyPolygons(searchValue: string, countyName: string) {
-    const payload = await fetchJson(
-      buildUrl("/api/county-polygons", {
-        surname: searchValue,
-        surname_search: searchValue,
-        surnameSearch: searchValue,
-        q: searchValue,
-        query: searchValue,
-        search: searchValue,
-        name: searchValue,
-        county: countyName,
-        county_display: countyName,
-        countyDisplay: countyName,
-      })
-    );
-
-    const rows = normaliseDedRows(
-      readArray(payload, ["polygons", "deds", "results", "data"])
-    ).filter((item) => item.geojson);
-
+    const rows = await fetchCountyPolygons(searchValue, countyName);
     setMapPolygons(rows);
   }
 
   async function loadDedsForCounty(searchValue: string, countyName: string) {
-    const payload = await fetchJson(
-      buildUrl("/api/deds", {
-        surname: searchValue,
-        surname_search: searchValue,
-        surnameSearch: searchValue,
-        q: searchValue,
-        query: searchValue,
-        search: searchValue,
-        name: searchValue,
-        county: countyName,
-        county_display: countyName,
-        countyDisplay: countyName,
-      })
-    );
-
-    const rows = normaliseDedRows(
-      readArray(payload, ["deds", "results", "data"])
-    );
-
+    const rows = await fetchDeds(searchValue, countyName);
     setDeds(rows);
-
     return rows;
   }
 
@@ -699,30 +492,18 @@ function CensusLanding() {
   }
 
   async function handleSelectDed(ded: DedCount) {
+    const selectionToken = ++selectionRef.current;
+
     setSelectedDed(ded);
     resetBelowDed();
     setError("");
     setOpenSection("townland");
     setLoadingMessage("Loading townlands...");
 
-    try {
-      const payload = await fetchJson(
-        buildUrl("/api/townlands", {
-          surname: activeSurnameSearch,
-          surname_search: activeSurnameSearch,
-          surnameSearch: activeSurnameSearch,
-          q: activeSurnameSearch,
-          query: activeSurnameSearch,
-          search: activeSurnameSearch,
-          name: activeSurnameSearch,
-          ded_id: ded.ded_id,
-          dedId: ded.ded_id,
-        })
-      );
+    let rows: TownlandCount[] = [];
 
-      const rows = normaliseTownlandRows(
-        readArray(payload, ["townlands", "results", "data"])
-      );
+    try {
+      rows = await fetchTownlands(activeSurnameSearch, ded.ded_id);
 
       setTownlands(rows);
 
@@ -734,6 +515,14 @@ function CensusLanding() {
       setError("Could not load townlands for this DED.");
     } finally {
       setLoadingMessage("");
+    }
+
+    // One townland is no choice at all — pick it and move straight to houses, rather
+    // than showing the customer a list of one. dedOverride is required here: setSelectedDed
+    // above hasn't landed in state yet on this same tick, so handleSelectTownland reading
+    // `selectedDed` itself would still see the *previous* district.
+    if (rows.length === 1 && selectionToken === selectionRef.current) {
+      await handleSelectTownland(rows[0], ded);
     }
   }
 
@@ -768,39 +557,30 @@ function CensusLanding() {
     setHousehold([]);
   }
 
-  async function handleSelectTownland(townland: TownlandCount) {
+  /**
+   * `dedOverride` lets a caller that just selected a district (and hasn't seen that
+   * land in state yet) pass it explicitly rather than this function reading the stale
+   * `selectedDed` closure — see the comment in handleSelectDed's auto-chain.
+   */
+  async function handleSelectTownland(townland: TownlandCount, dedOverride?: DedCount) {
+    const selectionToken = ++selectionRef.current;
+    const ded = dedOverride ?? selectedDed;
+
     setSelectedTownland(townland);
     resetBelowTownland();
     setError("");
     setOpenSection("house");
 
-    if (!selectedDed) {
+    if (!ded) {
       return;
     }
 
     setLoadingMessage("Loading matching houses...");
 
-    try {
-      const payload = await fetchJson(
-        buildUrl("/api/person-matches", {
-          surname: activeSurnameSearch,
-          surname_search: activeSurnameSearch,
-          surnameSearch: activeSurnameSearch,
-          q: activeSurnameSearch,
-          query: activeSurnameSearch,
-          search: activeSurnameSearch,
-          name: activeSurnameSearch,
-          ded_id: selectedDed.ded_id,
-          dedId: selectedDed.ded_id,
-          townland: townland.townland_display,
-          townland_display: townland.townland_display,
-          townlandDisplay: townland.townland_display,
-        })
-      );
+    let rows: PersonMatch[] = [];
 
-      const rows = normalisePersonRows(
-        readArray(payload, ["people", "matches", "results", "data"])
-      );
+    try {
+      rows = await fetchPersonMatches(activeSurnameSearch, ded.ded_id, townland.townland_display);
 
       setPersonMatches(rows);
 
@@ -818,6 +598,17 @@ function CensusLanding() {
       setError("Could not load matching people for this townland.");
     } finally {
       setLoadingMessage("");
+    }
+
+    // Same idea as the townland auto-select above: one house is no real choice, so pick
+    // it — but only when it has a real house_uid. A group without one is exactly the
+    // case handleSelectHouse itself rejects with an error, and auto-driving the customer
+    // straight into that error would be worse than just showing them the list of one.
+    if (selectionToken === selectionRef.current) {
+      const groups = groupHouses(rows);
+      if (groups.length === 1 && groups[0].house_uid) {
+        await handleSelectHouse(groups[0]);
+      }
     }
   }
 
@@ -837,16 +628,7 @@ function CensusLanding() {
     setLoadingMessage("Loading household...");
 
     try {
-      const payload = await fetchJson(
-        buildUrl("/api/household", {
-          house_uid: group.house_uid,
-          houseUid: group.house_uid,
-        })
-      );
-
-      const rows = normaliseHouseholdRows(
-        readArray(payload, ["household", "people", "results", "data"])
-      );
+      const rows = await fetchHousehold(group.house_uid);
 
       setHousehold(rows);
 
@@ -871,6 +653,108 @@ function CensusLanding() {
       console.error(err);
       setError("Could not load this household.");
     } finally {
+      setLoadingMessage("");
+    }
+  }
+
+  /**
+   * Replays a previous selection — surname already seeded at first render, so this
+   * picks up from county — using the pure fetchers in lib/census/queries rather than
+   * chaining the click handlers above. The handlers each call resetBelow-whatever and
+   * setOpenSection as they go, so chaining them would walk the rail visibly through
+   * every step; this writes `openSection` exactly once, at the end, wherever the replay
+   * actually got to.
+   *
+   * Used by the mount-once effect below, when the designer's "Back to search" link
+   * carried more than just a surname.
+   */
+  async function restoreSelection(target: {
+    county: string;
+    dedId: string;
+    townland: string;
+    houseNo: string;
+    houseUid: string;
+    household?: HouseholdPerson[];
+  }) {
+    setLoadingMessage("Restoring your search...");
+    setError("");
+
+    function finishAt(section: SectionId) {
+      setOpenSection(section);
+      setLoadingMessage("");
+    }
+
+    try {
+      const countyRows = await fetchCounties(activeSurnameSearch);
+      setCounties(countyRows);
+
+      if (!target.county) {
+        finishAt("county");
+        return;
+      }
+
+      // Deliberately fetchCountyPolygons rather than fetchSurnamePolygons — the map
+      // should land on the county being restored to, not fly nationwide first.
+      const [dedRows, polyRows] = await Promise.all([
+        fetchDeds(activeSurnameSearch, target.county),
+        fetchCountyPolygons(activeSurnameSearch, target.county),
+      ]);
+      setSelectedCounty(target.county);
+      setDeds(dedRows);
+      setMapPolygons(polyRows);
+
+      const ded = dedRows.find((item) => item.ded_id === target.dedId) ?? null;
+      if (!ded) {
+        finishAt("ded");
+        return;
+      }
+      setSelectedDed(ded);
+
+      const townlandRows = await fetchTownlands(activeSurnameSearch, ded.ded_id);
+      setTownlands(townlandRows);
+
+      const townland =
+        townlandRows.find((item) => item.townland_display === target.townland) ?? null;
+      if (!townland) {
+        finishAt("townland");
+        return;
+      }
+      setSelectedTownland(townland);
+
+      const matches = await fetchPersonMatches(
+        activeSurnameSearch,
+        ded.ded_id,
+        townland.townland_display
+      );
+      setPersonMatches(matches);
+
+      const groups = groupHouses(matches);
+      // Prefer the house_uid match — it's the real key. house_no is the fallback for an
+      // older link/snapshot minted before houseUid was carried on the query string.
+      const group = target.houseUid
+        ? groups.find((item) => item.house_uid === target.houseUid) ??
+          groups.find((item) => item.house_no === target.houseNo)
+        : groups.find((item) => item.house_no === target.houseNo);
+      if (!group) {
+        finishAt("house");
+        return;
+      }
+      setSelectedHouse({ house_uid: group.house_uid, house_no: group.house_no });
+
+      // The snapshot already carried the household if it saved successfully — only hit
+      // the API again if it didn't (pruned, quota, private-mode).
+      const householdRows =
+        target.household && target.household.length > 0
+          ? target.household
+          : group.house_uid
+            ? await fetchHousehold(group.house_uid)
+            : [];
+      setHousehold(householdRows);
+
+      finishAt("house");
+    } catch (err) {
+      console.error(err);
+      setError("Could not fully restore your last search — carry on from the step that loaded.");
       setLoadingMessage("");
     }
   }
@@ -975,7 +859,7 @@ function CensusLanding() {
   function handleContinueToDesign() {
     const formAUrl = formAUrls[0] || "";
 
-    const snapshot = {
+    const snapshot: DesignSnapshot = {
       surnameDisplay: surnameTitle,
       surnameSearch: activeSurnameSearch,
       county: selectedCounty,
@@ -991,13 +875,15 @@ function CensusLanding() {
       pin: pin ? { ...pin, source: pinSource ?? "manual" } : undefined,
     };
 
-    const designKey = `ancestry-design-${Date.now()}`;
-
-    window.localStorage.setItem(designKey, JSON.stringify(snapshot));
+    // Reuses the key this selection was already restored under, if any, rather than
+    // minting a fresh one on every click — a customer bouncing between the search and
+    // the designer a few times should leave one snapshot behind, not one per click.
+    const nextDesignKey = writeDesignSnapshot(snapshot, designKey || undefined);
+    setDesignKey(nextDesignKey);
 
     const params = new URLSearchParams();
 
-    params.set("designKey", designKey);
+    params.set("designKey", nextDesignKey);
 
     if (snapshot.surnameDisplay) {
       params.set("surnameDisplay", snapshot.surnameDisplay);
@@ -1321,7 +1207,8 @@ function CensusLanding() {
             {geocodeState === "found" && (
               <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
                 Found a likely match. Please confirm the location before ordering —
-                1901 addresses are approximate.
+                1901 addresses are approximate, and OpenStreetMap doesn&apos;t label a
+                house number on every building, especially outside towns.
               </p>
             )}
             {geocodeState === "approximate" && (
@@ -1373,9 +1260,14 @@ function CensusLanding() {
           screen; the footer sits below it and is reached by scrolling. Mirrors the
           designer's split exactly — stage left, rail right — so stepping through to
           the artwork keeps the map and the poster in the same place on screen. */}
-      <div className="flex min-h-[calc(100dvh-73px)] flex-col lg:h-[calc(100dvh-73px)] lg:flex-row">
-        {/* ── Map stage ── */}
-        <section className="relative flex min-h-0 min-w-0 flex-1 flex-col border-b border-stone-200 lg:border-b-0">
+      <div className="flex min-h-[calc(100dvh-var(--site-header-h))] flex-col lg:h-[calc(100dvh-var(--site-header-h))] lg:flex-row">
+        {/* ── Map stage ──
+            On a phone the rail below is tall enough to eat the whole column, so the
+            map is given an explicit share of the viewport rather than being left to
+            grow into space that isn't there. It pins under the site header while the
+            rail scrolls past, so the polygons stay in view as the filters are worked.
+            From lg the split goes back to stage-left / rail-right at full height. */}
+        <section className="sticky top-[var(--site-header-h)] z-20 flex h-[50dvh] min-w-0 shrink-0 flex-col border-b border-stone-200 bg-[#F5F4F1] lg:static lg:h-auto lg:min-h-0 lg:flex-1 lg:border-b-0">
           <div className="relative min-h-0 flex-1">
             <IrelandMap
               fill
@@ -1396,6 +1288,16 @@ function CensusLanding() {
                 setGeocodeState("");
               }}
               pinFocusToken={pinFocusToken}
+              // A geocoder/neighbour/street match found a real address, worth flying in
+              // close enough for OSM's house-number labels (rendered from z19) to have
+              // a chance of appearing. A centroid or a manual placement has nothing that
+              // precise to confirm — flying to 19 over the middle of a district or an
+              // arbitrary drag target would just look like the map lost track of scale.
+              pinFocusZoom={
+                pinSource === "geocoder" || pinSource === "neighbour" || pinSource === "street"
+                  ? 19
+                  : 16
+              }
               flyTo={flyTo}
               onCentreChange={setMapCentre}
             />

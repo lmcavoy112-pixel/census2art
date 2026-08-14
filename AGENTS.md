@@ -12,3 +12,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **security-review** — run before shipping checkout/payment code. The API routes surface real genealogy PII (names, ages, religion, occupation, birthplace) from Supabase, and the product integrates with Prodigi for real print orders.
 - **run** — use to verify UI changes in-browser rather than relying on type-checks alone; the design page is pixel-calibrated and needs visual confirmation.
 - **fewer-permission-prompts** — re-run periodically as new commands come up to keep `.claude/settings.local.json` current and cut down on permission round-trips.
+
+# Security testing
+
+Beyond the **security-review** skill, this repo is set up for [Strix](https://github.com/usestrix/strix) agentic pentesting: `npm run security:scan`. Scope and rules of engagement live in `.strix/instructions.md` — keep it current when API routes change. See [docs/security-testing.md](docs/security-testing.md). Never point a scan at production without understanding that the order endpoints reach Prodigi and can place real, billable print orders.

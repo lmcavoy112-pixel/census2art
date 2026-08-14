@@ -40,10 +40,40 @@ export type OverlayState = {
   showFill?: boolean;
   /** Stroke width for the highlighted polygon(s), in px. 0 draws no border at all. */
   highlightLineWidth?: number;
+  /**
+   * County boundary stroke colour/width. The county outline is basemap furniture, not a
+   * district the customer coloured — it takes its own colour from the palette rather
+   * than the district border swatch, so it stays legible however the district border is
+   * set (including "No border"). Falls back to borderColour/3px for callers that don't
+   * set these explicitly.
+   */
+  outlineColour?: string;
+  outlineWidth?: number;
 };
 
 /** Exported so the live canvas and the print export cannot disagree on it. */
 export const DEFAULT_HIGHLIGHT_LINE_WIDTH = 2.4;
+
+/**
+ * The lowest label layer in the current style, so the overlay layers below can be
+ * inserted just underneath the lettering rather than appended on top of it (MapLibre's
+ * default with no `beforeId`, which is what used to bury place names under the district
+ * shading). Undefined when the style has no label layers at all — e.g. every place-name
+ * class turned off — in which case `addLayer` falls back to its normal append.
+ *
+ * The `modern-` exclusion skips this module's own symbol layer (the print-only house
+ * marker, added separately by applyMarkerLayer) so the anchor is stable regardless of
+ * which of these two functions happens to run first.
+ */
+function labelAnchorId(map: MapLibreMap): string | undefined {
+  try {
+    return map.getStyle()?.layers?.find(
+      (l) => l.type === "symbol" && !l.id.startsWith("modern-")
+    )?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The same weight-interpolated fill-opacity used whenever the fill is shown. */
 const FILL_OPACITY_EXPRESSION: DataDrivenPropertyValueSpecification<number> = [
@@ -98,9 +128,12 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
   const borderColour = state.borderColour ?? accentColour;
   const fillOpacity = fillOpacityFor(showFill);
   const lineWidth = highlightLineWidth ?? DEFAULT_HIGHLIGHT_LINE_WIDTH;
+  const outlineColour = state.outlineColour ?? borderColour;
+  const outlineWidth = state.outlineWidth ?? 3;
 
   const highlightData = highlightsToFeatureCollection(highlights);
   const outlineData = outlineToFeatureCollection(outline);
+  const beforeId = labelAnchorId(map);
 
   const highlightSource = map.getSource(OVERLAY_SOURCE) as GeoJSONSource | undefined;
   if (highlightSource) {
@@ -117,43 +150,53 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
   }
 
   if (!map.getLayer(HIGHLIGHT_FILL_LAYER)) {
-    map.addLayer({
-      id: HIGHLIGHT_FILL_LAYER,
-      type: "fill",
-      source: OVERLAY_SOURCE,
-      paint: {
-        "fill-color": accentColour,
-        // Denser districts read heavier — same intent as lib/dedShading.ts — unless
-        // the "No fill" swatch turned the whole layer off, in which case flat 0.
-        "fill-opacity": fillOpacity,
+    map.addLayer(
+      {
+        id: HIGHLIGHT_FILL_LAYER,
+        type: "fill",
+        source: OVERLAY_SOURCE,
+        paint: {
+          "fill-color": accentColour,
+          // Denser districts read heavier — same intent as lib/dedShading.ts — unless
+          // the "No fill" swatch turned the whole layer off, in which case flat 0.
+          "fill-opacity": fillOpacity,
+        },
       },
-    });
+      beforeId
+    );
   } else {
     map.setPaintProperty(HIGHLIGHT_FILL_LAYER, "fill-color", accentColour);
     map.setPaintProperty(HIGHLIGHT_FILL_LAYER, "fill-opacity", fillOpacity);
   }
 
   if (!map.getLayer(HIGHLIGHT_LINE_LAYER)) {
-    map.addLayer({
-      id: HIGHLIGHT_LINE_LAYER,
-      type: "line",
-      source: OVERLAY_SOURCE,
-      paint: { "line-color": borderColour, "line-width": lineWidth, "line-opacity": 0.9 },
-    });
+    map.addLayer(
+      {
+        id: HIGHLIGHT_LINE_LAYER,
+        type: "line",
+        source: OVERLAY_SOURCE,
+        paint: { "line-color": borderColour, "line-width": lineWidth, "line-opacity": 0.9 },
+      },
+      beforeId
+    );
   } else {
     map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", borderColour);
     map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-width", lineWidth);
   }
 
   if (!map.getLayer(OUTLINE_LINE_LAYER)) {
-    map.addLayer({
-      id: OUTLINE_LINE_LAYER,
-      type: "line",
-      source: OUTLINE_SOURCE,
-      paint: { "line-color": borderColour, "line-width": 3, "line-opacity": 0.85 },
-    });
+    map.addLayer(
+      {
+        id: OUTLINE_LINE_LAYER,
+        type: "line",
+        source: OUTLINE_SOURCE,
+        paint: { "line-color": outlineColour, "line-width": outlineWidth, "line-opacity": 0.85 },
+      },
+      beforeId
+    );
   } else {
-    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", borderColour);
+    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", outlineColour);
+    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-width", outlineWidth);
   }
 }
 

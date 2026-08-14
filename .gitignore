@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# strix security scan output (contains findings + PoCs, keep out of git)
+/strix_runs/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -40,5 +43,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
-.env*
+# Operational scripts that talk to production Shopify and Supabase with admin/service-role
+# credentials. They hold no literals today, but they are the kind of file that grows one —
+# and they were previously untracked yet unignored, so a single `git add .` would commit them.
+/scripts/

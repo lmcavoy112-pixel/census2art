@@ -5,7 +5,7 @@
 
 export type ModernLevel = "country" | "county" | "ded" | "street";
 
-import type { ModernBasemap } from "./mapStyle";
+import type { ModernBasemap, PlaceLabelLevel } from "./mapStyle";
 
 export type ModernPresetConfig = {
   level: ModernLevel;
@@ -17,9 +17,16 @@ export type ModernPresetConfig = {
   fallbackZoom: number;
   /** Padding in px when fitting bounds, so the shape doesn't touch the frame edge. */
   fitPadding: number;
-  showLabelsByDefault: boolean;
+  defaultPlaceLabels: PlaceLabelLevel;
   /** Only the street preset offers a manually-placed pin. */
   allowsPin: boolean;
+  /**
+   * Whether district (DED) borders are drawn at all. False at Country/County — dozens to
+   * hundreds of district outlines at that scale read as visual noise, not information —
+   * so the border colour/thickness controls are hidden and the width forced to 0 at
+   * those two levels. True at District/Street, where there's one district to see.
+   */
+  districtBorders: boolean;
 };
 
 export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
@@ -31,8 +38,9 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     basemaps: ["contours", "streets"],
     fallbackZoom: 6.3,
     fitPadding: 24,
-    showLabelsByDefault: false,
+    defaultPlaceLabels: "off",
     allowsPin: false,
+    districtBorders: false,
   },
   county: {
     level: "county",
@@ -42,8 +50,9 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     basemaps: ["contours", "streets"],
     fallbackZoom: 9,
     fitPadding: 48,
-    showLabelsByDefault: false,
+    defaultPlaceLabels: "off",
     allowsPin: false,
+    districtBorders: false,
   },
   ded: {
     level: "ded",
@@ -53,19 +62,21 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     basemaps: ["streets", "contours"],
     fallbackZoom: 13,
     fitPadding: 56,
-    showLabelsByDefault: true,
+    defaultPlaceLabels: "all",
     allowsPin: true,
+    districtBorders: true,
   },
   street: {
     level: "street",
     label: "Street",
     description:
-      "Close in on the row of houses. Drop a pin on the household yourself.",
+      "Framed to the whole district, same as District — the difference is this preset knows which house is yours, so the census record for that household prints below the map, and a pin can be dropped on the house itself.",
     basemaps: ["streets"],
-    fallbackZoom: 17,
-    fitPadding: 64,
-    showLabelsByDefault: true,
+    fallbackZoom: 13,
+    fitPadding: 56,
+    defaultPlaceLabels: "all",
     allowsPin: true,
+    districtBorders: true,
   },
 };
 

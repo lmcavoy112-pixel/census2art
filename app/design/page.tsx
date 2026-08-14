@@ -43,6 +43,7 @@ import {
   type SizeGroup,
 } from "@/lib/design/catalogue";
 import AccentSwatch from "../components/AccentSwatch";
+import SiteHeader from "../components/home/SiteHeader";
 import {
   ACCENT_OPTIONS,
   buildSubtitle,
@@ -1476,11 +1477,14 @@ function DesignPageContent() {
 
   if (!loaded) {
     return (
-      <main className="min-h-screen bg-neutral-50 px-6 py-10">
-        <div className="mx-auto max-w-6xl">
-          <p className="text-sm text-neutral-600">Loading design...</p>
-        </div>
-      </main>
+      <>
+        <SiteHeader />
+        <main className="min-h-screen bg-neutral-50 px-6 py-10">
+          <div className="mx-auto max-w-6xl">
+            <p className="text-sm text-neutral-600">Loading design...</p>
+          </div>
+        </main>
+      </>
     );
   }
 
@@ -1489,8 +1493,10 @@ function DesignPageContent() {
     "/artwork/Basemaps/Surname/Terrain.png";
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-6 py-10 text-neutral-900">
-      <div className="mx-auto max-w-7xl">
+    <>
+      <SiteHeader />
+      <main className="min-h-screen bg-neutral-50 px-6 py-10 text-neutral-900">
+        <div className="mx-auto max-w-7xl">
 
         {confirmedTemplate === null ? (
           /* ── Step 1: Choose print style ── */
@@ -2500,7 +2506,8 @@ function DesignPageContent() {
           </div>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -2508,11 +2515,14 @@ export default function DesignPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-neutral-50 px-6 py-10">
-          <div className="mx-auto max-w-6xl">
-            <p className="text-sm text-neutral-600">Loading design...</p>
-          </div>
-        </main>
+        <>
+          <SiteHeader />
+          <main className="min-h-screen bg-neutral-50 px-6 py-10">
+            <div className="mx-auto max-w-6xl">
+              <p className="text-sm text-neutral-600">Loading design...</p>
+            </div>
+          </main>
+        </>
       }
     >
       <DesignPageContent />

@@ -1,4 +1,7 @@
-// Server-only: reads secret env vars, must never be imported from a client component.
+// Enforced, not just documented: importing this from a client component fails the build.
+import "server-only";
+
+// Server-only: reads secret env vars.
 const PRODIGI_API_KEY = process.env.PRODIGI_API_KEY!;
 const PRODIGI_API_BASE_URL = process.env.PRODIGI_API_BASE_URL!;
 

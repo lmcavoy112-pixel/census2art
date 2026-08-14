@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   GeoJSON,
   MapContainer,
@@ -46,6 +46,8 @@ type IrelandMapProps = {
    * out from under the hand doing the dragging.
    */
   pinFocusToken?: number;
+  /** Floor zoom the camera flies to when the pin is (re-)focused. See PinFocus. */
+  pinFocusZoom?: number;
   /**
    * Camera target from the place search. The map moves when `token` changes, so
    * re-picking the same place still works.
@@ -107,21 +109,31 @@ function CentreReporter({ onChange }: { onChange?: (centre: string) => void }) {
   return null;
 }
 
-/** Flies to the marker when it is first placed, and only then. */
+/**
+ * Flies to the marker when it is first placed, and only then.
+ *
+ * `zoom` is the floor the camera flies to (never zooms out from wherever it already
+ * was — `Math.max` — only in). A geocoder/neighbour/street match found a real address,
+ * so it's worth flying in close enough that OSM's house-number labels (rendered from
+ * z19) have a chance to appear; a centroid or a manual placement has nothing that
+ * precise to confirm, so the caller passes a shallower floor for those.
+ */
 function PinFocus({
   pin,
   token,
+  zoom = 15,
 }: {
   pin: { lng: number; lat: number } | null;
   token: number;
+  zoom?: number;
 }) {
   const map = useMap();
 
   useEffect(() => {
     if (!pin || token <= 0) return;
-    map.flyTo([pin.lat, pin.lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
+    map.flyTo([pin.lat, pin.lng], Math.max(map.getZoom(), zoom), { duration: 0.8 });
     // Deliberately keyed on the token alone: dragging updates `pin` constantly and
-    // must not re-centre the map mid-drag.
+    // must not re-centre the map mid-drag. `zoom` is read fresh each time regardless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -268,6 +280,42 @@ function MapBackgroundClick({
   return null;
 }
 
+// District fill fades out once zoomed in close enough to be looking for houses under
+// it — a solid district tint at that zoom hides the very rooftops the customer is
+// trying to confirm a geocode against. The boundary stroke is untouched by this (see
+// polygonStyles below), so the district is still legible, just no longer opaque.
+const FILL_FADE_START_ZOOM = 13;
+const FILL_FADE_END_ZOOM = 15.5;
+
+function fillScaleForZoom(zoom: number) {
+  if (zoom <= FILL_FADE_START_ZOOM) return 1;
+  if (zoom >= FILL_FADE_END_ZOOM) return 0;
+  return (FILL_FADE_END_ZOOM - zoom) / (FILL_FADE_END_ZOOM - FILL_FADE_START_ZOOM);
+}
+
+/** Reports the fill fade for the current zoom. Lives outside MapContainer's own state
+ *  (zoom isn't otherwise plumbed out) but the fade value stays inside IrelandMap rather
+ *  than being lifted to the parent — the census page must not re-render on every zoom
+ *  step. Fires on `zoomend` rather than continuous `zoom`, so the fill pops once the
+ *  flight settles rather than dissolving smoothly through it; a fade that visibly
+ *  redraws hundreds of polygons per animation frame is worse than a pop. */
+function ZoomFade({ onScale }: { onScale: (scale: number) => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    onScale(fillScaleForZoom(map.getZoom()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  useMapEvents({
+    zoomend() {
+      onScale(fillScaleForZoom(map.getZoom()));
+    },
+  });
+
+  return null;
+}
+
 function MapSizeFix() {
   const map = useMap();
 
@@ -300,6 +348,7 @@ export default function IrelandMap({
   pin = null,
   onPinMove,
   pinFocusToken = 0,
+  pinFocusZoom = 15,
   flyTo = null,
   onCentreChange,
 }: IrelandMapProps) {
@@ -313,6 +362,68 @@ export default function IrelandMap({
       1
     );
   }, [polygons]);
+
+  // 1 = full fill, fading to 0 once zoomed in past FILL_FADE_START_ZOOM — see ZoomFade.
+  // Historic's two preview modes (greenPolygons, softPreview) never fade: greenPolygons
+  // renders the artwork's actual export style (fillOpacity 1, no stroke — fading it
+  // would erase the print), and softPreview is a small static thumbnail that never
+  // zooms in far enough for the fade to matter anyway.
+  const [zoomFillScale, setZoomFillScale] = useState(1);
+  const fillScale = greenPolygons || softPreview ? 1 : zoomFillScale;
+
+  const polygonStyles = useMemo(
+    () =>
+      polygons.map((polygon) => {
+        const isSelected = polygon.ded_id === selectedDedId;
+
+        const intensity = Math.max(
+          0.2,
+          Math.min(1, (polygon.person_count || 0) / maxCount)
+        );
+
+        const lineColour = greenPolygons
+          ? IRELAND_GREEN
+          : softPreview
+            ? isSelected
+              ? "#5f3b12"
+              : "#9a6b2f"
+            : isSelected
+              ? "#111827"
+              : "#4b5563";
+
+        const fillColour = greenPolygons
+          ? IRELAND_GREEN
+          : softPreview
+            ? isSelected
+              ? "#d4a55d"
+              : "#f1d8a6"
+            : isSelected
+              ? "#111827"
+              : "#f59e0b";
+
+        const baseFillOpacity = greenPolygons
+          ? 1
+          : softPreview
+            ? isSelected
+              ? 0.35
+              : 0.06 + intensity * 0.18
+            : isSelected
+              ? 0.45
+              : 0.15 + intensity * 0.35;
+
+        return {
+          stroke: !greenPolygons,
+          color: lineColour,
+          weight: greenPolygons ? 0 : isSelected ? 3 : 1,
+          opacity: greenPolygons ? 0 : 1,
+          fillColor: fillColour,
+          // Only the fill fades with zoom — the stroke keeps the district legible over
+          // the rooftops the fade is uncovering, which is the whole point of it.
+          fillOpacity: baseFillOpacity * fillScale,
+        };
+      }),
+    [polygons, selectedDedId, maxCount, fillScale, greenPolygons, softPreview]
+  );
 
   return (
     <div
@@ -363,6 +474,11 @@ export default function IrelandMap({
         <FitBounds polygons={polygons} selectedDedId={selectedDedId} />
         <FlyToTarget target={flyTo} />
         <CentreReporter onChange={onCentreChange} />
+        <ZoomFade
+          onScale={(scale) =>
+            setZoomFillScale((prev) => (Math.abs(prev - scale) < 0.01 ? prev : scale))
+          }
+        />
 
         <MapBackgroundClick
           interactive={interactive}
@@ -372,7 +488,7 @@ export default function IrelandMap({
 
         {pin && (
           <>
-            <PinFocus pin={pin} token={pinFocusToken} />
+            <PinFocus pin={pin} token={pinFocusToken} zoom={pinFocusZoom} />
             <Marker
               position={[pin.lat, pin.lng]}
               icon={PIN_ICON}
@@ -387,49 +503,12 @@ export default function IrelandMap({
           </>
         )}
 
-        {polygons.map((polygon) => {
+        {polygons.map((polygon, index) => {
           const data = wrapAsFeature(polygon.geojson);
 
           if (!data) {
             return null;
           }
-
-          const isSelected = polygon.ded_id === selectedDedId;
-
-          const intensity = Math.max(
-            0.2,
-            Math.min(1, (polygon.person_count || 0) / maxCount)
-          );
-
-          const lineColour = greenPolygons
-            ? IRELAND_GREEN
-            : softPreview
-              ? isSelected
-                ? "#5f3b12"
-                : "#9a6b2f"
-              : isSelected
-                ? "#111827"
-                : "#4b5563";
-
-          const fillColour = greenPolygons
-            ? IRELAND_GREEN
-            : softPreview
-              ? isSelected
-                ? "#d4a55d"
-                : "#f1d8a6"
-              : isSelected
-                ? "#111827"
-                : "#f59e0b";
-
-          const fillOpacity = greenPolygons
-            ? 1
-            : softPreview
-              ? isSelected
-                ? 0.35
-                : 0.06 + intensity * 0.18
-              : isSelected
-                ? 0.45
-                : 0.15 + intensity * 0.35;
 
           const eventHandlers = interactive
             ? {
@@ -458,22 +537,15 @@ export default function IrelandMap({
             : {};
 
           return (
+            // Key is a stable identity only — no longer embeds selection/preview/green
+            // state, which used to force a full remount (and a visible flash) on every
+            // click. Those now flow into pathOptions instead, which react-leaflet v5
+            // applies via layer.setStyle() rather than tearing the layer down.
             <GeoJSON
-              key={`${polygon.ded_id}-${polygon.polygon_id || "polygon"}-${
-                isSelected ? "selected" : "normal"
-              }-${softPreview ? "soft" : "normal"}-${
-                greenPolygons ? "green-borderless" : "standard"
-              }`}
+              key={`${polygon.ded_id}-${polygon.polygon_id || "polygon"}`}
               data={data}
               interactive={interactive}
-              style={{
-                stroke: !greenPolygons,
-                color: lineColour,
-                weight: greenPolygons ? 0 : isSelected ? 3 : 1,
-                opacity: greenPolygons ? 0 : 1,
-                fillColor: fillColour,
-                fillOpacity,
-              }}
+              pathOptions={polygonStyles[index]}
               eventHandlers={eventHandlers}
             >
               {interactive && (

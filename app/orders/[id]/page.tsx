@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
+import SiteHeader from "../../components/home/SiteHeader";
 
 type OrderStatus = {
   id: string;
@@ -53,41 +54,48 @@ export default function OrderStatusPage() {
     };
   }, [params.id]);
 
+  let content: ReactNode;
+
   if (error) {
-    return (
+    content = (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-red-700">{error}</p>
       </main>
     );
-  }
-
-  if (!order) {
-    return (
+  } else if (!order) {
+    content = (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-neutral-500">Loading…</p>
+      </main>
+    );
+  } else {
+    content = (
+      <main className="mx-auto max-w-2xl px-6 py-16">
+        <h1 className="text-2xl font-semibold text-neutral-900">Order status</h1>
+        <p className="mt-1 text-sm text-neutral-500">Order {order.id}</p>
+
+        <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <p className="text-lg font-medium text-neutral-900">
+            {STATUS_LABEL[order.status] ?? order.status}
+          </p>
+          {order.design?.product && (
+            <p className="mt-1 text-sm text-neutral-600">
+              {order.design.product} — {order.design.sizeLabel}
+            </p>
+          )}
+          {order.prodigi_order_id && (
+            <p className="mt-1 text-xs text-neutral-400">Prodigi order: {order.prodigi_order_id}</p>
+          )}
+          {order.error && <p className="mt-3 text-sm text-red-700">{order.error}</p>}
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-2xl font-semibold text-neutral-900">Order status</h1>
-      <p className="mt-1 text-sm text-neutral-500">Order {order.id}</p>
-
-      <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <p className="text-lg font-medium text-neutral-900">
-          {STATUS_LABEL[order.status] ?? order.status}
-        </p>
-        {order.design?.product && (
-          <p className="mt-1 text-sm text-neutral-600">
-            {order.design.product} — {order.design.sizeLabel}
-          </p>
-        )}
-        {order.prodigi_order_id && (
-          <p className="mt-1 text-xs text-neutral-400">Prodigi order: {order.prodigi_order_id}</p>
-        )}
-        {order.error && <p className="mt-3 text-sm text-red-700">{order.error}</p>}
-      </div>
-    </main>
+    <>
+      <SiteHeader />
+      {content}
+    </>
   );
 }

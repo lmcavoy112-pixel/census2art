@@ -3,6 +3,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* SiteHeader's real rendered height — the header sets its own height from this
+     variable (see app/components/home/SiteHeader.tsx), and every page that needs to
+     size or offset against the header (the census workspace's sticky map, the
+     designer's poster stage) reads the same variable rather than a hardcoded pixel
+     value that only matches one breakpoint. */
+  --site-header-h: 56px;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --site-header-h: 76px;
+  }
 }
 
 @theme inline {

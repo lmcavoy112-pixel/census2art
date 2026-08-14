@@ -46,6 +46,7 @@ import {
 import {
   cleanOptionalValue,
   getParam,
+  patchDesignSnapshot,
   readDesignSnapshot,
   type HouseholdPerson,
 } from "@/lib/design/snapshot";
@@ -60,6 +61,8 @@ import {
   DEFAULT_LAYER_TOGGLES,
   getPolygonColourById,
   POLYGON_COLOUR_OPTIONS,
+  PLACE_LABEL_LEVELS,
+  PLACE_LABEL_LABELS,
 } from "@/lib/modern/mapStyle";
 import {
   DEFAULT_PALETTE_ID,
@@ -136,6 +139,7 @@ import HistoricPoster, {
   HOTSPOT_COLOURS,
   SQUARE_BORDER_STYLES,
 } from "@/app/components/historic/HistoricPoster";
+import SiteHeader from "@/app/components/home/SiteHeader";
 import {
   ACCENT_OPTIONS,
   DEFAULT_ACCENT_ID,
@@ -330,10 +334,17 @@ function ModernDesignContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ── Selection carried over from /create ────────────────────────────
+  // ── Selection carried over from the census search ───────────────────
+  // designKey and houseUid are tracked but not otherwise used by the designer itself —
+  // they exist purely to be carried back on "Back to search" below, so the census page
+  // can patch the same snapshot it wrote (rather than the designer minting a new one)
+  // and re-find the exact house group (rather than falling back to a bare house number,
+  // which is not always unique within a townland).
+  const [designKey, setDesignKey] = useState("");
   const [surnameSearch, setSurnameSearch] = useState("");
   const [county, setCounty] = useState("");
   const [dedId, setDedId] = useState("");
+  const [houseUid, setHouseUid] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   // ── Which template is being designed ───────────────────────────────
@@ -443,7 +454,8 @@ function ModernDesignContent() {
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
-    const saved = readDesignSnapshot(getParam(params, "designKey"));
+    const incomingDesignKey = getParam(params, "designKey");
+    const saved = readDesignSnapshot(incomingDesignKey);
 
     const rawSurname = saved?.surnameDisplay || getParam(params, "surnameDisplay");
     const nextSurname = smartSurnameDisplay(rawSurname);
@@ -452,13 +464,16 @@ function ModernDesignContent() {
     const nextDedDisplay = cleanOptionalValue(saved?.dedDisplay || getParam(params, "dedDisplay"));
     const nextTownland = cleanOptionalValue(saved?.townland || getParam(params, "townland"));
     const nextHouseNo = cleanOptionalValue(saved?.houseNo || getParam(params, "houseNo"));
+    const nextHouseUid = saved?.houseUid || getParam(params, "houseUid");
     const nextHousehold = saved?.household || [];
     const nextSurnameSearch =
       saved?.surnameSearch || getParam(params, "surnameSearch") || nextSurname.toLowerCase();
 
+    setDesignKey(incomingDesignKey);
     setSurnameSearch(nextSurnameSearch);
     setCounty(nextCounty);
     setDedId(nextDedId);
+    setHouseUid(nextHouseUid);
     setDedDisplayText(nextDedDisplay);
     setTownlandText(nextTownland);
     setHouseNoText(nextHouseNo);
@@ -488,7 +503,7 @@ function ModernDesignContent() {
     setBasemap(MODERN_PRESETS[deepest].basemaps[0]);
     setMapLayers({
       ...DEFAULT_LAYER_TOGGLES,
-      placeNames: MODERN_PRESETS[deepest].showLabelsByDefault,
+      placeNames: MODERN_PRESETS[deepest].defaultPlaceLabels,
     });
 
     setHeadingText(nextSurname || "Irish Family History");
@@ -507,7 +522,17 @@ function ModernDesignContent() {
     const savedPin = saved?.pin;
     if (savedPin && template === "modern") {
       setPin({ lng: savedPin.lng, lat: savedPin.lat });
-      setPinSource(savedPin.source);
+      // "neighbour"/"street" are the census search's own copy for an approximate match
+      // ("No. 4 not found, but No. 6 was") — it names the specific house/street that WAS
+      // found, via pinMatchedLabel, which a DesignSnapshot doesn't carry. Without that
+      // label there is nothing for this designer's marker copy to name, so both fold
+      // into "geocoder", whose copy ("Found from the 1901 address. Please confirm the
+      // location") is accurate without it.
+      setPinSource(
+        savedPin.source === "neighbour" || savedPin.source === "street"
+          ? "geocoder"
+          : savedPin.source
+      );
     }
 
     setLoaded(true);
@@ -632,6 +657,41 @@ function ModernDesignContent() {
     );
   }, []);
 
+  /**
+   * The destination for "Back to search" — a real href (handed to SiteHeader's `back`
+   * as a plain Link, not a router.push behind a button) that carries the whole
+   * selection back to the census workspace, rather than a bare "/irish-census-1901"
+   * that reset the search to empty and made the customer retype the surname and
+   * re-pick county/district/townland/house from scratch. The county/district/etc are
+   * mirrored onto the URL (not just the snapshot) so first paint on the census page is
+   * correct even if the snapshot itself didn't survive — see the comment on
+   * DesignSnapshot's write path.
+   */
+  function backToSearchHref() {
+    const params = new URLSearchParams();
+    if (designKey) params.set("designKey", designKey);
+    if (surnameSearch) params.set("surname", surnameSearch);
+    if (county) params.set("county", county);
+    if (dedId) params.set("dedId", dedId);
+    if (dedDisplayText) params.set("dedDisplay", dedDisplayText);
+    if (townlandText) params.set("townland", townlandText);
+    if (houseNoText) params.set("houseNo", houseNoText);
+    if (houseUid) params.set("houseUid", houseUid);
+
+    const query = params.toString();
+    return query ? `/irish-census-1901?${query}` : "/irish-census-1901";
+  }
+
+  // The only thing the designer itself can have changed since arriving is the pin (a
+  // drag). Patched into the existing snapshot on the way out, rather than overwritten
+  // wholesale — everything else (household, etc.) is the census page's own to keep.
+  function patchPinBeforeLeaving() {
+    if (!designKey) return;
+    patchDesignSnapshot(designKey, {
+      pin: pin ? { ...pin, source: pinSource ?? "manual" } : undefined,
+    });
+  }
+
   const selectedPolygon = useMemo(
     () => polygons.find((p) => p.ded_id === dedId) ?? null,
     [polygons, dedId]
@@ -692,9 +752,11 @@ function ModernDesignContent() {
 
     const box = boundsOf(selectedPolygon ? [selectedPolygon.geojson] : []);
     if (!box) return null;
-    // Street level starts tight on the district centre; there are no townland or
-    // house coordinates in the census data to aim at more precisely than this.
-    return level === "street" ? padBox(box, -0.42) : padBox(box, 0.12);
+    // Street frames identically to District — the whole DED polygon. Street's only
+    // difference is that it knows which house is the customer's, so the household
+    // record prints below the map; there are no townland or house coordinates in the
+    // census data to zoom in on more tightly than the district itself.
+    return padBox(box, 0.12);
   }, [level, polygons, countryPolygons, selectedPolygon, outline]);
 
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
@@ -719,11 +781,26 @@ function ModernDesignContent() {
   const pageHex = palette.paper;
   const inkHex = palette.ink;
 
+  // The county boundary is basemap furniture, not a district the customer coloured, so
+  // it takes its colour from the palette rather than from the district border swatch —
+  // it stays legible on every palette and however the district border is set, including
+  // "No border". mapPalette.label is already tuned as a readable ink against this
+  // palette's land colour.
+  const outlineHex = mapPalette.label;
+  const OUTLINE_WIDTH = 2;
+
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
   const borderHex = getPolygonColourById(borderColourId)?.hex ?? polygonHex;
+  // Country/County show dozens to hundreds of districts at once, where individual
+  // borders read as noise rather than information — forced to 0 there regardless of the
+  // customer's chosen thickness. Deliberately never writes back to borderWidthIndex, so
+  // the setting they picked survives a trip out to County and back.
+  const bordersConfigurable = preset.districtBorders;
   const borderWidth =
-    borderColourId === NO_BORDER_COLOUR_ID ? 0 : BORDER_WIDTHS[borderWidthIndex];
+    !bordersConfigurable || borderColourId === NO_BORDER_COLOUR_ID
+      ? 0
+      : BORDER_WIDTHS[borderWidthIndex];
 
   // Shape is decided up front, in the Template section, because it gates what the rest
   // of the designer can offer — square has no symbol divider and only one border.
@@ -1192,6 +1269,8 @@ function ModernDesignContent() {
           outline: visibleOutline,
           accentColour: polygonHex,
           borderColour: borderHex,
+          outlineColour: outlineHex,
+          outlineWidth: OUTLINE_WIDTH,
           showFill: showPolygonFill,
           highlightLineWidth: borderWidth,
         });
@@ -1280,9 +1359,23 @@ function ModernDesignContent() {
           fileName: `${safeFileNamePart(headingText || "artwork")}.png`,
           sku: selectedSku.sku,
           priceGbp: selectedSku.price_gbp,
+          // Frame colour maps to Prodigi's `color`, but Classic Frame and Framed
+          // Canvas each require a second attribute Prodigi won't default for —
+          // confirmed live against GET /v4.0/products/{sku}. Neither is a
+          // customer-facing choice yet, so both get a neutral default: "Snow
+          // white" mount reads correctly against either frame colour, and
+          // "ImageWrap" continues the map/artwork around the canvas edge
+          // rather than a flat colour band cutting into it.
           attributes:
             selectedSku.framed && selectedSku.frame_colour
-              ? { color: selectedSku.frame_colour }
+              ? {
+                  color: selectedSku.frame_colour,
+                  ...(selectedSku.product === "Classic Frame"
+                    ? { mountColor: "Snow white" }
+                    : selectedSku.product === "Framed Canvas"
+                      ? { wrap: "ImageWrap" }
+                      : {}),
+                }
               : {},
           design: {
             surname: headingText,
@@ -1562,10 +1655,10 @@ function ModernDesignContent() {
     body: (
       <div className="space-y-5">
         <div>
-          <FieldLabel>Map extent</FieldLabel>
+          <FieldLabel>Map preset</FieldLabel>
           <ChoiceCards
             columns={2}
-            ariaLabel="Map extent"
+            ariaLabel="Map preset"
             value={level}
             onChange={changeLevel}
             options={availableLevels(deepestLevel).map((l) => ({
@@ -1626,24 +1719,33 @@ function ModernDesignContent() {
             </HelpText>
           </PolygonSwatchRow>
 
-          <PolygonSwatchRow
-            label="Border colour"
-            inheritColour={polygonHex}
-            inheritLabel="Match fill"
-            clearLabel="No border"
-            value={borderColourId}
-            onChange={setBorderColourId}
-          />
+          {bordersConfigurable ? (
+            <>
+              <PolygonSwatchRow
+                label="Border colour"
+                inheritColour={polygonHex}
+                inheritLabel="Match fill"
+                clearLabel="No border"
+                value={borderColourId}
+                onChange={setBorderColourId}
+              />
 
-          <Stepper
-            label="Border thickness"
-            valueLabel={borderWidth === 0 ? "None" : `${borderWidth}px`}
-            index={borderWidthIndex}
-            count={BORDER_WIDTHS.length}
-            onIndexChange={setBorderWidthIndex}
-            minLabel="Fine"
-            maxLabel="Heavy"
-          />
+              <Stepper
+                label="Border thickness"
+                valueLabel={borderWidth === 0 ? "None" : `${borderWidth}px`}
+                index={borderWidthIndex}
+                count={BORDER_WIDTHS.length}
+                onIndexChange={setBorderWidthIndex}
+                minLabel="Fine"
+                maxLabel="Heavy"
+              />
+            </>
+          ) : (
+            <HelpText>
+              At this extent the districts are shown as shaded areas only
+              {level === "county" ? " — the county boundary itself is drawn as a fixed outline." : "."}
+            </HelpText>
+          )}
         </div>
       </div>
     ),
@@ -1691,11 +1793,20 @@ function ModernDesignContent() {
 
         <div className="border-t border-stone-200 pt-4">
           <GroupLabel>Show on map</GroupLabel>
-          <Toggle
+          <Stepper
             label="Place names"
-            checked={mapLayers.placeNames}
-            onChange={(v) => setMapLayers((prev) => ({ ...prev, placeNames: v }))}
+            valueLabel={PLACE_LABEL_LABELS[mapLayers.placeNames]}
+            index={PLACE_LABEL_LEVELS.indexOf(mapLayers.placeNames)}
+            count={PLACE_LABEL_LEVELS.length}
+            onIndexChange={(i) =>
+              setMapLayers((prev) => ({ ...prev, placeNames: PLACE_LABEL_LEVELS[i] }))
+            }
+            minLabel="Off"
+            maxLabel="All"
           />
+          <HelpText>
+            Also names roads and rivers — turning this off clears every label on the map.
+          </HelpText>
           <Toggle
             label="Mountain peaks"
             checked={mapLayers.mountainPeaks}
@@ -2225,9 +2336,12 @@ function ModernDesignContent() {
 
   if (!loaded) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F5F4F1]">
-        <p className="text-sm text-stone-600">Loading your design…</p>
-      </main>
+      <div className="flex min-h-screen flex-col bg-[#F5F4F1]">
+        <SiteHeader />
+        <main className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-stone-600">Loading your design…</p>
+        </main>
+      </div>
     );
   }
 
@@ -2235,31 +2349,21 @@ function ModernDesignContent() {
   const frameHex = FRAME_COLOURS.find((f) => f.id === frameColour)?.hex ?? "#1B1B1B";
 
   return (
-    <main className={`${posterFont.className} flex h-screen flex-col bg-[#F5F4F1] text-stone-900`}>
-      {/* ── Masthead ── */}
-      <header className="flex flex-none items-center justify-between gap-4 border-b border-stone-200 bg-[#F5F4F1] px-6 py-4">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500">
-            Census to Art · 1901 Irish Census
-          </p>
-          <h1 className="mt-0.5 text-[22px] font-light tracking-tight">
-            {template === "modern" ? "Design your map print" : "Design your record print"}
-          </h1>
-        </div>
-        {/* Not "change template" — that now lives in section 1 and switches in place,
-            and two controls with the same name doing different things is how you get a
-            customer losing their design to a page change. This is the way back to the
-            search, which is the only thing this page can't do for itself. */}
-        <button
-          type="button"
-          onClick={() => router.push("/irish-census-1901")}
-          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-[13px] font-medium transition-colors hover:bg-stone-50"
-        >
-          Back to search
-        </button>
-      </header>
+    <div className={`${posterFont.className} flex min-h-screen flex-col bg-[#F5F4F1] text-stone-900`}>
+      {/* Replaces this page's old bespoke masthead — its only interactive element was
+          "Back to search", which is now SiteHeader's `back` slot; the eyebrow/heading it
+          used to show are decorative and section 1 of the rail already names what's
+          being designed, so nothing is lost folding the two into one bar. Two stacked
+          bars would eat a third of a phone viewport for no added information. */}
+      <SiteHeader
+        back={{
+          href: backToSearchHref(),
+          label: "Back to search",
+          onClick: patchPinBeforeLeaving,
+        }}
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <main className="flex h-[calc(100dvh-var(--site-header-h))] min-h-0 flex-col lg:flex-row">
         {/* ── Poster stage ── */}
         <section className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-6 pr-24 lg:p-10 lg:pr-28">
           {/* Sized by whichever runs out first — the stage's width or its height — so a
@@ -2273,7 +2377,14 @@ function ModernDesignContent() {
             style={{
               background: framed ? frameHex : "transparent",
               padding: framed ? "3.5%" : 0,
-              width: "min(100%, calc((100vh - 13rem) * var(--poster-aspect)))",
+              // Was "100vh - 13rem", hand-tuned to the old masthead this page carried
+              // itself. That masthead is gone (folded into the shared SiteHeader, which
+              // is shorter), so the deduction is now the header's own height plus the
+              // stage's own vertical padding, rather than a number that only matched
+              // one specific masthead. 100dvh rather than 100vh — matches the rest of
+              // the app, and avoids mobile browser chrome making the stage overshoot.
+              width:
+                "min(100%, calc((100dvh - var(--site-header-h) - 8rem) * var(--poster-aspect)))",
               maxWidth: 640,
               ["--poster-aspect" as string]: `${aspect.w / aspect.h}`,
             }}
@@ -2336,6 +2447,8 @@ function ModernDesignContent() {
                     contourDensity={contourDensity}
                     accentColour={polygonHex}
                     borderColour={borderHex}
+                    outlineColour={outlineHex}
+                    outlineWidth={OUTLINE_WIDTH}
                     showFill={showPolygonFill}
                     highlights={highlights}
                     outline={visibleOutline}
@@ -2522,8 +2635,8 @@ function ModernDesignContent() {
             </div>
           </div>
         </aside>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

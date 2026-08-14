@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "../../../../../lib/supabase-admin";
 
 // Prodigi callbacks are unsigned, so the secret path segment (kept out of
 // callbackUrl logs by not exposing it anywhere else) is the only verification
 // we have that a request genuinely came from Prodigi.
+//
+// Because it travels in a URL, treat it as a credential that WILL end up in third-party
+// access logs: give it real entropy and rotate it periodically.
 function isAuthorised(secret: string) {
-  return Boolean(process.env.PRODIGI_WEBHOOK_SECRET) && secret === process.env.PRODIGI_WEBHOOK_SECRET;
+  const expected = process.env.PRODIGI_WEBHOOK_SECRET;
+  if (!expected) return false;
+
+  // Digest both sides so the comparison is fixed-length and constant-time; `===` on the
+  // raw strings short-circuits at the first differing byte and leaks the prefix.
+  const suppliedDigest = createHash("sha256").update(secret, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+
+  return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
 function mapProdigiStage(stage: unknown): string | null {

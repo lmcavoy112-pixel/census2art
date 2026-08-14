@@ -10,13 +10,26 @@
 
 import type { ExpressionSpecification, StyleSpecification } from "maplibre-gl";
 
-// World rectangle minus the union of every county in county_geometries — i.e. everything
-// that ISN'T Ireland. Painted over the whole base style as the very last layer so nothing
-// from Britain (roads, contours, place labels, the basemap fill itself) can show through
-// even once the pan bounds are opened up wide enough to fit all of Ireland at once.
-// Static because Ireland's coastline doesn't change; regenerate via a one-off
-// ST_Difference(world rectangle, ST_Union(county_geometries.geom)) query if the county
-// boundary data is ever reloaded.
+// World rectangle minus one hand-drawn polygon that generously contains all of Ireland
+// (mainland, offshore islands, and a wide sea margin) — i.e. everything that ISN'T
+// Ireland or its surrounding water. Drawn twice: once below the label layers (so it
+// still hides Britain's roads/contours/basemap fill without clipping Ireland's own
+// coastal place names, which would otherwise sit above the mask and get cut at the
+// shoreline) and again, zoom-gated, above the labels (so wide-extent views don't surface
+// a stray Glasgow/Cardiff/Liverpool label floating on the sea — those have no minzoom of
+// their own). The two are visually identical wherever both are opaque, so nothing
+// changes at Country/County beyond the coastal-label fix; the top copy fades out by
+// district zoom, where the frame is inside Ireland and the only label it could hide is a
+// coastal town's own name.
+//
+// The geometry is a single polygon: the world rectangle with one hole, sourced from
+// ireland.geojson at the repo root (drawn in Irish National Grid, EPSG:29902, then
+// reprojected to WGS84). Deliberately coarse and generous — it's a rough outline with a
+// wide sea buffer on every side, not a coastline trace — so the mask never starts right
+// at the shore the way a county-boundary-derived hole did (that approach cut flush with
+// the coastline, and adjacent-county boundary mismatches left stray sliver polygons that
+// painted as wedges over the artwork). Regenerate by re-running the same reprojection
+// over an updated ireland.geojson if the drawn area ever needs to change.
 import worldMinusIreland from "./worldMinusIrelandMask.geojson.json";
 
 export type ModernBasemap = "streets" | "contours";
@@ -80,13 +93,52 @@ export const GREYSCALE_PALETTE: ModernPalette = {
 };
 
 /**
+ * How much settlement lettering shows, from nothing up to every hamlet OpenMapTiles
+ * carries. Cumulative by design — each step adds a tier of settlement on top of the
+ * previous rather than swapping one tier for another, so stepping through reads as
+ * "more names appear" rather than "different names appear".
+ *
+ * This also gates the road and water-body name layers (`road-label`, `water-label`) —
+ * there is one "Place names" control rather than three separate label switches, because
+ * that matches how a customer thinks about it. `off` turns everything off; any other
+ * level turns roads/water lettering on alongside the place tier it names.
+ */
+export const PLACE_LABEL_LEVELS = ["off", "cities", "towns", "villages", "all"] as const;
+export type PlaceLabelLevel = (typeof PLACE_LABEL_LEVELS)[number];
+
+export const PLACE_LABEL_LABELS: Record<PlaceLabelLevel, string> = {
+  off: "Off",
+  cities: "Cities",
+  towns: "+ Towns",
+  villages: "+ Villages",
+  all: "Everything",
+};
+
+/** OpenMapTiles `place` layer `class` values shown at each level. */
+const PLACE_CLASSES: Record<PlaceLabelLevel, string[]> = {
+  off: [],
+  cities: ["city"],
+  towns: ["city", "town"],
+  villages: ["city", "town", "village"],
+  all: ["city", "town", "village", "hamlet", "suburb"],
+};
+
+export function placeLabelFilter(level: PlaceLabelLevel): ExpressionSpecification {
+  return ["in", ["get", "class"], ["literal", PLACE_CLASSES[level]]];
+}
+
+export function labelVisibility(level: PlaceLabelLevel): "visible" | "none" {
+  return level === "off" ? "none" : "visible";
+}
+
+/**
  * Which optional map furniture is drawn. Each maps to a group of style layers the
  * customer can turn on and off from the Map style panel; the basemap itself (land,
  * water, coastline) is never optional.
  */
 export type MapLayerToggles = {
-  /** Town, village and water body names. */
-  placeNames: boolean;
+  /** Town, village and water body names — see PlaceLabelLevel. */
+  placeNames: PlaceLabelLevel;
   /** Named summits with their elevation. */
   mountainPeaks: boolean;
   /** Rivers and streams. */
@@ -98,7 +150,7 @@ export type MapLayerToggles = {
 export type ElevationUnit = "m" | "ft";
 
 export const DEFAULT_LAYER_TOGGLES: MapLayerToggles = {
-  placeNames: true,
+  placeNames: "villages",
   mountainPeaks: false,
   riversStreams: true,
   roads: true,
@@ -191,44 +243,49 @@ export function buildModernStyle({
     },
   });
 
+  // Symbol layers, held back from `layers` and appended after the mask (below) so DED
+  // overlays and the sea mask can never clip a label. Order within this list is the
+  // collision-priority order — earlier layers win when two labels would overlap — so
+  // contour elevations lead (they're line-following and least likely to collide) and
+  // place names sit above roads/water, mirroring the previous push order exactly.
+  const labelLayers: StyleSpecification["layers"] = [];
+
   if (wantContours) {
-    layers.push(
-      {
-        id: "contour-line",
-        type: "line",
-        source: "contours",
-        "source-layer": "contours",
-        // Terrarium DEM carries bathymetry, so without this the sea fills with
-        // concentric depth contours — distracting on a print about land.
-        filter: [">=", ["get", "ele"], 0],
-        paint: {
-          "line-color": palette.contour,
-          // Every 5th contour (an "index" line) is drawn heavier, the usual
-          // topographic convention that gives the map its banded look.
-          "line-width": ["match", ["get", "level"], 1, 1.1, 0.5],
-          "line-opacity": 0.9,
-        },
+    layers.push({
+      id: "contour-line",
+      type: "line",
+      source: "contours",
+      "source-layer": "contours",
+      // Terrarium DEM carries bathymetry, so without this the sea fills with
+      // concentric depth contours — distracting on a print about land.
+      filter: [">=", ["get", "ele"], 0],
+      paint: {
+        "line-color": palette.contour,
+        // Every 5th contour (an "index" line) is drawn heavier, the usual
+        // topographic convention that gives the map its banded look.
+        "line-width": ["match", ["get", "level"], 1, 1.1, 0.5],
+        "line-opacity": 0.9,
       },
-      {
-        id: "contour-label",
-        type: "symbol",
-        source: "contours",
-        "source-layer": "contours",
-        filter: ["all", [">", ["get", "level"], 0], [">=", ["get", "ele"], 0]],
-        layout: {
-          "symbol-placement": "line",
-          "text-field": elevationLabel(elevationUnit),
-          "text-font": ["Noto Sans Regular"],
-          "text-size": 9,
-          "text-max-angle": 25,
-        },
-        paint: {
-          "text-color": palette.contour,
-          "text-halo-color": palette.labelHalo,
-          "text-halo-width": 1.2,
-        },
-      }
-    );
+    });
+    labelLayers.push({
+      id: "contour-label",
+      type: "symbol",
+      source: "contours",
+      "source-layer": "contours",
+      filter: ["all", [">", ["get", "level"], 0], [">=", ["get", "ele"], 0]],
+      layout: {
+        "symbol-placement": "line",
+        "text-field": elevationLabel(elevationUnit),
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 9,
+        "text-max-angle": 25,
+      },
+      paint: {
+        "text-color": palette.contour,
+        "text-halo-color": palette.labelHalo,
+        "text-halo-width": 1.2,
+      },
+    });
   }
 
   // ── Roads, drawn narrowest-first so majors sit on top at junctions ──
@@ -346,10 +403,16 @@ export function buildModernStyle({
 
   if (toggles.roads) layers.push(...roadLayers);
 
-  // Road names ride the road network — without roads drawn there is nothing to label,
-  // so they follow both toggles rather than place names alone.
-  if (toggles.placeNames && toggles.roads) {
-    layers.push({
+  // road-label/water-label/place-label are always present in the style (rather than
+  // conditionally pushed) so ModernMapCanvas can flip the place-name level with a cheap
+  // setFilter/setLayoutProperty instead of a full setStyle — see mapRuntime.ts's
+  // modernStyleKey, which deliberately excludes placeNames for the same reason.
+  // `visibility: none` at "off" means MapLibre does no symbol-placement work for them.
+
+  // Road names ride the road network — without roads drawn there is nothing to label —
+  // so this still follows the roads toggle; only its visibility follows the level.
+  if (toggles.roads) {
+    labelLayers.push({
       id: "road-label",
       type: "symbol",
       source: "openmaptiles",
@@ -361,6 +424,7 @@ export function buildModernStyle({
         "text-font": ["Noto Sans Regular"],
         "text-size": 10,
         "text-letter-spacing": 0.05,
+        visibility: labelVisibility(toggles.placeNames),
       },
       paint: {
         "text-color": palette.label,
@@ -370,52 +434,52 @@ export function buildModernStyle({
     });
   }
 
-  if (toggles.placeNames) {
-    layers.push(
-      {
-        id: "water-label",
-        type: "symbol",
-        source: "openmaptiles",
-        "source-layer": "water_name",
-        minzoom: 10,
-        layout: {
-          "text-field": ["get", "name"],
-          "text-font": ["Noto Sans Regular"],
-          "text-size": 11,
-          "text-letter-spacing": 0.1,
-        },
-        paint: {
-          "text-color": palette.waterLine,
-          "text-halo-color": palette.labelHalo,
-          "text-halo-width": 1.2,
-        },
+  labelLayers.push(
+    {
+      id: "water-label",
+      type: "symbol",
+      source: "openmaptiles",
+      "source-layer": "water_name",
+      minzoom: 10,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11,
+        "text-letter-spacing": 0.1,
+        visibility: labelVisibility(toggles.placeNames),
       },
-      {
-        id: "place-label",
-        type: "symbol",
-        source: "openmaptiles",
-        "source-layer": "place",
-        filter: ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "hamlet"]]],
-        layout: {
-          "text-field": ["get", "name"],
-          "text-font": ["Noto Sans Bold"],
-          "text-size": ["interpolate", ["linear"], ["zoom"], 8, 10, 14, 14],
-          "text-letter-spacing": 0.12,
-          "text-transform": "uppercase",
-        },
-        paint: {
-          "text-color": palette.label,
-          "text-halo-color": palette.labelHalo,
-          "text-halo-width": 1.6,
-        },
-      }
-    );
-  }
+      paint: {
+        "text-color": palette.waterLine,
+        "text-halo-color": palette.labelHalo,
+        "text-halo-width": 1.2,
+      },
+    },
+    {
+      id: "place-label",
+      type: "symbol",
+      source: "openmaptiles",
+      "source-layer": "place",
+      filter: placeLabelFilter(toggles.placeNames),
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Bold"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 10, 14, 14],
+        "text-letter-spacing": 0.12,
+        "text-transform": "uppercase",
+        visibility: labelVisibility(toggles.placeNames),
+      },
+      paint: {
+        "text-color": palette.label,
+        "text-halo-color": palette.labelHalo,
+        "text-halo-width": 1.6,
+      },
+    }
+  );
 
   // Named summits with their height — the one label class that earns its place on a
   // contour print, so it toggles independently of the other place names.
   if (toggles.mountainPeaks) {
-    layers.push({
+    labelLayers.push({
       id: "mountain-peak-label",
       type: "symbol",
       source: "openmaptiles",
@@ -438,14 +502,31 @@ export function buildModernStyle({
     });
   }
 
-  // Last layer, so it sits on top of every base-style layer above (water, building,
-  // roads, contours, labels) and hides all of them outside Ireland. Filled with the
-  // water colour so it reads as sea rather than a visible cutout.
+  // Sits above every base-style layer (water, building, roads, contours) but below the
+  // labels, so it hides Britain without clipping Ireland's own coastal place names —
+  // see the import comment above. The DED/county overlays (applyModernOverlays) insert
+  // between this and the first label layer via their `beforeId`.
   layers.push({
     id: "world-minus-ireland-mask",
     type: "fill",
     source: "world-mask",
     paint: { "fill-color": palette.water },
+  });
+
+  layers.push(...labelLayers);
+
+  // Second copy, above the labels. Without this, opening the mask up to sit below
+  // labels re-exposes British place names (Glasgow, Cardiff, Liverpool — none of which
+  // carry a minzoom) once the pan bounds are wide enough to fit all of Ireland. Fades
+  // out well before district zoom, where the frame never reaches the coast anyway.
+  layers.push({
+    id: "world-minus-ireland-mask-top",
+    type: "fill",
+    source: "world-mask",
+    paint: {
+      "fill-color": palette.water,
+      "fill-opacity": ["interpolate", ["linear"], ["zoom"], 8, 1, 9.5, 0],
+    },
   });
 
   const sources: StyleSpecification["sources"] = {

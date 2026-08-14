@@ -1,0 +1,22 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Patch and minor bumps arrive grouped so routine security updates are one review
+    # rather than a stream of individual PRs that end up ignored.
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # Majors still come through individually — next, react and maplibre-gl all carry real
+    # breaking-change risk and deserve to be looked at on their own.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

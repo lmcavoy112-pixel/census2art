@@ -15,7 +15,7 @@ Add to `.env.local` (and to the host's environment for production):
 ```
 SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
 SHOPIFY_STOREFRONT_TOKEN=<Storefront API access token>
-SHOPIFY_API_SECRET=<Admin API credential secret>
+SHOPIFY_APP_SECRET=<Admin API credential secret>   # signs the orders/create webhook
 SHOPIFY_PRINT_PRODUCT_HANDLE=custom-census-print
 SHOPIFY_API_VERSION=2025-01          # optional, defaults to 2025-01
 ```

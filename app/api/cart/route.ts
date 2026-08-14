@@ -12,6 +12,7 @@ import {
   updateLineQuantity,
   type Cart,
 } from "@/lib/shopify";
+import { cartRequestSchema, type CartRequest } from "@/lib/validation";
 
 /**
  * The cart's whole surface. Everything runs here rather than in the browser so the
@@ -43,7 +44,7 @@ function notConfigured() {
   // public page tells a stranger how the shop is wired; the setup steps belong in
   // SHOPIFY_SETUP.md and the server log, not in a response body.
   console.error(
-    "cart: Shopify is not configured — set SHOPIFY_STORE_DOMAIN, SHOPIFY_STOREFRONT_TOKEN and SHOPIFY_PRINT_PRODUCT_HANDLE (see SHOPIFY_SETUP.md)."
+    "cart: Shopify is not configured — set SHOPIFY_STORE_DOMAIN and SHOPIFY_STOREFRONT_TOKEN (see SHOPIFY_SETUP.md)."
   );
 
   return NextResponse.json({ cart: null, configured: false }, { status: 200 });
@@ -83,17 +84,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!shopifyConfigured()) return notConfigured();
 
-  let body: {
-    action?: string;
-    sku?: string;
-    quantity?: number;
-    lineId?: string;
-    code?: string;
-    attributes?: { key: string; value: string }[];
-  };
+  let body: CartRequest;
 
   try {
-    body = await request.json();
+    // Parsed against a schema rather than trusted by shape: every field here is forwarded
+    // to Shopify, and the attributes ride the order all the way to fulfilment.
+    body = cartRequestSchema.parse(await request.json());
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }

@@ -136,6 +136,14 @@ export function modernStyle({
  * Identity of a style, used to tell a real style change from a StrictMode re-run.
  * Must cover every input to modernStyle above, or a change that only affects one of
  * them (a palette swap, say) will not be applied to the live map.
+ *
+ * `layers.placeNames` is deliberately NOT included here. It is applied to a live map
+ * via ModernMapCanvas's own setFilter/setLayoutProperty effect instead of a style swap —
+ * the place-name level is a 5-stop control the customer scrubs through, and routing that
+ * through setStyle() would discard every loaded vector/DEM tile and flash white on each
+ * step. buildModernStyle still bakes the level into a freshly-built style regardless
+ * (initial load, print export, any other style change), so this exclusion only affects
+ * "the level changed and nothing else did".
  */
 export function modernStyleKey({
   basemap,
@@ -145,7 +153,6 @@ export function modernStyleKey({
   palette,
 }: ModernStyleOptions) {
   const toggles = [
-    layers.placeNames,
     layers.mountainPeaks,
     layers.riversStreams,
     layers.roads,

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { orderedCountries, STATE_REQUIRED_COUNTRY_CODES } from "../../../lib/countries";
+import SiteHeader from "../../components/home/SiteHeader";
 
 type OrderSummary = {
   id: string;
@@ -119,34 +120,31 @@ export default function CheckoutPage() {
     }
   }
 
+  let content: ReactNode;
+
   if (loadError) {
-    return (
+    content = (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-red-700">{loadError}</p>
       </main>
     );
-  }
-
-  if (!order) {
-    return (
+  } else if (!order) {
+    content = (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-neutral-500">Loading your order…</p>
       </main>
     );
-  }
-
-  if (order.status !== "pending") {
-    return (
+  } else if (order.status !== "pending") {
+    content = (
       <main className="mx-auto max-w-2xl px-6 py-16">
         <p className="text-neutral-700">
           This order has already been submitted (status: {order.status}).
         </p>
       </main>
     );
-  }
-
-  return (
-    <>
+  } else {
+    content = (
+      <>
       {/* Bottom padding leaves room for the fixed submit bar so it never
           covers the last field. */}
       <main className="mx-auto max-w-3xl px-6 pb-32 pt-12">
@@ -338,6 +336,14 @@ export default function CheckoutPage() {
           </button>
         </div>
       </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SiteHeader />
+      {content}
     </>
   );
 }

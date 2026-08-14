@@ -19,6 +19,7 @@ import type {
   ModernBasemap,
   ModernPalette,
 } from "@/lib/modern/mapStyle";
+import { labelVisibility, placeLabelFilter } from "@/lib/modern/mapStyle";
 import {
   ensureMapRuntime,
   modernStyle,
@@ -65,6 +66,9 @@ export type ModernMapCanvasProps = {
   outline?: unknown | null;
   /** Stroke width for the highlighted polygon(s). */
   highlightLineWidth?: number;
+  /** County boundary stroke colour/width. Falls back to borderColour/3px. */
+  outlineColour?: string;
+  outlineWidth?: number;
   /** [[west, south], [east, north]] — fitted only when fitKey changes. */
   fitBounds?: [[number, number], [number, number]] | null;
   /** Change this to request a re-fit (e.g. when the level or selection changes). */
@@ -89,6 +93,8 @@ export default function ModernMapCanvas({
   contourDensity = DEFAULT_CONTOUR_DENSITY,
   accentColour,
   borderColour,
+  outlineColour,
+  outlineWidth,
   markerShape = "pin",
   markerColour = "#C08497",
   markerSize = 34,
@@ -130,6 +136,8 @@ export default function ModernMapCanvas({
     outline,
     accentColour,
     borderColour,
+    outlineColour,
+    outlineWidth,
     showFill,
     highlightLineWidth,
     pin,
@@ -147,6 +155,8 @@ export default function ModernMapCanvas({
       outline,
       accentColour,
       borderColour,
+      outlineColour,
+      outlineWidth,
       showFill,
       highlightLineWidth,
       pin,
@@ -229,6 +239,8 @@ export default function ModernMapCanvas({
         outline: o,
         accentColour: accent,
         borderColour: border,
+        outlineColour: oColour,
+        outlineWidth: oWidth,
         showFill: fill,
         highlightLineWidth: width,
       } = propsRef.current;
@@ -237,6 +249,8 @@ export default function ModernMapCanvas({
         outline: o,
         accentColour: accent,
         borderColour: border,
+        outlineColour: oColour,
+        outlineWidth: oWidth,
         showFill: fill,
         highlightLineWidth: width,
       });
@@ -291,6 +305,32 @@ export default function ModernMapCanvas({
     map.setStyle(modernStyle(options));
   }, [basemap, layers, contourDensity, elevationUnit, palette]);
 
+  // ── Place-name level ────────────────────────────────────────────────
+  // Applied in place rather than through the style swap above — modernStyleKey
+  // deliberately excludes placeNames, so a level-only change never reaches setStyle.
+  // buildModernStyle still bakes the level into any style built for another reason
+  // (initial load, basemap/palette swap, the print export's own style build), so this
+  // effect only has to cover "the level changed and nothing else did". Guarded on
+  // isStyleLoaded/getLayer because it can fire in the same tick as a style swap from a
+  // different prop — in that window the fresh style already carries the right level, so
+  // skipping here is correct, not a missed update.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const level = layers.placeNames;
+    if (map.getLayer("place-label")) {
+      map.setFilter("place-label", placeLabelFilter(level));
+      map.setLayoutProperty("place-label", "visibility", labelVisibility(level));
+    }
+    for (const id of ["water-label", "road-label"]) {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", labelVisibility(level));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers.placeNames]);
+
   // ── Overlay data ───────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
@@ -327,9 +367,10 @@ export default function ModernMapCanvas({
       );
     }
     if (map.getLayer(OUTLINE_LINE_LAYER)) {
-      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", line);
+      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", outlineColour ?? line);
+      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-width", outlineWidth ?? 3);
     }
-  }, [accentColour, borderColour, showFill, highlightLineWidth]);
+  }, [accentColour, borderColour, outlineColour, outlineWidth, showFill, highlightLineWidth]);
 
   // ── Fit bounds, but only on an explicit request ────────────────────
   //

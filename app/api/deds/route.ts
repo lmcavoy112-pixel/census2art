@@ -55,10 +55,11 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error("DED route error:", error);
 
+      // The Postgres message is logged, not returned: it names tables, columns and
+      // constraints, which is a free schema map for anyone probing the API.
       return NextResponse.json(
         {
           error: "Could not load DED counts.",
-          details: error.message,
           surname_search: surnameSearch,
           county_display: countyDisplay,
           deds: [],

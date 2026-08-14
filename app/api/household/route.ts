@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { projectHouseholdPeople } from "../../../lib/census-fields";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -19,5 +20,5 @@ export async function GET(request: Request) {
     return NextResponse.json([]);
   }
 
-  return NextResponse.json(data || []);
+  return NextResponse.json(projectHouseholdPeople(data));
 }

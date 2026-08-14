@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 import { createOrder, ProdigiApiError, type ProdigiRecipient } from "../../../../lib/prodigi";
 import { isValidCountryCode, STATE_REQUIRED_COUNTRY_CODES } from "../../../../lib/countries";
+import { requireAdmin } from "../../../../lib/admin-auth";
+import { submitOrderSchema } from "../../../../lib/validation";
+
+/**
+ * Order read and submit.
+ *
+ * GET is public: the customer-facing status page (app/orders/[id]/page.tsx) reads it, and
+ * it deliberately never selects `recipient`, so no personal data is returned. The order id
+ * is a v4 UUID, which is what keeps one customer from reading another's.
+ *
+ * POST is gated. It is the only call in the codebase that instructs Prodigi to manufacture
+ * and ship, and it takes no payment — paid orders reach Prodigi through the Shopify webhook
+ * instead. Left open, two anonymous requests produce a real print billed to the shop.
+ */
 
 export async function GET(
   _request: NextRequest,
@@ -38,29 +52,24 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   const { id } = await params;
 
   let body: SubmitOrderBody;
   try {
-    body = await request.json();
+    // The schema replaces the hand-rolled presence checks and adds the length bounds they
+    // never had; the country-specific rules below still apply on top of it.
+    body = submitOrderSchema.parse(await request.json()) as SubmitOrderBody;
   } catch {
-    return NextResponse.json({ error: "Malformed request body." }, { status: 400 });
-  }
-
-  const { recipient, shippingMethod = "Standard" } = body;
-
-  if (
-    !recipient?.name ||
-    !recipient?.address?.line1 ||
-    !recipient?.address?.postalOrZipCode ||
-    !recipient?.address?.countryCode ||
-    !recipient?.address?.townOrCity
-  ) {
     return NextResponse.json(
-      { error: "Missing required recipient/address fields." },
+      { error: "Missing or invalid recipient/address fields." },
       { status: 400 }
     );
   }
+
+  const { recipient, shippingMethod = "Standard" } = body;
 
   const countryCode = recipient.address.countryCode.toUpperCase();
 
@@ -87,29 +96,14 @@ export async function POST(
 
   recipient.address.countryCode = countryCode;
 
-  const { data: order, error: fetchError } = await supabaseAdmin
-    .from("orders")
-    .select("id, status, sku, copies, attributes, image_url, price_gbp")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error("Order lookup error:", fetchError);
-    return NextResponse.json({ error: "Could not load order." }, { status: 500 });
-  }
-
-  if (!order) {
-    return NextResponse.json({ error: "Order not found." }, { status: 404 });
-  }
-
-  if (order.status !== "pending") {
-    return NextResponse.json(
-      { error: `Order has already been submitted (status: ${order.status}).` },
-      { status: 409 }
-    );
-  }
-
-  await supabaseAdmin
+  // Claim the order and read it back in one statement.
+  //
+  // This used to select the row, check `status === "pending"` in JavaScript, then update it
+  // unconditionally. Two concurrent requests could both read "pending", both pass the check
+  // and both submit to Prodigi — one paid order, two physical prints. Matching on the status
+  // inside the UPDATE makes the transition atomic: whichever request gets there first moves
+  // the row out of "pending", and the loser matches nothing and comes back empty.
+  const { data: claimed, error: claimError } = await supabaseAdmin
     .from("orders")
     .update({
       status: "creating",
@@ -118,7 +112,27 @@ export async function POST(
       country_code: countryCode,
       town_or_city: recipient.address.townOrCity,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id, status, sku, copies, attributes, image_url, price_gbp")
+    .maybeSingle();
+
+  if (claimError) {
+    console.error("Order claim error:", claimError);
+    return NextResponse.json({ error: "Could not load order." }, { status: 500 });
+  }
+
+  if (!claimed) {
+    // Either the id does not exist or it was already claimed. These are deliberately not
+    // distinguished: telling an unauthenticated caller which one it was turns this into an
+    // order-id oracle.
+    return NextResponse.json(
+      { error: "Order not found, or it has already been submitted." },
+      { status: 409 }
+    );
+  }
+
+  const order = claimed;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
   const webhookSecret = process.env.PRODIGI_WEBHOOK_SECRET!;

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The default token is read-only here; nothing in this workflow needs to write to the repo,
+# and no secrets are referenced, so a fork PR cannot use it to reach production.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs strictly from the lockfile, so CI cannot silently resolve a
+      # different dependency tree than the one that was reviewed.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx next lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # The build only needs these to exist, not to be valid — pages that read them are
+          # rendered on demand at runtime. Real values stay in Vercel.
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-placeholder
+
+      # Fails the build on a high or critical advisory in shipped dependencies. This is the
+      # automated half of "scan dependencies" — Dependabot opens the PRs, this stops a
+      # vulnerable tree from merging in the first place.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --omit=dev

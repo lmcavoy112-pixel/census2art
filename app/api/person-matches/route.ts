@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { projectPersonMatches } from "../../../lib/census-fields";
 
 function cleanSurname(value: string) {
   return value
@@ -33,5 +34,5 @@ export async function GET(request: Request) {
     return NextResponse.json([]);
   }
 
-  return NextResponse.json(data || []);
+  return NextResponse.json(projectPersonMatches(data));
 }

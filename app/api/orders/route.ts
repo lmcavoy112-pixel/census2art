@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
+/**
+ * Uploads a finished artwork and opens a `pending` order row.
+ *
+ * This stays public on purpose: it is the first half of the *paid* Shopify flow. The
+ * designer renders a PNG, posts it here, and uses the returned public URL as the cart
+ * line's `_imageUrl` so Shopify has something to show and to carry into fulfilment
+ * (lib/design/order.ts -> app/irish-census-1901/design/page.tsx).
+ *
+ * Nothing here costs money or ships anything — it writes a file and a row. The step that
+ * actually instructs Prodigi to manufacture is POST /api/orders/[id], and that one is
+ * gated. The exposure to manage here is upload abuse, so the blob is bounded and sniffed
+ * below rather than trusted.
+ */
+
+/** 300dpi A1 exports land around 8 MB; 15 leaves headroom without inviting abuse. */
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+/** PNG signature, per the spec's first eight bytes. */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,6 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Missing image or SKU." },
         { status: 400 }
+      );
+    }
+
+    if (image.size > MAX_IMAGE_BYTES) {
+      return NextResponse.json(
+        { error: "That artwork is too large to upload." },
+        { status: 413 }
       );
     }
 
@@ -40,6 +66,16 @@ export async function POST(request: NextRequest) {
     const orderId = randomUUID();
     const imagePath = `orders/${orderId}/${randomUUID()}.png`;
     const imageBuffer = Buffer.from(await image.arrayBuffer());
+
+    // The upload is stored and served as image/png regardless of what was sent, so the
+    // bytes have to actually be a PNG. Without this the bucket will happily host any
+    // file type behind a .png name on our own storage domain.
+    if (!imageBuffer.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
+      return NextResponse.json(
+        { error: "Artwork must be a PNG image." },
+        { status: 415 }
+      );
+    }
 
     const { error: uploadError } = await supabaseAdmin.storage
       .from("print-exports")

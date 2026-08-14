@@ -10,12 +10,35 @@ const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 const RAISED = "#fdfaf5";
 
+type SiteHeaderProps = {
+  /**
+   * A page-specific way back — e.g. the designer's "Back to search", which used to be
+   * a bespoke button in that page's own masthead. Rendered two ways: a compact
+   * icon-only chevron next to the wordmark below `sm` (there's no room for a label on
+   * the single-line mobile bar), and the labelled bordered button next to Cart/Account
+   * from `sm` up. Omit on pages with nothing to go back to.
+   *
+   * `onClick` is optional and runs before the navigation — for a caller with a
+   * side effect to fire on the way out (the designer patches its snapshot's pin
+   * before leaving) rather than something to prevent. `href` already points at
+   * the fully-formed destination, so this stays a real link — not a button that
+   * calls router.push — and still supports the usual open-in-new-tab/middle-click.
+   */
+  back?: { href: string; label: string; onClick?: () => void };
+};
+
 /**
  * Site header. The account control is deliberately a real, honest control rather
  * than a dead icon: until the shop is wired up it explains where accounts have got
  * to, and that panel is the slot the storefront's customer-account widget replaces.
+ *
+ * Below `sm` the header collapses to a single slim line — wordmark, an optional back
+ * chevron, and Cart — to save vertical space on a phone; nav links and Account drop.
+ * Both breakpoints share one `height: var(--site-header-h)` (see globals.css), which
+ * every page that offsets or sizes against the header reads from the same variable
+ * rather than a hardcoded pixel value that only matched one of the two heights.
  */
-export default function SiteHeader() {
+export default function SiteHeader({ back }: SiteHeaderProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -44,23 +67,48 @@ export default function SiteHeader() {
     // it — the search rail, a table — show through as a smear of unreadable text,
     // which read as a rendering fault rather than an effect.
     <header
-      style={{ borderBottom: `1px solid ${RULE}`, background: GROUND }}
+      style={{ borderBottom: `1px solid ${RULE}`, background: GROUND, height: "var(--site-header-h)" }}
       className="sticky top-0 z-50"
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
-        <Link
-          href="/"
-          className="shrink-0"
-          style={{
-            fontFamily: "var(--font-cormorant)",
-            fontSize: "1.15rem",
-            fontWeight: 600,
-            letterSpacing: "0.18em",
-            color: INK,
-          }}
-        >
-          CENSUS<span style={{ color: GOLD, margin: "0 0.28em" }}>to</span>ART
-        </Link>
+      <div className="mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
+        <div className="flex min-w-0 shrink items-center gap-1">
+          {back && (
+            <Link
+              href={back.href}
+              onClick={back.onClick}
+              aria-label={back.label}
+              className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 sm:hidden"
+              style={{ color: MUTED, outlineColor: GOLD }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </Link>
+          )}
+
+          <Link
+            href="/"
+            className="shrink-0 truncate text-[1.05rem] sm:text-[1.15rem]"
+            style={{
+              fontFamily: "var(--font-cormorant)",
+              fontWeight: 600,
+              letterSpacing: "0.18em",
+              color: INK,
+            }}
+          >
+            CENSUS<span style={{ color: GOLD, margin: "0 0.28em" }}>to</span>ART
+          </Link>
+        </div>
 
         <nav className="hidden items-center gap-6 sm:flex">
           <HeaderLink href="/#irish-census">Irish Census</HeaderLink>
@@ -69,6 +117,17 @@ export default function SiteHeader() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
+          {back && (
+            <Link
+              href={back.href}
+              onClick={back.onClick}
+              className="hidden shrink-0 items-center rounded-md border px-3 py-2 text-[13px] font-medium transition-colors hover:bg-[#e7dfcd] sm:inline-flex"
+              style={{ borderColor: RULE, background: RAISED, color: INK }}
+            >
+              {back.label}
+            </Link>
+          )}
+
           <Link
             href="/cart"
             aria-label="Cart"
@@ -92,7 +151,7 @@ export default function SiteHeader() {
             <span className="hidden md:inline">Cart</span>
           </Link>
 
-          <div ref={accountRef} className="relative">
+          <div ref={accountRef} className="relative hidden sm:block">
           <button
             type="button"
             onClick={() => setAccountOpen((open) => !open)}
