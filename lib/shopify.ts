@@ -9,12 +9,12 @@
 // Setup this expects (see SHOPIFY_SETUP.md):
 //   SHOPIFY_STORE_DOMAIN          e.g. census-to-art.myshopify.com
 //   SHOPIFY_STOREFRONT_TOKEN      a Storefront API access token
-//   SHOPIFY_PRINT_PRODUCT_HANDLE  handle of the single "custom print" product
 //
-// Prints are one Shopify product whose variants are the sellable size/frame
-// combinations, matched to our catalogue by SKU. Everything that makes a given print
-// unique — the surname, the place, the rendered artwork — travels as line item
-// attributes, which is also what puts those details on the cart line and the order.
+// Prints are spread across a handful of Shopify products (one per print type — Art
+// Print, Classic Frame, etc.) whose variants are the sellable size/frame combinations,
+// matched to our catalogue by SKU. Everything that makes a given print unique — the
+// surname, the place, the rendered artwork — travels as line item attributes, which is
+// also what puts those details on the cart line and the order.
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-01";
 
@@ -192,24 +192,30 @@ export async function getCart(cartId: string): Promise<Cart | null> {
  * Matching on SKU rather than holding Shopify variant ids in our own tables means the
  * catalogue stays the single source of truth for what is sellable, and adding a size in
  * Shopify needs no code change here.
+ *
+ * The catalogue's ~108 SKUs are split across several Shopify products (Art Print,
+ * Classic Frame, Framed Canvas, Stretched Canvas, Digital Print) rather than one —
+ * Shopify caps variants per product, so this searches every product's variants for the
+ * SKU rather than assuming it lives under one known handle.
  */
 export async function findVariantIdBySku(sku: string): Promise<string | null> {
-  const handle = process.env.SHOPIFY_PRINT_PRODUCT_HANDLE;
-  if (!handle) throw new ShopifyError("SHOPIFY_PRINT_PRODUCT_HANDLE is not set.");
-
   const data = await shopifyFetch<{
-    product: { variants: { nodes: { id: string; sku: string | null }[] } } | null;
+    products: { nodes: { variants: { nodes: { id: string; sku: string | null }[] } }[] };
   }>(
-    `query FindVariant($handle: String!) {
-       product(handle: $handle) {
-         variants(first: 100) { nodes { id sku } }
+    `query FindVariant {
+       products(first: 50) {
+         nodes {
+           variants(first: 100) { nodes { id sku } }
+         }
        }
-     }`,
-    { handle }
+     }`
   );
 
-  const match = data.product?.variants.nodes.find((v) => v.sku === sku);
-  return match?.id ?? null;
+  for (const product of data.products.nodes) {
+    const match = product.variants.nodes.find((v) => v.sku === sku);
+    if (match) return match.id;
+  }
+  return null;
 }
 
 export async function createCart(
