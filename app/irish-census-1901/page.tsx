@@ -176,7 +176,7 @@ function CensusLanding() {
 
   // Mobile-only: the drag-resizable split between the map and the picker rail below it.
   // See useMobileMapSheet — unused above `lg`, where the two sit side by side instead.
-  const mobileMapSheet = useMobileMapSheet();
+  const [mobileMapSheetRef, mobileMapSheet] = useMobileMapSheet();
 
   // Place search: where the camera should go next, and where it is now (which biases
   // results toward whatever is already on screen).
@@ -1272,7 +1272,7 @@ function CensusLanding() {
           own content scrolling internally — see the drag handle and toggle button
           below for how the split between them is controlled. */}
       <div
-        ref={mobileMapSheet.containerRef}
+        ref={mobileMapSheetRef}
         style={mobileMapSheet.containerStyle}
         className="relative flex h-[calc(100dvh-var(--site-header-h))] flex-col lg:flex-row"
       >

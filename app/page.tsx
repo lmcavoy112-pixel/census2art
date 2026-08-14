@@ -60,7 +60,7 @@ export default function Home() {
             className="mt-4 text-base leading-relaxed"
             style={{ color: MUTED, fontWeight: 300 }}
           >
-            Census records are published free by national archives, but they're kept
+            Census records are published free by national archives, but they&apos;re kept
             as text. You can find your family without ever finding the place. What we
             do is match those written addresses to real locations.
           </p>
@@ -91,8 +91,8 @@ export default function Home() {
             className="mt-4 text-base leading-relaxed"
             style={{ color: MUTED, fontWeight: 300 }}
           >
-            Townland and district boundaries have changed a lot over the years. They've been
-            redrawn, renamed, and merged many times. So the boundaries we use today aren't the same
+            Townland and district boundaries have changed a lot over the years. They&apos;ve been
+            redrawn, renamed, and merged many times. So the boundaries we use today aren&apos;t the same
             as they were in 1901. We do our best to match addresses to the old boundaries, but
             there will be mistakes.
           </p>

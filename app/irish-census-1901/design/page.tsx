@@ -646,7 +646,7 @@ function ModernDesignContent() {
 
   // Mobile-only: the drag-resizable split between the poster/map stage and the control
   // sheet below it. Unused above `lg`, where the two sit side by side at full height.
-  const mobileMapSheet = useMobileMapSheet();
+  const [mobileMapSheetRef, mobileMapSheet] = useMobileMapSheet();
 
   // Switching level resets the camera and drops any option the new level doesn't offer.
   //
@@ -2371,7 +2371,7 @@ function ModernDesignContent() {
       />
 
       <main
-        ref={mobileMapSheet.containerRef}
+        ref={mobileMapSheetRef}
         style={mobileMapSheet.containerStyle}
         className="relative flex h-[calc(100dvh-var(--site-header-h))] min-h-0 flex-col lg:flex-row"
       >
@@ -2541,6 +2541,10 @@ function ModernDesignContent() {
 
           {/* ── Poster toolbar ── */}
           <div className="absolute right-4 top-1/2 flex -translate-y-1/2 flex-col gap-2 lg:right-6">
+            {/* eslint-disable-next-line react-hooks/refs -- false positive: the rule's
+                closure analysis flags this array as "ref-tainted" because zoomBy (used
+                by two of its entries) reads mapInstanceRef.current — but only inside
+                zoomBy's own body, invoked from onClick, never during this render. */}
             {posterToolbar.map((tool) => (
               <button
                 key={tool.id}

@@ -128,21 +128,30 @@ export function useMobileMapSheet({
     commit(isEnlarged ? defaultPct : enlargedPct);
   }, [isEnlarged, commit, defaultPct, enlargedPct]);
 
-  return {
-    /** Attach to the fixed-height flex column both the stage and the sheet live in. */
+  // Returned as a [ref, state] tuple rather than one object with the ref mixed in among
+  // everything else. react-hooks/refs (part of the rules-of-react lint set, aimed at
+  // React Compiler compatibility) treats *any* property read off a value that contains
+  // a ref as a render-time ref access — it can't statically tell "containerRef" apart
+  // from "isEnlarged" once they're fields on the same object, so it flags every one of
+  // them. Splitting the ref out means the second element is a plain, ref-free object
+  // that's genuinely safe to read from during render — the container ref itself is only
+  // ever used the one legitimate way a ref is meant to be, as a JSX `ref` prop.
+  return [
     containerRef,
-    /** Spread onto that same element — seeds the custom property for the first render. */
-    containerStyle: { [cssVar]: `${mapPct}%` } as React.CSSProperties,
-    cssVar,
-    mapPct,
-    isDragging,
-    isEnlarged,
-    toggle,
-    handleProps: {
-      onPointerDown: onHandlePointerDown,
-      onPointerMove: onHandlePointerMove,
-      onPointerUp: endDrag,
-      onPointerCancel: cancelDrag,
+    {
+      /** Spread onto the ref'd element — seeds the custom property for the first render. */
+      containerStyle: { [cssVar]: `${mapPct}%` } as React.CSSProperties,
+      cssVar,
+      mapPct,
+      isDragging,
+      isEnlarged,
+      toggle,
+      handleProps: {
+        onPointerDown: onHandlePointerDown,
+        onPointerMove: onHandlePointerMove,
+        onPointerUp: endDrag,
+        onPointerCancel: cancelDrag,
+      },
     },
-  };
+  ] as const;
 }

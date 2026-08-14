@@ -30,8 +30,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # `next lint` was removed in Next.js 16 — it now errors immediately trying to parse
+      # "lint" as a project-directory argument. package.json's own `lint` script (bare
+      # eslint, using eslint.config.mjs directly) is the one that actually works.
       - name: Lint
-        run: npx next lint
+        run: npm run lint
 
       - name: Build
         run: npm run build

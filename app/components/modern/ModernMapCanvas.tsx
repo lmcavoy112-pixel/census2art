@@ -173,6 +173,33 @@ export default function ModernMapCanvas({
   // one is added or removed, but not when an existing one merely moves.
   const pinPresent = pin !== null && pin !== undefined;
 
+  // ── Fit bounds, but only on an explicit request ────────────────────
+  //
+  // The fit is held as a pending request rather than performed immediately, because a
+  // fit computed against a zero-sized container silently produces a nonsense camera and
+  // nothing ever asks again. That is the normal case on mount: the poster's height comes
+  // from an aspect-ratio on an ancestor, so the map's container can still be 0px high on
+  // the tick the map is constructed. It bit hardest when switching templates, where the
+  // canvas remounts into a container that has not been laid out yet, and the print came
+  // back framed on an arbitrary patch of countryside.
+  //
+  // Declared here, ahead of the mount effect below that references it inside a
+  // "style.load" listener — that listener is registered once (the effect's deps are
+  // `[]`) and would otherwise close over whichever runPendingFit identity existed at
+  // that first render forever. It closes only over refs, so moving it earlier changes
+  // nothing about what it does, only when the declaration itself is visible.
+  const runPendingFit = useCallback(() => {
+    const map = mapRef.current;
+    const container = containerRef.current;
+    const pending = pendingFitRef.current;
+    if (!map || !container || !pending) return;
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+
+    pendingFitRef.current = null;
+    map.resize();
+    map.fitBounds(pending.bounds, { padding: pending.padding, duration: pending.duration });
+  }, []);
+
   // ── Create the map once ────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -371,27 +398,6 @@ export default function ModernMapCanvas({
       map.setPaintProperty(OUTLINE_LINE_LAYER, "line-width", outlineWidth ?? 3);
     }
   }, [accentColour, borderColour, outlineColour, outlineWidth, showFill, highlightLineWidth]);
-
-  // ── Fit bounds, but only on an explicit request ────────────────────
-  //
-  // The fit is held as a pending request rather than performed immediately, because a
-  // fit computed against a zero-sized container silently produces a nonsense camera and
-  // nothing ever asks again. That is the normal case on mount: the poster's height comes
-  // from an aspect-ratio on an ancestor, so the map's container can still be 0px high on
-  // the tick the map is constructed. It bit hardest when switching templates, where the
-  // canvas remounts into a container that has not been laid out yet, and the print came
-  // back framed on an arbitrary patch of countryside.
-  const runPendingFit = useCallback(() => {
-    const map = mapRef.current;
-    const container = containerRef.current;
-    const pending = pendingFitRef.current;
-    if (!map || !container || !pending) return;
-    if (container.clientWidth === 0 || container.clientHeight === 0) return;
-
-    pendingFitRef.current = null;
-    map.resize();
-    map.fitBounds(pending.bounds, { padding: pending.padding, duration: pending.duration });
-  }, []);
 
   useEffect(() => {
     if (!fitBounds || !fitKey || fitKey === lastFitKey.current) return;

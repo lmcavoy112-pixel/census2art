@@ -1280,6 +1280,12 @@ function DesignPageContent() {
     setProductKind(fallbackProduct);
   }, [productCategory]);
 
+  /* eslint-disable react-hooks/preserve-manual-memoization -- React Compiler can't
+     prove confirmedSku (CatalogueSku | null state) is never mutated in place, so it
+     declines to optimize this component rather than risk a stale memo; the memo
+     itself is still correct manually, this only affects whether the compiler's own
+     optimization pass applies here. Block-scoped, not next-line: the violation is
+     reported on both the opening and closing lines of this multi-line useMemo. */
   const selectedPrintSize = useMemo((): PrintSizeOption => {
     if (confirmedSku) {
       return printSizeForSku(confirmedSku);
@@ -1292,6 +1298,7 @@ function DesignPageContent() {
     }
     return fallback;
   }, [confirmedSku, printSizeId, confirmedLayoutFamily]);
+  /* eslint-enable react-hooks/preserve-manual-memoization */
 
   const isSquare = selectedPrintSize.group === "square";
   const visibleBorderStyleOptions = isSquare
