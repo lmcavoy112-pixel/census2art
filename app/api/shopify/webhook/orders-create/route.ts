@@ -233,11 +233,17 @@ export async function POST(request: NextRequest) {
     if (attrs["Frame colour"]) {
       prodigiAttributes.color = attrs["Frame colour"];
 
-      const { data: catalogueRow } = await supabaseAdmin
+      // Not .maybeSingle(): black/white variants of the same framed product
+      // currently share one SKU (a separate catalogue data issue), so this can
+      // legitimately match more than one row. Both rows agree on `product`, which
+      // is all this needs.
+      const { data: catalogueRows } = await supabaseAdmin
         .from("catalogue_skus")
         .select("product")
         .eq("sku", line.sku)
-        .maybeSingle();
+        .limit(1);
+
+      const catalogueRow = catalogueRows?.[0];
 
       if (catalogueRow?.product === "Classic Frame") {
         // Not yet a customer-facing choice — "Snow white" is a neutral default that
