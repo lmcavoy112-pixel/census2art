@@ -219,11 +219,37 @@ export async function POST(request: NextRequest) {
     // Style, ...) alongside fulfilment data — everything the cart put there, per
     // app/irish-census-1901/design/page.tsx. Prodigi's own `attributes` field is
     // narrower: it validates against a fixed, per-product set of print options and
-    // rejects the whole order on an unrecognised key. `color` (frame colour) is the
-    // only one of our attributes Prodigi actually understands, matching the shape the
-    // direct (non-Shopify) order path already sends in the same file.
+    // rejects the whole order on an unrecognised key.
+    //
+    // Frame colour maps to Prodigi's `color`, confirmed live against
+    // GET /v4.0/products/{sku} — but that alone isn't sufficient: Classic Frame also
+    // requires a `mountColor` (the mat board inside the frame) and Framed Canvas
+    // requires a `wrap` (how the image treats the canvas edge), neither of which our
+    // catalogue exposes as a customer choice today. Both are looked up per-order
+    // rather than pattern-matched on the SKU string, because the two product families
+    // don't share a SKU prefix (Framed Canvas is both "CAN-38MM-FRA-SC-*" and
+    // "GLOBAL-FRA-CAN-*").
     const prodigiAttributes: Record<string, string> = {};
-    if (attrs["Frame colour"]) prodigiAttributes.color = attrs["Frame colour"];
+    if (attrs["Frame colour"]) {
+      prodigiAttributes.color = attrs["Frame colour"];
+
+      const { data: catalogueRow } = await supabaseAdmin
+        .from("catalogue_skus")
+        .select("product")
+        .eq("sku", line.sku)
+        .maybeSingle();
+
+      if (catalogueRow?.product === "Classic Frame") {
+        // Not yet a customer-facing choice — "Snow white" is a neutral default that
+        // reads correctly against either frame colour.
+        prodigiAttributes.mountColor = "Snow white";
+      } else if (catalogueRow?.product === "Framed Canvas") {
+        // The map/artwork continues around the canvas edge rather than a flat colour
+        // band cutting into it — the standard choice, and the only one some sizes
+        // (e.g. GLOBAL-FRA-CAN-17X21) actually offer.
+        prodigiAttributes.wrap = "ImageWrap";
+      }
+    }
 
     if (!imageUrl) {
       console.warn(`Order ${order.id}, line ${line.title}: no _imageUrl attribute`);
