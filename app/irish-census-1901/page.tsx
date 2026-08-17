@@ -51,6 +51,7 @@ import {
   CountyIcon,
   DistrictIcon,
   HouseholdIcon,
+  ReviewIcon,
   SurnameIcon,
 } from "../components/designer/icons";
 import { useMobileMapSheet } from "../components/designer/useMobileMapSheet";
@@ -61,7 +62,7 @@ const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
 });
 
 /** The narrowing steps, in the order the records themselves nest. */
-type SectionId = "surname" | "county" | "ded" | "townland";
+type SectionId = "surname" | "county" | "ded" | "townland" | "review";
 
 export default function IrishCensus1901Page() {
   // useSearchParams needs a Suspense boundary above it, or the whole route opts out
@@ -112,7 +113,7 @@ function CensusLanding() {
   } | null>(null);
 
   // The localStorage key this selection is (or will be) saved under. Reused rather than
-  // re-minted on every "Design this print" — a customer bouncing between the search and
+  // re-minted on every "Create the Artwork" — a customer bouncing between the search and
   // the designer a few times should leave one snapshot behind, not one per click.
   const [designKey, setDesignKey] = useState(deepLinkDesignKey);
 
@@ -961,19 +962,8 @@ function CensusLanding() {
           </button>
         </form>
 
-        {surnameTitle && counties.length > 0 && (
-          <p className="text-[13px] text-stone-600">
-            <span className="font-medium text-stone-900">{surnameTitle}</span> appears in{" "}
-            {counties.length} {counties.length === 1 ? "county" : "counties"} in the 1901
-            census.
-          </p>
-        )}
-
         {similarSurnames.length > 0 && (
           <div>
-            <p className="mb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-stone-500">
-              Similar names
-            </p>
             <div className="flex flex-wrap gap-1.5">
               {similarSurnames.map((s) => (
                 <button
@@ -1245,15 +1235,187 @@ function CensusLanding() {
     ),
   };
 
+  // Final, view-only step: everything chosen so far, in one place, before handing off
+  // to the designer. Also where the household table and Form A access now live — they
+  // aren't a choice either, so they belong here rather than permanently on screen
+  // below every other tab regardless of what's being picked.
+  const reviewSection: DesignerSection = {
+    id: "review",
+    title: "Review Details",
+    summary: surnameTitle ? "Check everything before designing." : "—",
+    note: surnameTitle ? undefined : "search a surname first",
+    icon: <ReviewIcon />,
+    body: surnameTitle ? (
+      <div className="space-y-5">
+        <div className="space-y-1.5">
+          {[
+            { label: "Surname", value: surnameTitle },
+            { label: "County", value: selectedCounty },
+            { label: "District", value: selectedDed?.ded_display },
+            {
+              label: "Townland",
+              value:
+                selectedTownland?.townland_display ||
+                selectedHouse?.townland_display ||
+                (selectedDed ? "Viewing all" : ""),
+            },
+            {
+              label: "House",
+              value: selectedHouse?.house_no ? `No. ${selectedHouse.house_no}` : "",
+            },
+          ]
+            .filter((row) => row.value)
+            .map((row) => (
+              <div key={row.label} className="flex items-baseline justify-between gap-3 text-[13.5px]">
+                <span className="text-stone-500">{row.label}</span>
+                <span className="font-medium text-stone-900">{row.value}</span>
+              </div>
+            ))}
+        </div>
+
+        {household.length > 0 && (
+          <div className="border-t border-stone-200 pt-4">
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-stone-700">
+              Inhabitants
+            </h2>
+            <div className="mt-2 overflow-x-auto rounded-md border border-stone-200">
+              <table className="w-full min-w-[520px] text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-left">
+                    {["Name", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
+                      (heading) => (
+                        <th
+                          key={heading}
+                          className="whitespace-nowrap px-3 py-2 text-[11.5px] font-medium text-stone-500"
+                        >
+                          {heading}
+                        </th>
+                      )
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {household.map((person, index) => {
+                    const highlight =
+                      person.surname_search &&
+                      activeSurnameSearch &&
+                      person.surname_search === activeSurnameSearch;
+                    return (
+                      <tr
+                        key={`${person.full_name || "person"}-${index}`}
+                        className={`border-b border-stone-100 last:border-b-0 ${
+                          highlight ? "bg-amber-50" : ""
+                        }`}
+                      >
+                        <td
+                          className={`whitespace-nowrap px-3 py-1.5 font-medium ${
+                            highlight ? "text-amber-800" : "text-stone-900"
+                          }`}
+                        >
+                          {person.full_name || ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-stone-600">{person.age || ""}</td>
+                        <td className="px-3 py-1.5 text-stone-600">{person.sex || ""}</td>
+                        <td className="px-3 py-1.5 text-stone-600">
+                          {person.relation_to_head || ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-stone-600">
+                          {person.occupation || ""}
+                        </td>
+                        <td className="px-3 py-1.5 text-stone-600">
+                          {person.birthplace || ""}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {formAUrls.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
+                    Form A · original return
+                  </h3>
+                  <a
+                    href={formAUrls[0]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[12.5px] text-stone-500 underline underline-offset-4 hover:text-stone-800"
+                  >
+                    Open in new tab
+                  </a>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFormAEnlarged(true)}
+                  className="group relative mt-2 block w-full overflow-hidden rounded-md border border-stone-200 transition-colors hover:border-stone-400"
+                  aria-label="Enlarge the original Form A"
+                >
+                  <iframe
+                    src={formAEmbedUrl}
+                    title="Form A preview"
+                    tabIndex={-1}
+                    className="pointer-events-none h-[220px] w-full bg-white"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-stone-900/80 py-1.5 text-[12px] text-white">
+                    Click to enlarge
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {pin && (
+          <div className="border-t border-stone-200 pt-4">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-stone-500">
+              Marker
+            </p>
+            <p className="mt-1 text-[12.5px] text-stone-600">
+              {pinSource === "geocoder" && "Found from the 1901 address — confirm it before ordering."}
+              {pinSource === "neighbour" &&
+                `Placed on the nearest known house, No. ${pinMatchedLabel}.`}
+              {pinSource === "street" &&
+                `Placed on the street (${pinMatchedLabel}) — no house number found.`}
+              {pinSource === "centroid" && "Placed at the district centre — not yet confirmed."}
+              {pinSource === "manual" && "Placed by hand."}
+              {!pinSource && "Placed."}
+            </p>
+          </div>
+        )}
+
+        <div className="border-t border-stone-200 pt-4">
+          <button
+            type="button"
+            onClick={handleContinueToDesign}
+            className="w-full rounded-md bg-stone-900 py-2.5 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Create the Artwork
+          </button>
+        </div>
+      </div>
+    ) : (
+      <EmptyNote>Search a surname to get started.</EmptyNote>
+    ),
+  };
+
   const sections: DesignerSection[] = [
     surnameSection,
     countySection,
     dedSection,
     townlandSection,
+    reviewSection,
   ];
 
   return (
-    <div className={`${siteFontVars} flex min-h-screen flex-col bg-[#F5F4F1] text-stone-900`}>
+    // min-h-dvh, not min-h-screen (100vh): the workspace below is sized off 100dvh, which
+    // on mobile Safari shrinks while the address bar is showing. A 100vh outer shell paired
+    // with a 100dvh inner one leaves a gap between them exactly the size of that bar —
+    // visible as blank space beneath the pinned action bar until the page scrolls.
+    <div className={`${siteFontVars} flex min-h-dvh flex-col bg-[#F5F4F1] text-stone-900`}>
       <SiteHeader />
 
       {/* The workspace fills what is left of the viewport, so the map gets the whole
@@ -1393,143 +1555,6 @@ function CensusLanding() {
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
               <SectionAccordion sections={sections} openId={openSection} />
-
-              {/* ── Household record ──
-                  Not a step, so it sits below the numbered sections rather than
-                  inside them: nothing here is chosen, it is simply what the census
-                  says about the house that has been picked. */}
-              {household.length > 0 && (
-                <div className="border-b border-stone-200 px-5 py-5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h2 className="text-[15px] font-semibold uppercase tracking-[0.04em] text-stone-900">
-                      Inhabitants
-                    </h2>
-                    <span className="text-[12.5px] text-stone-500">
-                      House No. {selectedHouse?.house_no || "Unknown"}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[13px] text-stone-500">
-                    Everyone recorded at this house on census night.
-                  </p>
-
-                  <div className="mt-3 overflow-x-auto rounded-md border border-stone-200">
-                    <table className="w-full min-w-[520px] text-[12.5px]">
-                      <thead>
-                        <tr className="border-b border-stone-200 bg-stone-50 text-left">
-                          {["Name", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
-                            (heading) => (
-                              <th
-                                key={heading}
-                                className="whitespace-nowrap px-3 py-2 text-[11.5px] font-medium text-stone-500"
-                              >
-                                {heading}
-                              </th>
-                            )
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {household.map((person, index) => {
-                          const highlight =
-                            person.surname_search &&
-                            activeSurnameSearch &&
-                            person.surname_search === activeSurnameSearch;
-                          return (
-                            <tr
-                              key={`${person.full_name || "person"}-${index}`}
-                              className={`border-b border-stone-100 last:border-b-0 ${
-                                highlight ? "bg-amber-50" : ""
-                              }`}
-                            >
-                              <td
-                                className={`whitespace-nowrap px-3 py-1.5 font-medium ${
-                                  highlight ? "text-amber-800" : "text-stone-900"
-                                }`}
-                              >
-                                {person.full_name || ""}
-                              </td>
-                              <td className="px-3 py-1.5 text-stone-600">
-                                {person.age || ""}
-                              </td>
-                              <td className="px-3 py-1.5 text-stone-600">
-                                {person.sex || ""}
-                              </td>
-                              <td className="px-3 py-1.5 text-stone-600">
-                                {person.relation_to_head || ""}
-                              </td>
-                              <td className="px-3 py-1.5 text-stone-600">
-                                {person.occupation || ""}
-                              </td>
-                              <td className="px-3 py-1.5 text-stone-600">
-                                {person.birthplace || ""}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {formAUrls.length > 0 && (
-                    <div className="mt-4">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
-                          Form A · original return
-                        </h3>
-                        <a
-                          href={formAUrls[0]}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[12.5px] text-stone-500 underline underline-offset-4 hover:text-stone-800"
-                        >
-                          Open in new tab
-                        </a>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setFormAEnlarged(true)}
-                        className="group relative mt-2 block w-full overflow-hidden rounded-md border border-stone-200 transition-colors hover:border-stone-400"
-                        aria-label="Enlarge the original Form A"
-                      >
-                        <iframe
-                          src={formAEmbedUrl}
-                          title="Form A preview"
-                          tabIndex={-1}
-                          className="pointer-events-none h-[220px] w-full bg-white"
-                        />
-                        <span className="absolute inset-x-0 bottom-0 bg-stone-900/80 py-1.5 text-[12px] text-white">
-                          Click to enlarge
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Pinned, so the way forward stays in reach however far the rail has
-                been scrolled. */}
-            <div className="flex-none border-t border-stone-200 bg-white p-4">
-              <p className="mb-2 truncate text-[12px] text-stone-500">
-                {[
-                  surnameTitle,
-                  selectedCounty,
-                  selectedDed?.ded_display,
-                  selectedTownland?.townland_display || selectedHouse?.townland_display,
-                  selectedHouse?.house_no ? `No. ${selectedHouse.house_no}` : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || "Nothing selected yet"}
-              </p>
-              <button
-                type="button"
-                onClick={handleContinueToDesign}
-                disabled={!surnameTitle}
-                className="w-full rounded-md bg-stone-900 py-2.5 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-              >
-                Design this print
-              </button>
             </div>
           </div>
         </aside>

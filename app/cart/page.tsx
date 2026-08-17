@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import CartView from "../components/home/CartView";
 import SiteHeader from "../components/home/SiteHeader";
@@ -40,6 +41,14 @@ export default function CartPage() {
         <div className="mt-8">
           <CartView />
         </div>
+
+        <p className="mt-10 text-xs" style={{ color: "#8a8070" }}>
+          Map data © OpenStreetMap contributors, elevation from Terrain Tiles — see{" "}
+          <Link href="/legal#map-data" className="underline underline-offset-2">
+            full attribution
+          </Link>
+          .
+        </p>
       </main>
 
       <SiteFooter />

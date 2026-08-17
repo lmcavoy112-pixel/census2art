@@ -35,7 +35,7 @@ function supabaseOrigin(): string {
  * payload; it is the known weak point, and the way to close it is to make pages dynamic and
  * move to nonces, not to bolt a nonce onto static rendering.
  */
-function contentSecurityPolicy(): string {
+function contentSecurityPolicy(frameAncestors: string = "'none'"): string {
   const supabase = supabaseOrigin();
   const tiles = TILE_HOSTS.join(" ");
 
@@ -54,7 +54,7 @@ function contentSecurityPolicy(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${frameAncestors}`,
     "upgrade-insecure-requests",
   ].join("; ");
 }
@@ -106,6 +106,25 @@ const nextConfig: NextConfig = {
             // silently reach for them either.
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+          },
+        ],
+      },
+      {
+        // /api/form-a proxies a National Archives PDF so THIS app's own pages can embed
+        // it in an <iframe> — the archive serves it with X-Frame-Options: SAMEORIGIN,
+        // which blocks embedding directly, and the general frame-ancestors 'none' /
+        // X-Frame-Options: DENY above would defeat the proxy just the same. This entry
+        // is matched after the general one, so it overrides those two keys for this one
+        // route only: framable by this origin, still denied to everyone else.
+        source: "/api/form-a",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: contentSecurityPolicy("'self'"),
+          },
+          {
+            key: "X-Frame-Options",
+            value: "SAMEORIGIN",
           },
         ],
       },

@@ -125,7 +125,6 @@ import {
   FrameIcon,
   HelpIcon,
   MapStyleIcon,
-  MarkerIcon,
   ResizeIcon,
   SaveIcon,
   SymbolIcon,
@@ -812,6 +811,17 @@ function ModernDesignContent() {
   // Shape is decided up front, in the Template section, because it gates what the rest
   // of the designer can offer — square has no symbol divider and only one border.
   const isSquare = layoutFamilyToGroup(layoutFamily) === "square";
+
+  // Declared here (not down by the Historic sections that mainly use it) because the
+  // print-order snapshot builder below also reads effectiveBorder, and needs it defined
+  // before that point in evaluation order.
+  const borderChoices = isSquare ? SQUARE_BORDER_STYLES : HISTORIC_BORDER_STYLES;
+  // Derived, not synced in an effect: a border the current shape has no artwork for
+  // falls back to the first one it does. Asking the list itself means adding square
+  // artwork for a style is a one-line change there, with nothing here to keep in step.
+  const effectiveBorder = borderChoices.some((b) => b.id === historicBorder)
+    ? historicBorder
+    : borderChoices[0].id;
 
   const familyOptions = useMemo(() => {
     const groups = buildGalleryGroups(catalogueSkus, GALLERY_FAMILY_ORDER);
@@ -1502,11 +1512,12 @@ function ModernDesignContent() {
             { id: "historic", label: "Historic", detail: "Celtic line art" },
           ]}
         />
-        <HelpText>
-          {template === "modern"
-            ? "A contour or street map of the place your family lived, printed above their census record."
-            : "The county drawn as line art inside a Celtic border, with your surname and a chosen symbol."}
-        </HelpText>
+        {template === "historic" && (
+          <HelpText>
+            The county drawn as line art inside a Celtic border, with your surname and a
+            chosen symbol.
+          </HelpText>
+        )}
 
         {familyOptions.length > 1 && (
           <div className="border-t border-stone-200 pt-4">
@@ -1518,11 +1529,11 @@ function ModernDesignContent() {
               onChange={setLayoutFamily}
               options={familyOptions}
             />
-            <HelpText>
-              {template === "historic" && isSquare
-                ? "Square prints have no symbol and are drawn with Celtic Spirals only."
-                : "Sets the proportions of the print. Sizes follow in Size & frame."}
-            </HelpText>
+            {template === "historic" && isSquare && (
+              <HelpText>
+                Square prints have no symbol and are drawn with Celtic Spirals only.
+              </HelpText>
+            )}
           </div>
         )}
       </div>
@@ -1535,13 +1546,8 @@ function ModernDesignContent() {
     summary: "The names and places printed on your artwork.",
     icon: <FamilyIcon />,
     body: (
-      <div className="space-y-5">
-        <TextField
-          label="Surname"
-          value={headingText}
-          onChange={setHeadingText}
-          hint="Printed as the heading on your artwork."
-        />
+      <div className="space-y-4">
+        <TextField label="Surname" value={headingText} onChange={setHeadingText} />
 
         {template === "modern" && (
           <>
@@ -1575,9 +1581,7 @@ function ModernDesignContent() {
                     ]}
                   />
                   <HelpText>
-                    {householdDisplayMode === "table"
-                      ? "Columns — best for a shorter household."
-                      : "Grouped by surname in a few lines — best for a longer household."}
+                    {householdDisplayMode === "table" ? "Columns" : "Grouped by surname"}
                   </HelpText>
                 </div>
 
@@ -1660,7 +1664,7 @@ function ModernDesignContent() {
     summary: "How much of the map to show.",
     icon: <ExtentIcon />,
     body: (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div>
           <FieldLabel>Map preset</FieldLabel>
           <ChoiceCards
@@ -1678,8 +1682,7 @@ function ModernDesignContent() {
 
         {!preset.allowsPin && pin && (
           <p className="rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
-            Your house marker is kept, but it isn&apos;t shown at this extent — there is
-            no room for it on a map this wide. Choose District or Street to see it again.
+            Your marker is kept but not shown at this extent.
           </p>
         )}
       </div>
@@ -1692,7 +1695,7 @@ function ModernDesignContent() {
     summary: "Choose the colour palette for your print.",
     icon: <ColourIcon />,
     body: (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="grid grid-cols-4 gap-2">
           {PRINT_PALETTES.map((option) => (
             <PaletteTile
@@ -1748,10 +1751,7 @@ function ModernDesignContent() {
               />
             </>
           ) : (
-            <HelpText>
-              At this extent the districts are shown as shaded areas only
-              {level === "county" ? " — the county boundary itself is drawn as a fixed outline." : "."}
-            </HelpText>
+            <HelpText>Shown as shaded areas only at this extent.</HelpText>
           )}
         </div>
       </div>
@@ -1762,13 +1762,16 @@ function ModernDesignContent() {
   // from an older build) lands on the closest one rather than on index 0, the coarsest.
   const contourIndex = CONTOUR_INTERVALS.indexOf(nearestContourInterval(contourDensity));
 
-  const mapStyleSection: DesignerSection = {
-    id: "map-style",
-    title: "Map style",
-    summary: "Fine-tune how the map itself looks.",
+  // Map style + Marker merged into one section: both are "how the map on the print
+  // looks", and neither needed a whole tab of its own once each section only shows
+  // when it's the active one — see SectionAccordion.
+  const mapFeaturesSection: DesignerSection = {
+    id: "map-features",
+    title: "Map Features",
+    summary: "Basemap, layers, and the house marker.",
     icon: <MapStyleIcon />,
     body: (
-      <div className="space-y-5">
+      <div className="space-y-4">
         {preset.basemaps.length > 1 && (
           <div>
             <FieldLabel>Basemap</FieldLabel>
@@ -1811,9 +1814,6 @@ function ModernDesignContent() {
             minLabel="Off"
             maxLabel="All"
           />
-          <HelpText>
-            Also names roads and rivers — turning this off clears every label on the map.
-          </HelpText>
           <Toggle
             label="Mountain peaks"
             checked={mapLayers.mountainPeaks}
@@ -1849,134 +1849,127 @@ function ModernDesignContent() {
             onChange={(v) => setMapLayers((prev) => ({ ...prev, roads: v }))}
           />
         </div>
-      </div>
-    ),
-  };
 
-  const markerSection: DesignerSection = {
-    id: "marker",
-    title: "Marker",
-    summary: "Mark the house on the map.",
-    note: "optional",
-    icon: <MarkerIcon />,
-    body: (
-      <div className="space-y-5">
-        {pin && (
-          <div className="rounded-md border border-stone-200 bg-stone-50 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[13px] font-medium text-stone-800">Marker placed</span>
-              <button
-                type="button"
-                onClick={removeMarker}
-                className="text-[13px] text-red-700 hover:underline"
-              >
-                Remove
-              </button>
+        <div className="border-t border-stone-200 pt-4">
+          <GroupLabel>Marker</GroupLabel>
+
+          {pin && (
+            <div className="mb-3 rounded-md border border-stone-200 bg-stone-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13px] font-medium text-stone-800">Marker placed</span>
+                <button
+                  type="button"
+                  onClick={removeMarker}
+                  className="text-[13px] text-red-700 hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+              <p className="mt-1 text-[12px] text-stone-600">
+                {pinSource === "geocoder" && "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
+                {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
+                {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
+                {!pinSource && "Drag it on the map to place it."}
+              </p>
             </div>
-            <p className="mt-1 text-[12px] text-stone-600">
-              {pinSource === "geocoder" && "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
-              {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
-              {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
-              {!pinSource && "Drag it on the map to place it."}
-            </p>
-          </div>
-        )}
+          )}
 
-        <div>
-          <button
-            type="button"
-            onClick={findProperty}
-            disabled={geocodeState === "searching" || !selectedPolygon}
-            className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
-          </button>
-          {geocodeState === "not-found" && (
-            <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-              Couldn&apos;t find the property from the 1901 address — place it manually by
-              dragging the marker on the map.
-            </p>
-          )}
-          {geocodeState === "found" && (
-            <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
-              Found a likely match. Please confirm the location before ordering — 1901
-              addresses are approximate.
-            </p>
-          )}
-          {!selectedPolygon && (
-            <HelpText>
-              Searching needs a district. Pick one back in search to use this.
-            </HelpText>
-          )}
-          {!pin && (
+          <div>
             <button
               type="button"
-              onClick={placeMarkerManually}
-              className="mt-2 w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[14px] font-medium text-stone-700 transition-colors hover:bg-stone-50"
+              onClick={findProperty}
+              disabled={geocodeState === "searching" || !selectedPolygon}
+              className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Place it myself
+              {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
             </button>
-          )}
-        </div>
-
-        <div>
-          <FieldLabel>Shape</FieldLabel>
-          <div className="grid grid-cols-2 gap-2">
-            {MARKER_SHAPES.map((shape) => (
+            {geocodeState === "not-found" && (
+              <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
+                Couldn&apos;t find the property from the 1901 address — place it manually by
+                dragging the marker on the map.
+              </p>
+            )}
+            {geocodeState === "found" && (
+              <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
+                Found a likely match. Please confirm the location before ordering — 1901
+                addresses are approximate.
+              </p>
+            )}
+            {!selectedPolygon && (
+              <HelpText>
+                Searching needs a district. Pick one back in search to use this.
+              </HelpText>
+            )}
+            {!pin && (
               <button
-                key={shape.id}
                 type="button"
-                aria-label={shape.label}
-                aria-pressed={markerShape === shape.id}
-                onClick={() => setMarkerShape(shape.id)}
-                className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
-                  markerShape === shape.id
-                    ? "border-stone-900 ring-1 ring-stone-900"
-                    : "border-stone-300 hover:bg-stone-50"
-                }`}
+                onClick={placeMarkerManually}
+                className="mt-2 w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[14px] font-medium text-stone-700 transition-colors hover:bg-stone-50"
               >
-                <span
-                  aria-hidden="true"
-                  dangerouslySetInnerHTML={{ __html: markerSvg(shape.id, markerColour, 30) }}
-                />
+                Place it myself
               </button>
-            ))}
+            )}
           </div>
-        </div>
 
-        <div>
-          <FieldLabel>Colour</FieldLabel>
-          <div className="flex flex-wrap items-start gap-2">
-            {MARKER_COLOUR_PRESETS.map((option) => (
-              <ColourDot
-                key={option.id}
-                colour={option.hex}
-                label={option.label}
-                selected={markerColour.toLowerCase() === option.hex.toLowerCase()}
-                onClick={() => setMarkerColour(option.hex)}
+          <div className="mt-4">
+            <FieldLabel>Shape</FieldLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {MARKER_SHAPES.map((shape) => (
+                <button
+                  key={shape.id}
+                  type="button"
+                  aria-label={shape.label}
+                  aria-pressed={markerShape === shape.id}
+                  onClick={() => setMarkerShape(shape.id)}
+                  className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
+                    markerShape === shape.id
+                      ? "border-stone-900 ring-1 ring-stone-900"
+                      : "border-stone-300 hover:bg-stone-50"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: markerSvg(shape.id, markerColour, 30) }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <FieldLabel>Colour</FieldLabel>
+            <div className="flex flex-wrap items-start gap-2">
+              {MARKER_COLOUR_PRESETS.map((option) => (
+                <ColourDot
+                  key={option.id}
+                  colour={option.hex}
+                  label={option.label}
+                  selected={markerColour.toLowerCase() === option.hex.toLowerCase()}
+                  onClick={() => setMarkerColour(option.hex)}
+                />
+              ))}
+              <CustomColourDot
+                value={markerColour}
+                onChange={setMarkerColour}
+                selected={
+                  !MARKER_COLOUR_PRESETS.some(
+                    (o) => o.hex.toLowerCase() === markerColour.toLowerCase()
+                  )
+                }
               />
-            ))}
-            <CustomColourDot
-              value={markerColour}
-              onChange={setMarkerColour}
-              selected={
-                !MARKER_COLOUR_PRESETS.some(
-                  (o) => o.hex.toLowerCase() === markerColour.toLowerCase()
-                )
-              }
-            />
+            </div>
           </div>
-        </div>
 
-        <Stepper
-          label="Size"
-          valueLabel={`${markerSize}px`}
-          index={markerSizeIndex}
-          count={MARKER_SIZES.length}
-          onIndexChange={setMarkerSizeIndex}
-          minLabel="Small"
-          maxLabel="Large"
-        />
+          <Stepper
+            label="Size"
+            valueLabel={`${markerSize}px`}
+            index={markerSizeIndex}
+            count={MARKER_SIZES.length}
+            onIndexChange={setMarkerSizeIndex}
+            minLabel="Small"
+            maxLabel="Large"
+          />
+        </div>
       </div>
     ),
   };
@@ -1987,7 +1980,7 @@ function ModernDesignContent() {
     summary: "Choose format, size and frame finish.",
     icon: <FrameIcon />,
     body: (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div>
           <FieldLabel>Format</FieldLabel>
           <ChoiceCards
@@ -2072,21 +2065,51 @@ function ModernDesignContent() {
             </HelpText>
           )}
         </div>
+
+        {/* Price + Add to cart lives here, not as a bar pinned under every section —
+            it's only relevant once a size is actually being chosen. */}
+        <div className="border-t border-stone-200 pt-4">
+          {exportNote && <p className="mb-1.5 text-[11px] text-stone-500">{exportNote}</p>}
+          {orderError && (
+            <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800">
+              {orderError}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[19px] font-semibold leading-none tracking-tight">
+                {selectedSku ? `£${Number(selectedSku.price_gbp).toFixed(2)}` : "—"}
+              </p>
+              <p className="mt-0.5 truncate text-[12px] text-stone-700">
+                {selectedSku
+                  ? `${selectedSku.size_label} ${selectedSku.product}${
+                      selectedSku.framed && selectedSku.frame_colour
+                        ? ` · ${selectedSku.frame_colour} frame`
+                        : ""
+                    }`
+                  : "Choose a size to see the price"}
+              </p>
+              <p className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
+                Made to order — typically 5–8 working days
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void orderPrint()}
+              disabled={!selectedSku || busy !== ""}
+              className="flex-none rounded-full bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy === "order" ? "Preparing…" : "Add to cart"}
+            </button>
+          </div>
+        </div>
       </div>
     ),
   };
 
   // ── Historic sections ──────────────────────────────────────────────
 
-  const borderChoices = isSquare ? SQUARE_BORDER_STYLES : HISTORIC_BORDER_STYLES;
   const historicAccent = getAccentById(accentId);
-
-  // Derived, not synced in an effect: a border the current shape has no artwork for
-  // falls back to the first one it does. Asking the list itself means adding square
-  // artwork for a style is a one-line change there, with nothing here to keep in step.
-  const effectiveBorder = borderChoices.some((b) => b.id === historicBorder)
-    ? historicBorder
-    : borderChoices[0].id;
 
   const historicMapStyleSection: DesignerSection = {
     id: "historic-map",
@@ -2094,7 +2117,7 @@ function ModernDesignContent() {
     summary: "Choose the basemap and the border around it.",
     icon: <MapStyleIcon />,
     body: (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div>
           <FieldLabel>Basemap</FieldLabel>
           <ChoiceCards
@@ -2135,7 +2158,7 @@ function ModernDesignContent() {
     summary: "Choose the paper, ink and district shading.",
     icon: <ColourIcon />,
     body: (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
           <FieldLabel>Paper &amp; ink</FieldLabel>
           <div className="grid grid-cols-3 gap-2">
@@ -2152,10 +2175,7 @@ function ModernDesignContent() {
               />
             ))}
           </div>
-          <HelpText>
-            Paper and ink are chosen together — the border artwork is drawn in the ink the
-            paper tone was tuned against.
-          </HelpText>
+          <HelpText>Paper and ink are chosen together.</HelpText>
         </div>
 
         <div className="border-t border-stone-200 pt-5">
@@ -2279,8 +2299,7 @@ function ModernDesignContent() {
           familySection,
           mapPresetSection,
           colourSection,
-          mapStyleSection,
-          markerSection,
+          mapFeaturesSection,
           sizeSection,
         ]
       : [
@@ -2343,7 +2362,7 @@ function ModernDesignContent() {
 
   if (!loaded) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#F5F4F1]">
+      <div className="flex min-h-dvh flex-col bg-[#F5F4F1]">
         <SiteHeader />
         <main className="flex flex-1 items-center justify-center">
           <p className="text-sm text-stone-600">Loading your design…</p>
@@ -2356,7 +2375,11 @@ function ModernDesignContent() {
   const frameHex = FRAME_COLOURS.find((f) => f.id === frameColour)?.hex ?? "#1B1B1B";
 
   return (
-    <div className={`${posterFont.className} flex min-h-screen flex-col bg-[#F5F4F1] text-stone-900`}>
+    // min-h-dvh, not min-h-screen: <main> below is sized off 100dvh, which shrinks on
+    // mobile Safari while the address bar is showing. Pairing a 100vh outer shell with a
+    // 100dvh inner one leaves a gap the size of that bar as blank space beneath the pinned
+    // price bar until the page scrolls — see the same fix on /irish-census-1901.
+    <div className={`${posterFont.className} flex min-h-dvh flex-col bg-[#F5F4F1] text-stone-900`}>
       {/* Replaces this page's old bespoke masthead — its only interactive element was
           "Back to search", which is now SiteHeader's `back` slot; the eyebrow/heading it
           used to show are decorative and section 1 of the rail already names what's
@@ -2630,50 +2653,6 @@ function ModernDesignContent() {
                 </p>
               )}
               <SectionAccordion sections={sections} openId={activeSection} />
-              <p className="px-5 py-4 text-[11px] leading-relaxed text-stone-400">
-                Map data © OpenStreetMap contributors. Elevation from Terrain Tiles.
-              </p>
-            </div>
-
-            {/* ── Price bar — pinned, so the total never scrolls away ──
-                Kept deliberately light on mobile: this sits on top of the accordion
-                inside a sheet that's already short on height, so it's a fixed tax on
-                every screen regardless of which section is open. `lg:` sizing is
-                unchanged from before; only the compact/mobile sizing is new. */}
-            <div className="flex-none border-t border-stone-200 bg-white px-4 py-2.5 lg:px-5 lg:py-4">
-              {exportNote && <p className="mb-1.5 text-[11px] text-stone-500 lg:mb-2 lg:text-[12px]">{exportNote}</p>}
-              {orderError && (
-                <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800 lg:mb-2 lg:text-[13px]">
-                  {orderError}
-                </p>
-              )}
-              <div className="flex items-center justify-between gap-3 lg:items-end lg:gap-4">
-                <div className="min-w-0">
-                  <p className="text-[19px] font-semibold leading-none tracking-tight lg:text-[26px]">
-                    {selectedSku ? `£${Number(selectedSku.price_gbp).toFixed(2)}` : "—"}
-                  </p>
-                  <p className="mt-0.5 truncate text-[12px] text-stone-700 lg:mt-1 lg:text-[13px]">
-                    {selectedSku
-                      ? `${selectedSku.size_label} ${selectedSku.product}${
-                          selectedSku.framed && selectedSku.frame_colour
-                            ? ` · ${selectedSku.frame_colour} frame`
-                            : ""
-                        }`
-                      : "Choose a size to see the price"}
-                  </p>
-                  <p className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
-                    Made to order — typically 5–8 working days
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void orderPrint()}
-                  disabled={!selectedSku || busy !== ""}
-                  className="flex-none rounded-full bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40 lg:px-6 lg:py-3 lg:text-[14px]"
-                >
-                  {busy === "order" ? "Preparing…" : "Add to cart"}
-                </button>
-              </div>
             </div>
           </div>
         </aside>
@@ -2684,7 +2663,7 @@ function ModernDesignContent() {
 
 export default function ModernDesignPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-[#F5F4F1]" />}>
+    <Suspense fallback={<main className="min-h-dvh bg-[#F5F4F1]" />}>
       <ModernDesignContent />
     </Suspense>
   );

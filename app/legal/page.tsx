@@ -47,6 +47,14 @@ const SECTIONS = [
       "Because each print is personalised, the returns position for change-of-mind differs from off-the-shelf goods. The exact policy is being finalised.",
     ],
   },
+  {
+    id: "map-data",
+    heading: "Map data",
+    body: [
+      "Base maps are built from OpenStreetMap data, © OpenStreetMap contributors, available under the Open Database License (ODbL).",
+      "Elevation contours use the Terrain Tiles dataset.",
+    ],
+  },
 ];
 
 export default function LegalPage() {

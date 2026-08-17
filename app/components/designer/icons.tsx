@@ -168,6 +168,17 @@ export function HouseholdIcon(props: IconProps) {
   );
 }
 
+/** A checked list — reviewing everything chosen so far before moving on. */
+export function ReviewIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="4" width="14" height="16" rx="1.5" />
+      <path d="M8.5 9.5l1.3 1.3L12.5 8" />
+      <path d="M9 15h6" />
+    </Svg>
+  );
+}
+
 /* ── Poster toolbar ─────────────────────────────────────────────────── */
 
 export function ZoomInIcon(props: IconProps) {

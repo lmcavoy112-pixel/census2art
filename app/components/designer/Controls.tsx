@@ -18,7 +18,7 @@ export function FieldLabel({
   hint?: ReactNode;
 }) {
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-3">
+    <div className="mb-1.5 flex items-baseline justify-between gap-3">
       <span className="text-[13px] font-medium text-stone-800">{children}</span>
       {hint && <span className="text-[12px] tabular-nums text-stone-500">{hint}</span>}
     </div>
@@ -28,14 +28,14 @@ export function FieldLabel({
 /** Small all-caps label for a sub-group inside a panel. */
 export function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
       {children}
     </p>
   );
 }
 
 export function HelpText({ children }: { children: ReactNode }) {
-  return <p className="mt-1.5 text-[12px] leading-relaxed text-stone-500">{children}</p>;
+  return <p className="mt-1 text-[12px] leading-relaxed text-stone-500">{children}</p>;
 }
 
 /* ── Text input ─────────────────────────────────────────────────────── */
@@ -306,7 +306,7 @@ export function ChoiceCards<T extends string>({
             aria-pressed={selected}
             disabled={option.disabled}
             onClick={() => onChange(option.id)}
-            className={`rounded-md border px-3 py-2.5 text-left transition-colors ${
+            className={`rounded-md border px-2.5 py-2 text-left transition-colors ${
               selected
                 ? "border-stone-900 bg-white ring-1 ring-stone-900"
                 : "border-stone-300 bg-white hover:bg-stone-50"
