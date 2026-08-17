@@ -1392,11 +1392,7 @@ function CensusLanding() {
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <SectionAccordion
-                sections={sections}
-                openId={openSection}
-                onToggle={(id) => setOpenSection(id as SectionId)}
-              />
+              <SectionAccordion sections={sections} openId={openSection} />
 
               {/* ── Household record ──
                   Not a step, so it sits below the numbered sections rather than

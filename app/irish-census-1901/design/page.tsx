@@ -2629,11 +2629,7 @@ function ModernDesignContent() {
                   {mapError}
                 </p>
               )}
-              <SectionAccordion
-                sections={sections}
-                openId={activeSection}
-                onToggle={(id) => setOpenSection((current) => (current === id ? "" : id))}
-              />
+              <SectionAccordion sections={sections} openId={activeSection} />
               <p className="px-5 py-4 text-[11px] leading-relaxed text-stone-400">
                 Map data © OpenStreetMap contributors. Elevation from Terrain Tiles.
               </p>

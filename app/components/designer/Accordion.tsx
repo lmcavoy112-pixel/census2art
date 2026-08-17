@@ -104,82 +104,53 @@ export function SectionTabsHorizontal({
   );
 }
 
+/**
+ * Shows only the active section — not the full list with the rest collapsed
+ * underneath it. Section switching is exclusively the tab strip / rail's job (see
+ * SectionTabsHorizontal / SectionRail below); rendering every other section here too,
+ * even collapsed, put their headers in the same scroll container as the active one's
+ * body, so a customer could scroll straight past what they were doing into the next
+ * (or previous) section, and past the last one into empty space beneath it.
+ */
 export function SectionAccordion({
   sections,
   openId,
-  onToggle,
 }: {
   sections: DesignerSection[];
   openId: string;
-  onToggle: (id: string) => void;
 }) {
-  const openRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const index = sections.findIndex((section) => section.id === openId);
+  const section = index >= 0 ? sections[index] : sections[0];
 
-  // Jumping to a section from the icon rail is useless if the section it opens is below
-  // the fold — so the newly opened panel is always brought into view.
+  // Jumping to a section from the tab strip / rail — including the automatic jump to
+  // the next step once a choice is made — brings it to the top of the scroll area
+  // rather than leaving it wherever the previous section had scrolled to, and the
+  // section-enter animation (see globals.css) eases it in instead of a hard cut.
   useEffect(() => {
-    openRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    panelRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [openId]);
 
+  if (!section) return null;
+
   return (
-    <div className="min-h-0 min-w-0 flex-1">
-      {sections.map((section, index) => {
-        const open = section.id === openId;
-        return (
-          <div
-            key={section.id}
-            ref={open ? openRef : undefined}
-            className="border-b border-stone-200"
-          >
-            <h2>
-              <button
-                type="button"
-                onClick={() => onToggle(section.id)}
-                aria-expanded={open}
-                aria-controls={`panel-${section.id}`}
-                className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-stone-50"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold uppercase tracking-[0.04em] text-stone-900">
-                    <span className="text-stone-400">{index + 1} ·</span> {section.title}
-                    {section.note && (
-                      <span className="ml-1.5 text-[13px] font-normal normal-case tracking-normal text-stone-400">
-                        — {section.note}
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block text-[13px] font-normal text-stone-500">
-                    {section.summary}
-                  </span>
-                </span>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  aria-hidden="true"
-                  className={`mt-1 flex-none text-stone-400 transition-transform ${
-                    open ? "rotate-180" : ""
-                  }`}
-                >
-                  <path
-                    d="M4 6l4 4 4-4"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </h2>
-            {open && (
-              <div id={`panel-${section.id}`} className="space-y-5 px-5 pb-6 pt-1">
-                {section.body}
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div
+      key={section.id}
+      ref={panelRef}
+      className="section-enter min-h-0 min-w-0 flex-1 px-5 pb-6 pt-4"
+    >
+      <span className="block text-[15px] font-semibold uppercase tracking-[0.04em] text-stone-900">
+        <span className="text-stone-400">{index + 1} ·</span> {section.title}
+        {section.note && (
+          <span className="ml-1.5 text-[13px] font-normal normal-case tracking-normal text-stone-400">
+            — {section.note}
+          </span>
+        )}
+      </span>
+      <span className="mt-0.5 block text-[13px] font-normal text-stone-500">
+        {section.summary}
+      </span>
+      <div className="mt-4 space-y-5">{section.body}</div>
     </div>
   );
 }
