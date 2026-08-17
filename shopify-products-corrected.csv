@@ -1,0 +1,110 @@
+Title,Handle,Vendor,Type,Tags,Status,SKU,Option1 Name,Option1 Value,Price,Requires Shipping
+Art Print,art-print,Prodigi,Print,Physical,Active,ART-FAP-EMA-10X10,Size,10x10 in,4.50,TRUE
+,,,,,Active,GLOBAL-FAP-A3,Size,A3,11.06,TRUE
+,,,,,Active,ART-FAP-PAP-11X14,Size,11x14 in,5.00,TRUE
+,,,,,Active,ART-FAP-EMA-12X12,Size,12x12 in,4.50,TRUE
+,,,,,Active,FAP-12X16-GBLEGACY,Size,12x16 in,7.00,TRUE
+,,,,,Active,P-FIN-HGE-297X419,Size,12x17 in,16.59,TRUE
+,,,,,Active,ART-FAP-EMA-12X18,Size,12x18 in,9.48,TRUE
+,,,,,Active,GLOBAL-FAP-14X14,Size,14x14 in,11.06,TRUE
+,,,,,Active,ART-FAP-CPWP-14X20,Size,14x20 in,11.06,TRUE
+,,,,,Active,P-FIN-BAP-400X400,Size,15.7x15.7 in,7.00,TRUE
+,,,,,Active,P-FIN-BAP-400X500,Size,15.7x19.7 in,7.00,TRUE
+,,,,,Active,P-FIN-HGE-400X600,Size,15.7x23.6 in,19.00,TRUE
+,,,,,Active,GLOBAL-FAP-15X20,Size,15x20 in,12.64,TRUE
+,,,,,Active,GLOBAL-FAP-A2,Size,A2,11.85,TRUE
+,,,,,Active,ART-FAP-EMA-16X16,Size,16x16 in,9.00,TRUE
+,,,,,Active,ART-FAP-EMA-16X20,Size,16x20 in,10.27,TRUE
+,,,,,Active,ART-FAP-EMA-16X24,Size,16x24 in,10.00,TRUE
+,,,,,Active,GLOBAL-FAP-18X18,Size,18x18 in,11.85,TRUE
+,,,,,Active,FAP-18X24-GBLEGACY,Size,18x24 in,10.00,TRUE
+,,,,,Active,P-FIN-EMA-457X660,Size,18x26 in,16.59,TRUE
+,,,,,Active,ART-FAP-EMA-4X6,Size,4x6 in,3.16,TRUE
+,,,,,Active,GLOBAL-FAP-A5,Size,A5,5.93,TRUE
+,,,,,Active,ART-FAP-EMA-5X7,Size,5x7 in,3.00,TRUE
+,,,,,Active,ART-FAP-EMA-6X6,Size,6x6 in,3.00,TRUE
+,,,,,Active,ART-FAP-EMA-6X8,Size,6x8 in,3.00,TRUE
+,,,,,Active,GLOBAL-FAP-6X9,Size,6x9 in,6.32,TRUE
+,,,,,Active,GLOBAL-FAP-A4,Size,A4,8.69,TRUE
+,,,,,Active,GLOBAL-FAP-8X10,Size,8x10 in,7.11,TRUE
+,,,,,Active,ART-FAP-CPWP-8X11,Size,8x11 in,4.74,TRUE
+,,,,,Active,ART-FAP-EMA-8X12,Size,8x12 in,8.69,TRUE
+,,,,,Active,ART-FAP-EMA-8X8,Size,8x8 in,4.00,TRUE
+,,,,,Active,GLOBAL-FAP-9X12,Size,9x12 in,10.27,TRUE
+,,,,,Active,ART-FAP-CPWP-9X9,Size,9x9 in,4.74,TRUE
+Classic Frame,classic-frame,Prodigi,Frame,Physical,Active,FRA-CLA-EMA-MOUNT1-GLA-A3,Size,A3 - Black,49.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-A3,Size,A3 - White,49.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-28x35,Size,11x14 in - Black,41.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-28x35,Size,11x14 in - White,41.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x30,Size,12x12 in - Black,39.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x30,Size,12x12 in - White,39.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x40,Size,12x16 in - Black,45.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x40,Size,12x16 in - White,45.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x45,Size,12x18 in - Black,53.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-30x45,Size,12x18 in - White,53.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-A2,Size,A2 - Black,62.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-A2,Size,A2 - White,62.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x40,Size,16x16 in - Black,54.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x40,Size,16x16 in - White,54.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x50,Size,16x20 in - Black,58.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x50,Size,16x20 in - White,58.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x60,Size,16x24 in - Black,61.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-40x60,Size,16x24 in - White,61.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-45x60,Size,18x24 in - Black,69.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-45x60,Size,18x24 in - White,69.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-A4,Size,A4 - Black,35.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-A4,Size,A4 - White,35.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-20x30,Size,8x12 in - Black,32.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-20x30,Size,8x12 in - White,32.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-20x20,Size,8x8 in - Black,30.00,TRUE
+,,,,,Active,FRA-CLA-EMA-MOUNT1-GLA-20x20,Size,8x8 in - White,30.00,TRUE
+Framed Canvas,framed-canvas,Prodigi,Canvas,Physical,Active,CAN-38MM-FRA-SC-10x14,Size,10x14 in - Black,28.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-10x14,Size,10x14 in - White,28.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-14x14,Size,14x14 in - Black,35.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-14x14,Size,14x14 in - White,35.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-14x20,Size,14x20 in - Black,42.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-14x20,Size,14x20 in - White,42.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-16x12,Size,16x12 in - Black,35.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-16x12,Size,16x12 in - White,35.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-16x22,Size,16x22 in - Black,48.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-16x22,Size,16x22 in - White,48.00,TRUE
+,,,,,Active,GLOBAL-FRA-CAN-17X21,Size,17x21 in - Black,43.00,TRUE
+,,,,,Active,GLOBAL-FRA-CAN-17X21,Size,17x21 in - White,43.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x12,Size,18x12 in - Black,37.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x12,Size,18x12 in - White,37.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x18,Size,18x18 in - Black,44.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x18,Size,18x18 in - White,44.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x22,Size,18x22 in - Black,50.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x22,Size,18x22 in - White,50.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x26,Size,18x26 in - Black,56.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-18x26,Size,18x26 in - White,56.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-20x16,Size,20x16 in - Black,43.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-20x16,Size,20x16 in - White,43.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-24x16,Size,24x16 in - Black,49.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-24x16,Size,24x16 in - White,49.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-24x18,Size,24x18 in - Black,55.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-24x18,Size,24x18 in - White,55.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-8x10,Size,8x10 in - Black,22.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-8x10,Size,8x10 in - White,22.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-8x12,Size,8x12 in - Black,23.00,TRUE
+,,,,,Active,CAN-38MM-FRA-SC-8x12,Size,8x12 in - White,23.00,TRUE
+Stretched Canvas,stretched-canvas,Prodigi,Canvas,Physical,Active,CAN-38MM-SC-10x14,Size,10x14 in,19.00,TRUE
+,,,,,Active,CAN-38MM-SC-10x8,Size,10x8 in,13.00,TRUE
+,,,,,Active,CAN-38MM-SC-12X15,Size,12x15 in,24.00,TRUE
+,,,,,Active,CAN-38MM-SC-12X16,Size,12x16 in,24.00,TRUE
+,,,,,Active,CAN-38MM-SC-12x8,Size,12x8 in,14.00,TRUE
+,,,,,Active,CAN-38MM-SC-14x14,Size,14x14 in,25.00,TRUE
+,,,,,Active,CAN-38MM-SC-14x20,Size,14x20 in,29.00,TRUE
+,,,,,Active,CAN-38MM-SC-16x22,Size,16x22 in,31.00,TRUE
+,,,,,Active,CAN-38MM-SC-18x12,Size,18x12 in,25.00,TRUE
+,,,,,Active,CAN-38MM-SC-18x18,Size,18x18 in,30.00,TRUE
+,,,,,Active,CAN-38MM-SC-18x22,Size,18x22 in,34.00,TRUE
+,,,,,Active,CAN-38MM-SC-18x26,Size,18x26 in,35.00,TRUE
+,,,,,Active,CAN-38MM-SC-20x16,Size,20x16 in,30.00,TRUE
+,,,,,Active,CAN-38MM-SC-24x16,Size,24x16 in,34.00,TRUE
+,,,,,Active,CAN-38MM-SC-24x18,Size,24x18 in,35.00,TRUE
+,,,,,Active,CAN-38MM-SC-6X6,Size,6x6 in,13.00,TRUE
+,,,,,Active,CAN-38MM-SC-6X8,Size,6x8 in,13.00,TRUE
+,,,,,Active,CAN-38MM-SC-6X9,Size,6x9 in,13.00,TRUE
+,,,,,Active,CAN-38MM-SC-9X12,Size,9x12 in,18.00,TRUE
+Digital Print,digital-print,Prodigi,Digital,Physical,Active,DIGITAL-PNG,Format,PNG Download,29.99,FALSE

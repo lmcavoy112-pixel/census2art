@@ -16,3 +16,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Security testing
 
 Beyond the **security-review** skill, this repo is set up for [Strix](https://github.com/usestrix/strix) agentic pentesting: `npm run security:scan`. Scope and rules of engagement live in `.strix/instructions.md` — keep it current when API routes change. See [docs/security-testing.md](docs/security-testing.md). Never point a scan at production without understanding that the order endpoints reach Prodigi and can place real, billable print orders.
+
+# 1911 census import
+
+`census_people` and `census_houses` already carry a `census_year` column and are meant to hold both 1901 and 1911 rows — not separate per-year tables. See [docs/1911-import.md](docs/1911-import.md) for the exact fields the 1911 data needs to provide, the `surname_search` normalisation rule it must match, and what has to happen to the four rollup tables after loading. The app itself (API routes, RPC functions, `app/irish-census-1901` routing) is still hardcoded to 1901 and is separate follow-up work.
