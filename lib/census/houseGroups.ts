@@ -11,6 +11,7 @@ export type PersonMatch = {
   surname_search?: string;
   house_uid?: string;
   house_no?: string;
+  townland_display?: string;
   age?: string;
   relation_to_head?: string;
   occupation?: string;
@@ -19,6 +20,7 @@ export type PersonMatch = {
 export type HouseGroup = {
   house_uid: string;
   house_no: string;
+  townland_display: string;
   people: PersonMatch[];
 };
 
@@ -66,6 +68,7 @@ export function groupHouses(personMatches: PersonMatch[]): HouseGroup[] {
       groups.set(key, {
         house_uid: houseUid,
         house_no: houseNo,
+        townland_display: person.townland_display || "",
         people: [],
       });
     }
@@ -83,6 +86,12 @@ export function groupHouses(personMatches: PersonMatch[]): HouseGroup[] {
       };
     })
     .sort((a, b) => {
+      // Groups a specific townland was fetched for all share one townland_display, so
+      // this collapses to a plain house-number sort in that case — sorting by street
+      // first only changes anything when multiple townlands are in view at once.
+      const townlandCompare = a.townland_display.localeCompare(b.townland_display);
+      if (townlandCompare !== 0) return townlandCompare;
+
       const houseSortA = houseSortNumber(a.house_no);
       const houseSortB = houseSortNumber(b.house_no);
 

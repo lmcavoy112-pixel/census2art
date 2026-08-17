@@ -112,6 +112,7 @@ export function normalisePersonRows(rows: any[]): PersonMatch[] {
       surname_search: pickString(item, ["surname_search", "surnameSearch"]),
       house_uid: pickString(item, ["house_uid", "houseUid"]),
       house_no: pickString(item, ["house_no", "houseNo"]),
+      townland_display: pickString(item, ["townland_display", "townlandDisplay"]),
       age: pickString(item, ["age"]),
       relation_to_head: pickString(item, [
         "relation_to_head",
@@ -219,10 +220,11 @@ export async function fetchTownlands(
   return normaliseTownlandRows(readArray(payload, ["townlands", "results", "data"]));
 }
 
+/** Omit townlandDisplay (or pass "") to fetch every household in the DED at once. */
 export async function fetchPersonMatches(
   surnameSearch: string,
   dedId: string,
-  townlandDisplay: string
+  townlandDisplay?: string
 ): Promise<PersonMatch[]> {
   const payload = await fetchJson(
     buildUrl("/api/person-matches", {

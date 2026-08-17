@@ -15,9 +15,11 @@ export async function GET(request: Request) {
 
   const surname = searchParams.get("surname");
   const dedId = searchParams.get("ded_id");
+  // Omitted (or blank) townland means "every townland in this DED" — the merged
+  // townland/house step's "Viewing all" mode.
   const townland = searchParams.get("townland");
 
-  if (!surname || !dedId || !townland) {
+  if (!surname || !dedId) {
     return NextResponse.json([]);
   }
 
@@ -26,7 +28,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.rpc("get_person_matches", {
     input_surname_search: cleaned,
     input_ded_id: dedId,
-    input_townland_display: townland,
+    input_townland_display: townland || null,
   });
 
   if (error) {

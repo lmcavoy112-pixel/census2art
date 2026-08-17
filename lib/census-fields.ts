@@ -18,6 +18,7 @@ const PERSON_MATCH_FIELDS = [
   "surname_search",
   "house_uid",
   "house_no",
+  "townland_display",
   "age",
   "relation_to_head",
   "occupation",

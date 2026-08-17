@@ -39,7 +39,6 @@ import {
   type DesignSnapshot,
 } from "@/lib/design/snapshot";
 import SiteHeader from "../components/home/SiteHeader";
-import SiteFooter from "../components/home/SiteFooter";
 import MapPlaceSearch from "../components/home/MapPlaceSearch";
 import { siteFontVars } from "../fonts";
 import {
@@ -53,7 +52,6 @@ import {
   DistrictIcon,
   HouseholdIcon,
   SurnameIcon,
-  TownlandIcon,
 } from "../components/designer/icons";
 import { useMobileMapSheet } from "../components/designer/useMobileMapSheet";
 import { MapSheetHandle, MapSheetToggleButton } from "../components/designer/MapSheetControls";
@@ -63,7 +61,7 @@ const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
 });
 
 /** The narrowing steps, in the order the records themselves nest. */
-type SectionId = "surname" | "county" | "ded" | "townland" | "house";
+type SectionId = "surname" | "county" | "ded" | "townland";
 
 export default function IrishCensus1901Page() {
   // useSearchParams needs a Suspense boundary above it, or the whole route opts out
@@ -132,6 +130,7 @@ function CensusLanding() {
   const [selectedHouse, setSelectedHouse] = useState<{
     house_uid: string;
     house_no: string;
+    townland_display: string;
   } | null>(null);
 
   const [household, setHousehold] = useState<HouseholdPerson[]>([]);
@@ -206,7 +205,18 @@ function CensusLanding() {
     (selectedPolygon?.polygon_id || selectedDed?.polygon_id) && selectedCounty
   );
 
-  const houseGroups = useMemo(() => groupHouses(personMatches), [personMatches]);
+  // "Viewing all" (selectedTownland === null) shows every household in the district;
+  // picking a townland narrows this to just its street. personMatches itself always
+  // holds the whole district — see handleSelectDed — so this is a pure client-side
+  // filter, no request.
+  const houseGroups = useMemo(() => {
+    const visible = selectedTownland
+      ? personMatches.filter(
+          (person) => person.townland_display === selectedTownland.townland_display
+        )
+      : personMatches;
+    return groupHouses(visible);
+  }, [personMatches, selectedTownland]);
 
   const formAUrls = useMemo(() => {
     const urls = household
@@ -339,12 +349,6 @@ function CensusLanding() {
   function resetBelowDed() {
     setTownlands([]);
     setSelectedTownland(null);
-    setPersonMatches([]);
-    setSelectedHouse(null);
-    setHousehold([]);
-  }
-
-  function resetBelowTownland() {
     setPersonMatches([]);
     setSelectedHouse(null);
     setHousehold([]);
@@ -505,31 +509,42 @@ function CensusLanding() {
     resetBelowDed();
     setError("");
     setOpenSection("townland");
-    setLoadingMessage("Loading townlands...");
-
-    let rows: TownlandCount[] = [];
+    setLoadingMessage("Loading households...");
 
     try {
-      rows = await fetchTownlands(activeSurnameSearch, ded.ded_id);
+      // Every matching household in the whole district, loaded once — the townland
+      // dropdown that follows just filters this client-side ("Viewing all" is the
+      // unfiltered list), rather than firing a new request per townland.
+      const [townlandRows, matches] = await Promise.all([
+        fetchTownlands(activeSurnameSearch, ded.ded_id),
+        fetchPersonMatches(activeSurnameSearch, ded.ded_id),
+      ]);
 
-      setTownlands(rows);
+      if (selectionToken !== selectionRef.current) return;
 
-      if (rows.length === 0) {
-        setError("No townlands found for this DED.");
+      setTownlands(townlandRows);
+      setPersonMatches(matches);
+
+      const displayFromRows = matches.find((person) => person.surname_display);
+      if (displayFromRows?.surname_display) {
+        setSurnameDisplay(displayFromRows.surname_display);
+      }
+
+      if (matches.length === 0) {
+        setError("No matching households found for this district.");
+      }
+
+      // One matching house across the whole district is no real choice — pick it and
+      // move straight to its details, rather than showing the customer a list of one.
+      const groups = groupHouses(matches);
+      if (groups.length === 1 && groups[0].house_uid) {
+        await handleSelectHouse(groups[0]);
       }
     } catch (err) {
       console.error(err);
-      setError("Could not load townlands for this DED.");
+      setError("Could not load households for this district.");
     } finally {
       setLoadingMessage("");
-    }
-
-    // One townland is no choice at all — pick it and move straight to houses, rather
-    // than showing the customer a list of one. dedOverride is required here: setSelectedDed
-    // above hasn't landed in state yet on this same tick, so handleSelectTownland reading
-    // `selectedDed` itself would still see the *previous* district.
-    if (rows.length === 1 && selectionToken === selectionRef.current) {
-      await handleSelectTownland(rows[0], ded);
     }
   }
 
@@ -565,58 +580,16 @@ function CensusLanding() {
   }
 
   /**
-   * `dedOverride` lets a caller that just selected a district (and hasn't seen that
-   * land in state yet) pass it explicitly rather than this function reading the stale
-   * `selectedDed` closure — see the comment in handleSelectDed's auto-chain.
+   * The townland dropdown inside the merged Townland & House step — every household
+   * for the district is already loaded (see handleSelectDed), so narrowing to one
+   * townland (or back to "Viewing all", `townland === null`) is just a client-side
+   * filter with no request of its own.
    */
-  async function handleSelectTownland(townland: TownlandCount, dedOverride?: DedCount) {
-    const selectionToken = ++selectionRef.current;
-    const ded = dedOverride ?? selectedDed;
-
+  function handleSelectTownland(townland: TownlandCount | null) {
     setSelectedTownland(townland);
-    resetBelowTownland();
+    setSelectedHouse(null);
+    setHousehold([]);
     setError("");
-    setOpenSection("house");
-
-    if (!ded) {
-      return;
-    }
-
-    setLoadingMessage("Loading matching houses...");
-
-    let rows: PersonMatch[] = [];
-
-    try {
-      rows = await fetchPersonMatches(activeSurnameSearch, ded.ded_id, townland.townland_display);
-
-      setPersonMatches(rows);
-
-      const displayFromRows = rows.find((person) => person.surname_display);
-
-      if (displayFromRows?.surname_display) {
-        setSurnameDisplay(displayFromRows.surname_display);
-      }
-
-      if (rows.length === 0) {
-        setError("No matching houses found for this townland.");
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Could not load matching people for this townland.");
-    } finally {
-      setLoadingMessage("");
-    }
-
-    // Same idea as the townland auto-select above: one house is no real choice, so pick
-    // it — but only when it has a real house_uid. A group without one is exactly the
-    // case handleSelectHouse itself rejects with an error, and auto-driving the customer
-    // straight into that error would be worse than just showing them the list of one.
-    if (selectionToken === selectionRef.current) {
-      const groups = groupHouses(rows);
-      if (groups.length === 1 && groups[0].house_uid) {
-        await handleSelectHouse(groups[0]);
-      }
-    }
   }
 
   async function handleSelectHouse(group: HouseGroup) {
@@ -628,7 +601,16 @@ function CensusLanding() {
     setSelectedHouse({
       house_uid: group.house_uid,
       house_no: group.house_no,
+      townland_display: group.townland_display,
     });
+
+    // A pin/geocode result belongs to whichever house it was found for — switching to a
+    // different tile without clearing it would show the previous house's marker as if
+    // it were this one's.
+    setPin(null);
+    setPinSource(null);
+    setPinMatchedLabel("");
+    setGeocodeState("");
 
     setHousehold([]);
     setError("");
@@ -743,10 +725,14 @@ function CensusLanding() {
           groups.find((item) => item.house_no === target.houseNo)
         : groups.find((item) => item.house_no === target.houseNo);
       if (!group) {
-        finishAt("house");
+        finishAt("townland");
         return;
       }
-      setSelectedHouse({ house_uid: group.house_uid, house_no: group.house_no });
+      setSelectedHouse({
+        house_uid: group.house_uid,
+        house_no: group.house_no,
+        townland_display: group.townland_display,
+      });
 
       // The snapshot already carried the household if it saved successfully — only hit
       // the API again if it didn't (pruned, quota, private-mode).
@@ -758,7 +744,7 @@ function CensusLanding() {
             : [];
       setHousehold(householdRows);
 
-      finishAt("house");
+      finishAt("townland");
     } catch (err) {
       console.error(err);
       setError("Could not fully restore your last search — carry on from the step that loaded.");
@@ -803,23 +789,29 @@ function CensusLanding() {
 
     const polygonId = selectedPolygon?.polygon_id || selectedDed?.polygon_id;
 
-    if (!polygonId || !selectedCounty) {
+    if (!polygonId || !selectedCounty || !selectedHouse) {
       setGeocodeState("not-found");
       return;
     }
+
+    // Scoped to the selected house's own townland rather than the dropdown filter —
+    // "Viewing all" mixes many streets into `houseGroups`, and siblings from a
+    // different street would poison the geocoder's neighbour fallback.
+    const siblingHouseNos = groupHouses(personMatches)
+      .filter((group) => group.townland_display === selectedHouse.townland_display)
+      .map((group) => group.house_no)
+      .filter(Boolean)
+      .join(",");
 
     void fetchJson(
       buildUrl("/api/geocode-house", {
         polygon_id: polygonId,
         county: selectedCounty,
-        townland: selectedTownland?.townland_display || "",
-        house_no: selectedHouse?.house_no || "",
+        townland: selectedHouse.townland_display,
+        house_no: selectedHouse.house_no || "",
         // Every other house number recorded on this street, so the search can fall
         // back to the nearest one it can actually place.
-        siblings: houseGroups
-          .map((group) => group.house_no)
-          .filter(Boolean)
-          .join(","),
+        siblings: siblingHouseNos,
       })
     )
       .then(
@@ -1027,18 +1019,15 @@ function CensusLanding() {
     note: surnameTitle ? undefined : "search a surname first",
     icon: <CountyIcon />,
     body: counties.length ? (
-      <PickList
-        items={counties.map((county) => ({
-          key: county.county_display,
+      <PickSelect
+        value={selectedCounty}
+        onChange={(value) => void handleSelectCounty(value)}
+        allLabel={`All ${counties.length} counties`}
+        options={counties.map((county) => ({
+          value: county.county_display,
           label: county.county_display,
           count: county.person_count,
-          selected: selectedCounty === county.county_display,
-          onSelect: () => void handleSelectCounty(county.county_display),
         }))}
-        allLabel={`All ${counties.length} counties`}
-        allSelected={!selectedCounty}
-        onSelectAll={() => void handleSelectCounty("")}
-        filterLabel="Filter counties"
       />
     ) : (
       <EmptyNote>Search a surname to see the counties it appears in.</EmptyNote>
@@ -1052,15 +1041,18 @@ function CensusLanding() {
     note: selectedCounty ? undefined : "pick a county first",
     icon: <DistrictIcon />,
     body: deds.length ? (
-      <PickList
-        items={deds.map((ded) => ({
-          key: ded.ded_id,
+      <PickSelect
+        value={selectedDed?.ded_id ?? ""}
+        placeholder="Choose a district…"
+        onChange={(value) => {
+          const ded = deds.find((item) => item.ded_id === value);
+          if (ded) void handleSelectDed(ded);
+        }}
+        options={deds.map((ded) => ({
+          value: ded.ded_id,
           label: ded.ded_display,
           count: ded.person_count,
-          selected: selectedDed?.ded_id === ded.ded_id,
-          onSelect: () => void handleSelectDed(ded),
         }))}
-        filterLabel="Filter divisions"
       />
     ) : (
       <EmptyNote>
@@ -1070,184 +1062,186 @@ function CensusLanding() {
     ),
   };
 
+  // Merged "Townland & House" step: a townland dropdown that defaults to "Viewing
+  // all" (every household in the district, grouped by street/townland then house
+  // number — see houseGroups above), narrowing to one street when picked. Tapping a
+  // house tile expands it in place with the two actions the customer actually needs
+  // next, rather than a separate step and a panel further down the rail.
   const townlandSection: DesignerSection = {
     id: "townland",
-    title: "Townland",
-    summary:
-      selectedTownland?.townland_display ||
-      (townlands.length ? `${townlands.length} townlands` : "—"),
-    note: selectedDed ? undefined : "pick a district first",
-    icon: <TownlandIcon />,
-    body: townlands.length ? (
-      <div className="space-y-3">
-        <p className="rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
-          This won&apos;t change the map. The map draws district boundaries, which is
-          the smallest area the 1901 records place — picking a townland narrows the
-          households listed below, it doesn&apos;t zoom in.
-        </p>
-        <PickList
-          items={townlands.map((townland) => ({
-          key: townland.townland_display,
-          label: townland.townland_display,
-          count: townland.person_count,
-          selected:
-            selectedTownland?.townland_display === townland.townland_display,
-          onSelect: () => void handleSelectTownland(townland),
-          }))}
-          filterLabel="Filter townlands"
-        />
-      </div>
-    ) : (
-      <EmptyNote>Pick a district electoral division to see its townlands.</EmptyNote>
-    ),
-  };
-
-  const houseSection: DesignerSection = {
-    id: "house",
-    title: "House",
+    title: "Townland & House",
     summary: selectedHouse?.house_no
-      ? `House No. ${selectedHouse.house_no}`
-      : houseGroups.length
-        ? `${houseGroups.length} households`
-        : "—",
-    note: selectedTownland ? undefined : "pick a townland first",
+      ? `${selectedHouse.townland_display} · House No. ${selectedHouse.house_no}`
+      : selectedTownland
+        ? selectedTownland.townland_display
+        : houseGroups.length
+          ? `${houseGroups.length} households`
+          : "—",
+    note: selectedDed ? undefined : "pick a district first",
     icon: <HouseholdIcon />,
     body: houseGroups.length ? (
-      <div className="space-y-4">
-        <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+      <div className="space-y-3">
+        <PickSelect
+          value={selectedTownland?.townland_display ?? ""}
+          allLabel="Viewing all"
+          onChange={(value) => {
+            const townland =
+              townlands.find((item) => item.townland_display === value) ?? null;
+            handleSelectTownland(townland);
+          }}
+          options={townlands.map((townland) => ({
+            value: townland.townland_display,
+            label: townland.townland_display,
+            count: townland.person_count,
+          }))}
+        />
+
+        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
           {houseGroups.map((group) => {
             const isSelected =
               selectedHouse?.house_uid === group.house_uid &&
               selectedHouse?.house_no === group.house_no;
             return (
-              <button
-                key={group.house_uid || group.house_no}
-                type="button"
-                onClick={() => void handleSelectHouse(group)}
-                aria-pressed={isSelected}
-                className={`w-full rounded-md border p-3 text-left transition-colors ${
+              <div
+                key={group.house_uid || `${group.townland_display}-${group.house_no}`}
+                className={`overflow-hidden rounded-md border transition-colors ${
                   isSelected
                     ? "border-stone-900 bg-stone-900 text-white"
-                    : "border-stone-200 bg-white hover:bg-stone-50"
+                    : "border-stone-200 bg-white"
                 }`}
               >
-                <p className="text-[13px] font-semibold">
-                  House No. {group.house_no || "Unknown"}
-                </p>
-                <div className="mt-1 space-y-0.5">
-                  {group.people.map((person, idx) => (
-                    <p
-                      key={`${person.full_name}-${idx}`}
-                      className={`text-[12.5px] ${
-                        isSelected ? "text-white/75" : "text-stone-500"
-                      }`}
-                    >
-                      {person.full_name || "Unknown"}
-                      {person.age ? `, ${person.age}` : ""}
-                    </p>
-                  ))}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSelectHouse(group)}
+                  aria-pressed={isSelected}
+                  className={`w-full p-3 text-left transition-colors ${
+                    isSelected ? "" : "hover:bg-stone-50"
+                  }`}
+                >
+                  <p className="text-[13px] font-semibold">
+                    {!selectedTownland && group.townland_display
+                      ? `${group.townland_display} · `
+                      : ""}
+                    House No. {group.house_no || "Unknown"}
+                  </p>
+                  <div className="mt-1 space-y-0.5">
+                    {group.people.map((person, idx) => (
+                      <p
+                        key={`${person.full_name}-${idx}`}
+                        className={`text-[12.5px] ${
+                          isSelected ? "text-white/75" : "text-stone-500"
+                        }`}
+                      >
+                        {person.full_name || "Unknown"}
+                        {person.age ? `, ${person.age}` : ""}
+                      </p>
+                    ))}
+                  </div>
+                </button>
+
+                {/* ── Inline actions ──
+                    Offered here rather than a separate step, so the house stays on
+                    screen to check against while placing it or reading its return.
+                    The marker is carried through to the Modern print only — the
+                    Historic template draws no map to place it on. */}
+                {isSelected && (
+                  <div
+                    className="space-y-3 border-t px-3 pb-3 pt-3"
+                    style={{ borderColor: "rgba(255,255,255,0.15)" }}
+                  >
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={findProperty}
+                        disabled={geocodeState === "searching" || !canPlaceMarker}
+                        className="flex-1 rounded-md bg-white px-3 py-2.5 text-[13px] font-semibold text-stone-900 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {geocodeState === "searching" ? "Searching…" : "Attempt Property Find"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormAEnlarged(true)}
+                        disabled={formAUrls.length === 0}
+                        className="flex-1 rounded-md border border-white/40 px-3 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        View Form A
+                      </button>
+                    </div>
+
+                    {pin && (
+                      <div className="rounded-md border border-white/20 bg-white/10 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[13px] font-medium">Marker placed</span>
+                          <button
+                            type="button"
+                            onClick={removeMarker}
+                            className="text-[13px] underline decoration-white/50 hover:decoration-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <p className="mt-1 text-[12px] text-white/75">
+                          {pinSource === "geocoder" &&
+                            "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
+                          {pinSource === "neighbour" &&
+                            `No. ${selectedHouse?.house_no || "?"} couldn't be found, but No. ${pinMatchedLabel} on the same street was. The marker is on No. ${pinMatchedLabel} — drag it along to the right door.`}
+                          {pinSource === "street" &&
+                            `No house number could be found, but ${pinMatchedLabel} itself was. The marker is on the street — drag it to the right house.`}
+                          {pinSource === "centroid" &&
+                            "This is the middle of the district, not the house. Please drag it to the right place."}
+                          {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
+                          {!pinSource && "Drag it on the map to place it."}
+                        </p>
+                      </div>
+                    )}
+
+                    {geocodeState === "not-found" && (
+                      <p className="rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
+                        Couldn&apos;t find the property from the 1901 address — place it
+                        manually by dragging the marker on the map.
+                      </p>
+                    )}
+                    {geocodeState === "found" && (
+                      <p className="rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
+                        Found a likely match. Please confirm the location before ordering —
+                        1901 addresses are approximate, and OpenStreetMap doesn&apos;t label
+                        a house number on every building, especially outside towns.
+                      </p>
+                    )}
+                    {geocodeState === "approximate" && (
+                      <p className="rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
+                        {pinSource === "neighbour"
+                          ? `Placed on No. ${pinMatchedLabel} instead — the nearest house on this street we could find. Drag the marker to the right door before ordering.`
+                          : `Placed on ${pinMatchedLabel} — the street was found but no house number on it. Drag the marker to the right house before ordering.`}
+                      </p>
+                    )}
+
+                    {!pin && (
+                      <button
+                        type="button"
+                        onClick={placeMarkerManually}
+                        disabled={!selectedPolygon?.geojson && !selectedDed?.geojson}
+                        className="w-full rounded-md border border-white/40 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Place it myself
+                      </button>
+                    )}
+
+                    {!canPlaceMarker && (
+                      <p className="text-[12.5px] leading-relaxed text-white/75">
+                        The map is still loading this district&apos;s boundary. Once it
+                        appears, the house can be pinned.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
-
-        {/* ── Marker ──
-            Offered here rather than waiting for the designer, so the house is pinned
-            while the townland and house number are still on screen to check against.
-            Carried through to the Modern print only — the Historic template draws no
-            map to place it on. */}
-        {selectedHouse && (
-          <div className="border-t border-stone-200 pt-4">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
-              Marker
-            </p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-stone-500">
-              Optional. Pin the house on the map, and it carries through to a Modern
-              print.
-            </p>
-
-            {pin && (
-              <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[13px] font-medium text-stone-800">
-                    Marker placed
-                  </span>
-                  <button
-                    type="button"
-                    onClick={removeMarker}
-                    className="text-[13px] text-red-700 hover:underline"
-                  >
-                    Remove
-                  </button>
-                </div>
-                <p className="mt-1 text-[12px] text-stone-600">
-                  {pinSource === "geocoder" &&
-                    "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
-                  {pinSource === "neighbour" &&
-                    `No. ${selectedHouse?.house_no || "?"} couldn't be found, but No. ${pinMatchedLabel} on the same street was. The marker is on No. ${pinMatchedLabel} — drag it along to the right door.`}
-                  {pinSource === "street" &&
-                    `No house number could be found, but ${pinMatchedLabel} itself was. The marker is on the street — drag it to the right house.`}
-                  {pinSource === "centroid" &&
-                    "This is the middle of the district, not the house. Please drag it to the right place."}
-                  {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
-                  {!pinSource && "Drag it on the map to place it."}
-                </p>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={findProperty}
-              disabled={geocodeState === "searching" || !canPlaceMarker}
-              className="mt-3 w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
-            </button>
-
-            {geocodeState === "not-found" && (
-              <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                Couldn&apos;t find the property from the 1901 address — place it
-                manually by dragging the marker on the map.
-              </p>
-            )}
-            {geocodeState === "found" && (
-              <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
-                Found a likely match. Please confirm the location before ordering —
-                1901 addresses are approximate, and OpenStreetMap doesn&apos;t label a
-                house number on every building, especially outside towns.
-              </p>
-            )}
-            {geocodeState === "approximate" && (
-              <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                {pinSource === "neighbour"
-                  ? `Placed on No. ${pinMatchedLabel} instead — the nearest house on this street we could find. Drag the marker to the right door before ordering.`
-                  : `Placed on ${pinMatchedLabel} — the street was found but no house number on it. Drag the marker to the right house before ordering.`}
-              </p>
-            )}
-
-            {!pin && (
-              <button
-                type="button"
-                onClick={placeMarkerManually}
-                disabled={!selectedPolygon?.geojson && !selectedDed?.geojson}
-                className="mt-2 w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[14px] font-medium text-stone-700 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Place it myself
-              </button>
-            )}
-
-            {!canPlaceMarker && (
-              <p className="mt-2 text-[12.5px] leading-relaxed text-stone-500">
-                The map is still loading this district&apos;s boundary. Once it
-                appears, the house can be pinned.
-              </p>
-            )}
-          </div>
-        )}
       </div>
     ) : (
-      <EmptyNote>Pick a townland to see the households recorded there.</EmptyNote>
+      <EmptyNote>Pick a district electoral division to see its households.</EmptyNote>
     ),
   };
 
@@ -1256,7 +1250,6 @@ function CensusLanding() {
     countySection,
     dedSection,
     townlandSection,
-    houseSection,
   ];
 
   return (
@@ -1527,7 +1520,7 @@ function CensusLanding() {
                   surnameTitle,
                   selectedCounty,
                   selectedDed?.ded_display,
-                  selectedTownland?.townland_display,
+                  selectedTownland?.townland_display || selectedHouse?.townland_display,
                   selectedHouse?.house_no ? `No. ${selectedHouse.house_no}` : "",
                 ]
                   .filter(Boolean)
@@ -1545,8 +1538,6 @@ function CensusLanding() {
           </div>
         </aside>
       </div>
-
-      <SiteFooter />
 
       {/* Form A, full screen. The rail preview is too small to read a hand-written
           return, so enlarging is the point rather than a nicety. */}
@@ -1635,96 +1626,40 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
   return <p className="text-[13px] leading-relaxed text-stone-500">{children}</p>;
 }
 
-type PickItem = {
-  key: string;
-  label: string;
-  count: number;
-  selected: boolean;
-  onSelect: () => void;
-};
-
 /**
- * The shared chooser for county, division and townland. Each of these can run to
- * hundreds of rows, so the list scrolls inside its panel and gains a filter once it
- * is long enough to be worth filtering.
+ * A single native `<select>` standing in for what used to be a scrollable column of
+ * pill buttons — keeps the section's box the same compact height whether it holds 5
+ * options or 500, and stays closed until the customer actually wants to pick.
  */
-function PickList({
-  items,
+function PickSelect({
+  value,
+  onChange,
+  options,
   allLabel,
-  allSelected,
-  onSelectAll,
-  filterLabel,
+  placeholder,
 }: {
-  items: PickItem[];
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; count: number }[];
+  /** When set, an "All …" option sits at the top and an empty value selects it. */
   allLabel?: string;
-  allSelected?: boolean;
-  onSelectAll?: () => void;
-  filterLabel: string;
+  /** Shown as a disabled leading option when there's no "all" choice and nothing picked yet. */
+  placeholder?: string;
 }) {
-  const [filter, setFilter] = useState("");
-  const showFilter = items.length > 10;
-
-  const visible = filter
-    ? items.filter((item) =>
-        item.label.toLowerCase().includes(filter.trim().toLowerCase())
-      )
-    : items;
-
   return (
-    <div className="space-y-2">
-      {showFilter && (
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={filterLabel}
-          aria-label={filterLabel}
-          className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-[13px] outline-none focus:border-stone-500"
-        />
-      )}
-
-      <div className="max-h-[300px] space-y-1 overflow-y-auto pr-1">
-        {allLabel && onSelectAll && !filter && (
-          <button
-            type="button"
-            onClick={onSelectAll}
-            aria-pressed={allSelected}
-            className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-[13.5px] transition-colors ${
-              allSelected
-                ? "border-stone-900 bg-stone-900 text-white"
-                : "border-stone-200 bg-white hover:bg-stone-50"
-            }`}
-          >
-            <span>{allLabel}</span>
-          </button>
-        )}
-
-        {visible.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={item.onSelect}
-            aria-pressed={item.selected}
-            className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-[13.5px] transition-colors ${
-              item.selected
-                ? "border-stone-900 bg-stone-900 text-white"
-                : "border-stone-200 bg-white hover:bg-stone-50"
-            }`}
-          >
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            <span
-              className={`flex-none text-[12px] ${
-                item.selected ? "text-white/70" : "text-stone-400"
-              }`}
-            >
-              {item.count.toLocaleString()}
-            </span>
-          </button>
-        ))}
-
-        {visible.length === 0 && (
-          <p className="px-1 py-2 text-[13px] text-stone-500">No match for that filter.</p>
-        )}
-      </div>
-    </div>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-[13.5px] text-stone-900 outline-none focus:border-stone-500"
+    >
+      {allLabel && <option value="">{allLabel}</option>}
+      {!allLabel && <option value="" disabled>{placeholder || "Choose…"}</option>}
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {`${option.label} (${option.count.toLocaleString()})`}
+        </option>
+      ))}
+    </select>
   );
 }
+

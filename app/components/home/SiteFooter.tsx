@@ -4,106 +4,46 @@ const DEEP = "#16210f";
 const ON_DEEP = "#e7dfcd";
 const ON_DEEP_MUTED = "#9aa392";
 const GOLD = "#b8902a";
-const HAIRLINE = "rgba(231,223,205,0.14)";
 
-const CONTACT_EMAIL = "hello@census2art.com";
-
-const COLUMNS = [
-  {
-    heading: "Records",
-    links: [
-      { label: "Irish Census", href: "/#irish-census" },
-      { label: "1901 Census", href: "/irish-census-1901" },
-    ],
-  },
-  {
-    heading: "Help",
-    links: [
-      { label: "Contact", href: "/contact" },
-      { label: "Shipping & returns", href: "/legal#shipping" },
-    ],
-  },
-  {
-    heading: "Legal",
-    links: [
-      { label: "Privacy", href: "/legal#privacy" },
-      { label: "Terms", href: "/legal#terms" },
-    ],
-  },
+const NAV_LINKS = [
+  { label: "Help", href: "/contact" },
+  { label: "Legal", href: "/legal" },
 ];
 
 export default function SiteFooter() {
   return (
     <footer style={{ background: DEEP, color: ON_DEEP }}>
-      <div className="mx-auto max-w-6xl px-6 py-16">
-        <div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-          <div>
-            <span
-              style={{
-                fontFamily: "var(--font-cormorant)",
-                fontSize: "1.15rem",
-                letterSpacing: "0.18em",
-              }}
-            >
-              CENSUS<span style={{ color: GOLD, margin: "0 0.28em" }}>to</span>ART
-            </span>
-            <p
-              className="mt-4 max-w-xs text-sm leading-relaxed"
-              style={{ color: ON_DEEP_MUTED, fontWeight: 300 }}
-            >
-              Historic census records matched to the places they name, and printed
-              to order.
-            </p>
-            <a
-              href={`mailto:${CONTACT_EMAIL}`}
-              className="mt-5 inline-block text-sm underline underline-offset-4 transition-opacity hover:opacity-80"
-              style={{ color: ON_DEEP }}
-            >
-              {CONTACT_EMAIL}
-            </a>
-          </div>
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-4 sm:py-5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Link
+            href="/"
+            style={{
+              fontFamily: "var(--font-cormorant)",
+              fontSize: "1rem",
+              letterSpacing: "0.16em",
+              color: ON_DEEP,
+            }}
+          >
+            CENSUS<span style={{ color: GOLD, margin: "0 0.24em" }}>to</span>ART
+          </Link>
 
-          {COLUMNS.map((column) => (
-            <nav key={column.heading} aria-label={column.heading}>
-              <h2
-                style={{
-                  fontFamily: "var(--font-plex-mono)",
-                  fontSize: "0.62rem",
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: GOLD,
-                }}
+          <nav aria-label="Footer" className="flex items-center gap-x-5 gap-y-2">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-xs uppercase tracking-[0.1em] transition-opacity hover:opacity-80"
+                style={{ color: ON_DEEP_MUTED, fontWeight: 400 }}
               >
-                {column.heading}
-              </h2>
-              <ul className="mt-4 space-y-1">
-                {column.links.map((link) => (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      className="-mx-2 inline-block rounded px-2 py-2 text-sm transition-opacity hover:opacity-100"
-                      style={{ color: ON_DEEP_MUTED, fontWeight: 300 }}
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ))}
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
-        <div
-          className="mt-14 flex flex-col gap-3 pt-8 sm:flex-row sm:items-center sm:justify-between"
-          style={{ borderTop: `1px solid ${HAIRLINE}` }}
-        >
-          <p className="text-xs" style={{ color: ON_DEEP_MUTED, fontWeight: 300 }}>
-            © {new Date().getFullYear()} Census to Art. All rights reserved.
-          </p>
-          <p className="text-xs" style={{ color: ON_DEEP_MUTED, fontWeight: 300 }}>
-            Census records courtesy of the National Archives of Ireland.
-          </p>
-        </div>
+        <p className="text-[11px]" style={{ color: ON_DEEP_MUTED, fontWeight: 300 }}>
+          © {new Date().getFullYear()} Census to Art
+        </p>
       </div>
     </footer>
   );

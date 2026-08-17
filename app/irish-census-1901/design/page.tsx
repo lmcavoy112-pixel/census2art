@@ -2639,20 +2639,24 @@ function ModernDesignContent() {
               </p>
             </div>
 
-            {/* ── Price bar — pinned, so the total never scrolls away ── */}
-            <div className="flex-none border-t border-stone-200 bg-white px-5 py-4">
-              {exportNote && <p className="mb-2 text-[12px] text-stone-500">{exportNote}</p>}
+            {/* ── Price bar — pinned, so the total never scrolls away ──
+                Kept deliberately light on mobile: this sits on top of the accordion
+                inside a sheet that's already short on height, so it's a fixed tax on
+                every screen regardless of which section is open. `lg:` sizing is
+                unchanged from before; only the compact/mobile sizing is new. */}
+            <div className="flex-none border-t border-stone-200 bg-white px-4 py-2.5 lg:px-5 lg:py-4">
+              {exportNote && <p className="mb-1.5 text-[11px] text-stone-500 lg:mb-2 lg:text-[12px]">{exportNote}</p>}
               {orderError && (
-                <p className="mb-2 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800 lg:mb-2 lg:text-[13px]">
                   {orderError}
                 </p>
               )}
-              <div className="flex items-end justify-between gap-4">
+              <div className="flex items-center justify-between gap-3 lg:items-end lg:gap-4">
                 <div className="min-w-0">
-                  <p className="text-[26px] font-semibold leading-none tracking-tight">
+                  <p className="text-[19px] font-semibold leading-none tracking-tight lg:text-[26px]">
                     {selectedSku ? `£${Number(selectedSku.price_gbp).toFixed(2)}` : "—"}
                   </p>
-                  <p className="mt-1 truncate text-[13px] text-stone-700">
+                  <p className="mt-0.5 truncate text-[12px] text-stone-700 lg:mt-1 lg:text-[13px]">
                     {selectedSku
                       ? `${selectedSku.size_label} ${selectedSku.product}${
                           selectedSku.framed && selectedSku.frame_colour
@@ -2661,7 +2665,7 @@ function ModernDesignContent() {
                         }`
                       : "Choose a size to see the price"}
                   </p>
-                  <p className="mt-0.5 text-[12px] text-stone-500">
+                  <p className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
                     Made to order — typically 5–8 working days
                   </p>
                 </div>
@@ -2669,7 +2673,7 @@ function ModernDesignContent() {
                   type="button"
                   onClick={() => void orderPrint()}
                   disabled={!selectedSku || busy !== ""}
-                  className="flex-none rounded-full bg-stone-900 px-6 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex-none rounded-full bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40 lg:px-6 lg:py-3 lg:text-[14px]"
                 >
                   {busy === "order" ? "Preparing…" : "Add to cart"}
                 </button>
