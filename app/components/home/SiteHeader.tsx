@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
 
 const GROUND = "#f2ece0";
@@ -157,6 +158,9 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
   const [examplesOpen, setExamplesOpen] = useState(false);
   const examplesDesktopRef = useRef<HTMLDivElement>(null);
   const examplesMobileRef = useRef<HTMLDivElement>(null);
+  // The panel itself lives outside both refs above once portalled (see below) — this is
+  // what lets the outside-click and blur handlers still recognise it as "inside the menu".
+  const examplesPanelRef = useRef<HTMLDivElement>(null);
   const examplesCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function openExamples() {
@@ -180,11 +184,24 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
     examplesCloseTimer.current = setTimeout(() => setExamplesOpen(false), 150);
   }
 
+  // The trigger and the panel are separate DOM subtrees once the panel is portalled (see
+  // examplesPanelRef below), so "still within the Examples control" has to check both
+  // rather than relying on ordinary containment/bubbling within one wrapper.
+  function isInExamplesGroup(node: Node | null): boolean {
+    return (
+      !!examplesDesktopRef.current?.contains(node) ||
+      !!examplesMobileRef.current?.contains(node) ||
+      !!examplesPanelRef.current?.contains(node)
+    );
+  }
+
   // Closes on Tab-ing (or clicking) past the trigger+panel group — relatedTarget is
   // the element about to receive focus, so this only fires when focus is genuinely
   // leaving rather than moving between the trigger and a link inside the panel.
+  // Attached to both the trigger and the panel (they're separate subtrees), so tabbing
+  // off either end of the group closes it, and tabbing between them does not.
   function handleExamplesBlur(event: React.FocusEvent<HTMLDivElement>) {
-    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+    if (!isInExamplesGroup(event.relatedTarget as Node | null)) {
       setExamplesOpen(false);
     }
   }
@@ -193,11 +210,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
     if (!examplesOpen) return;
 
     function onPointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (
-        !examplesDesktopRef.current?.contains(target) &&
-        !examplesMobileRef.current?.contains(target)
-      ) {
+      if (!isInExamplesGroup(event.target as Node)) {
         setExamplesOpen(false);
       }
     }
@@ -218,6 +231,57 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
       if (examplesCloseTimer.current) clearTimeout(examplesCloseTimer.current);
     };
   }, []);
+
+  // The panel is portalled to <body> (see the surname dropdown on the census search page
+  // for the same pattern) rather than left as a plain absolutely-positioned child of the
+  // header. A page with a live MapLibre canvas below the header — the designer's Step 1
+  // is the case that surfaced it — can otherwise paint that canvas above the panel
+  // regardless of the header's z-50: WebGL canvases get their own GPU compositor layer,
+  // and which layer wins isn't reliably governed by CSS z-index the way two ordinary DOM
+  // elements are. Moving the panel out to `document.body` sidesteps the ambiguity
+  // entirely instead of trying to out-number a stacking rule that isn't the one in play.
+  const [examplesPortalPos, setExamplesPortalPos] = useState<{
+    top: number;
+    centerX?: number;
+    right?: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!examplesOpen) {
+      setExamplesPortalPos(null);
+      return;
+    }
+
+    function update() {
+      const desktopEl = examplesDesktopRef.current;
+      if (desktopEl && desktopEl.offsetParent !== null) {
+        const r = desktopEl.getBoundingClientRect();
+        setExamplesPortalPos({
+          top: r.bottom + window.scrollY + 12,
+          centerX: r.left + r.width / 2 + window.scrollX,
+        });
+        return;
+      }
+      const mobileEl = examplesMobileRef.current;
+      if (mobileEl && mobileEl.offsetParent !== null) {
+        const r = mobileEl.getBoundingClientRect();
+        setExamplesPortalPos({
+          top: r.bottom + window.scrollY + 12,
+          right: window.innerWidth - (r.right + window.scrollX),
+        });
+        return;
+      }
+      setExamplesPortalPos(null);
+    }
+
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [examplesOpen]);
 
   return (
     // Opaque on purpose. A translucent, blurred header let whatever scrolled beneath
@@ -312,16 +376,36 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
               </svg>
             </button>
 
-            {examplesOpen && (
-              <div
-                role="menu"
-                aria-label="Examples"
-                className="absolute left-1/2 top-full mt-3 w-[420px] -translate-x-1/2 rounded-xl p-5 shadow-lg"
-                style={{ background: RAISED, border: `1px solid ${RULE}` }}
-              >
-                <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-3" />
-              </div>
-            )}
+            {examplesOpen &&
+              examplesPortalPos?.centerX !== undefined &&
+              createPortal(
+                <div
+                  ref={examplesPanelRef}
+                  role="menu"
+                  aria-label="Examples"
+                  // Hover handlers duplicated from the trigger: the panel is portalled out
+                  // of the trigger's DOM subtree, so without these, moving the mouse from
+                  // the trigger onto the panel now reads as leaving it — the browser no
+                  // longer sees the panel as a descendant — which armed the close timer
+                  // before a customer could reach a link.
+                  onMouseEnter={openExamples}
+                  onMouseLeave={scheduleCloseExamples}
+                  onBlur={handleExamplesBlur}
+                  className="w-[420px] rounded-xl p-5 shadow-lg"
+                  style={{
+                    position: "absolute",
+                    top: examplesPortalPos.top,
+                    left: examplesPortalPos.centerX,
+                    transform: "translateX(-50%)",
+                    zIndex: 9999,
+                    background: RAISED,
+                    border: `1px solid ${RULE}`,
+                  }}
+                >
+                  <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-3" />
+                </div>,
+                document.body
+              )}
           </div>
 
           <HeaderLink href="/background">Background</HeaderLink>
@@ -372,16 +456,27 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
                 </svg>
               </button>
 
-              {examplesOpen && (
-                <div
-                  role="menu"
-                  aria-label="Examples"
-                  className="absolute right-0 top-full mt-3 w-[min(88vw,300px)] rounded-xl p-4 shadow-lg"
-                  style={{ background: RAISED, border: `1px solid ${RULE}` }}
-                >
-                  <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-1" />
-                </div>
-              )}
+              {examplesOpen &&
+                examplesPortalPos?.right !== undefined &&
+                createPortal(
+                  <div
+                    ref={examplesPanelRef}
+                    role="menu"
+                    aria-label="Examples"
+                    className="w-[min(88vw,300px)] rounded-xl p-4 shadow-lg"
+                    style={{
+                      position: "absolute",
+                      top: examplesPortalPos.top,
+                      right: examplesPortalPos.right,
+                      zIndex: 9999,
+                      background: RAISED,
+                      border: `1px solid ${RULE}`,
+                    }}
+                  >
+                    <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-1" />
+                  </div>,
+                  document.body
+                )}
             </div>
           )}
 

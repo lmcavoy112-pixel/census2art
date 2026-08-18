@@ -767,9 +767,13 @@ function ModernDesignContent() {
 
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
   // shape of the map's own container, and without this the camera stays put and just
-  // gets cropped rather than the extent adjusting to still show everything.
+  // gets cropped rather than the extent adjusting to still show everything. That's
+  // `layoutFamily` (Portrait/Square, chosen up front in Template) — deliberately not
+  // `selectedSkuId`: picking a size, frame colour or product in Step 2 changes which SKU
+  // is selected without changing the container's aspect ratio, and re-fitting on every
+  // such pick was wiping out a customer's manually panned/zoomed view each time.
   const [refitNonce, setRefitNonce] = useState(0);
-  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${layoutFamily}-${selectedSkuId ?? "none"}-${refitNonce}`;
+  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${layoutFamily}-${refitNonce}`;
 
   const centre = useMemo(() => {
     if (view) return view.center;
