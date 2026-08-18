@@ -13,6 +13,8 @@ import {
   type Cart,
 } from "@/lib/shopify";
 import { cartRequestSchema, type CartRequest } from "@/lib/validation";
+import { MIN_MODERN_BASEMAP_PPI } from "@/lib/design/catalogue";
+import { supabase } from "@/lib/supabase";
 
 /**
  * The cart's whole surface. Everything runs here rather than in the browser so the
@@ -101,6 +103,34 @@ export async function POST(request: NextRequest) {
       case "add": {
         if (!body.sku) {
           return NextResponse.json({ error: "A sku is required." }, { status: 400 });
+        }
+
+        // Re-validates against the catalogue rather than trusting the client picked a
+        // sellable SKU — the designer's own size picker already filters to
+        // enabled+designable(+basemap_ppi for Modern), but this is the one place that
+        // actually gates the sale, so a stale page, a replayed request, or a future UI
+        // bug can't add a retired or under-quality print to a real cart.
+        const { data: catalogueRow } = await supabase
+          .from("catalogue_skus")
+          .select("enabled, designable, basemap_ppi")
+          .eq("sku", body.sku)
+          .maybeSingle();
+
+        if (!catalogueRow || !catalogueRow.enabled || !catalogueRow.designable) {
+          return NextResponse.json(
+            { error: "That size is no longer available." },
+            { status: 422 }
+          );
+        }
+
+        const isModern = (body.attributes ?? []).some(
+          (a) => a.key === "Style" && a.value === "Modern"
+        );
+        if (isModern && catalogueRow.basemap_ppi < MIN_MODERN_BASEMAP_PPI) {
+          return NextResponse.json(
+            { error: "That size doesn't meet our print quality minimum." },
+            { status: 422 }
+          );
         }
 
         const variantId = await findVariantIdBySku(body.sku);

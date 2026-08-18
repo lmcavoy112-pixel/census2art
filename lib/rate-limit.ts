@@ -73,6 +73,9 @@ const BUDGETS: Array<{ prefix: string; limit: number; windowMs: number }> = [
   { prefix: "/api/surnames/similar", limit: 40, windowMs: 60_000 },
   // Writes to storage and creates rows.
   { prefix: "/api/orders", limit: 10, windowMs: 60_000 },
+  // Public form, no account behind it — tight budget on top of the honeypot/timing
+  // checks in the route itself, since either alone is easy for a script to miss.
+  { prefix: "/api/contact", limit: 5, windowMs: 10 * 60_000 },
 ];
 
 const DEFAULT_BUDGET = { prefix: "/api", limit: 120, windowMs: 60_000 };

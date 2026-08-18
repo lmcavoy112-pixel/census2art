@@ -63,12 +63,14 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     fallbackZoom: 13,
     fitPadding: 56,
     defaultPlaceLabels: "all",
-    allowsPin: true,
+    // Only House knows which specific building is yours — a marker at District level
+    // would be dropped somewhere in the district at large, not on an actual match.
+    allowsPin: false,
     districtBorders: true,
   },
   street: {
     level: "street",
-    label: "Street",
+    label: "House",
     description:
       "Framed to the whole district, same as District — the difference is this preset knows which house is yours, so the census record for that household prints below the map, and a pin can be dropped on the house itself.",
     basemaps: ["streets"],

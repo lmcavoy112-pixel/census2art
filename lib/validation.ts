@@ -53,6 +53,26 @@ export const recipientSchema = z.object({
   }),
 });
 
+/**
+ * A public /contact form submission.
+ *
+ * `company` and `formOpenedAt` aren't content — they're spam signals the route checks
+ * before writing anything, not the message itself (see app/api/contact/route.ts).
+ * `company` is a honeypot: real visitors never see the field, so any value in it is a bot.
+ * `formOpenedAt` is a client-recorded timestamp used to reject submissions that arrive
+ * faster than a person could plausibly read the form and type into it.
+ */
+export const contactRequestSchema = z.object({
+  name: z.string().min(1).max(SHORT_TEXT),
+  email: z.string().email().max(SHORT_TEXT),
+  topic: z.enum(["order", "record", "other"]),
+  message: z.string().min(1).max(4000),
+  company: z.string().max(SHORT_TEXT).optional(),
+  formOpenedAt: z.number().optional(),
+});
+
+export type ContactRequest = z.infer<typeof contactRequestSchema>;
+
 export const submitOrderSchema = z.object({
   recipient: recipientSchema,
   shippingMethod: z

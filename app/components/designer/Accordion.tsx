@@ -147,9 +147,11 @@ export function SectionAccordion({
           </span>
         )}
       </span>
-      <span className="mt-0.5 block text-[13px] font-normal text-stone-500">
-        {section.summary}
-      </span>
+      {section.summary && (
+        <span className="mt-0.5 block text-[13px] font-normal text-stone-500">
+          {section.summary}
+        </span>
+      )}
       <div className="mt-4 space-y-5">{section.body}</div>
     </div>
   );

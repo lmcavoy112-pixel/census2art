@@ -39,7 +39,6 @@ import {
   type DesignSnapshot,
 } from "@/lib/design/snapshot";
 import SiteHeader from "../components/home/SiteHeader";
-import MapPlaceSearch from "../components/home/MapPlaceSearch";
 import { siteFontVars } from "../fonts";
 import {
   SectionAccordion,
@@ -177,16 +176,6 @@ function CensusLanding() {
   // Mobile-only: the drag-resizable split between the map and the picker rail below it.
   // See useMobileMapSheet — unused above `lg`, where the two sit side by side instead.
   const [mobileMapSheetRef, mobileMapSheet] = useMobileMapSheet();
-
-  // Place search: where the camera should go next, and where it is now (which biases
-  // results toward whatever is already on screen).
-  const [flyTo, setFlyTo] = useState<{
-    lng: number;
-    lat: number;
-    zoom?: number;
-    token: number;
-  } | null>(null);
-  const [mapCentre, setMapCentre] = useState("");
 
   const activeSurnameSearch = surnameSearch || normaliseSurnameSearch(surname);
   const surnameTitle = surnameDisplay || smartSurnameDisplay(surname);
@@ -865,7 +854,12 @@ function CensusLanding() {
       county: selectedCounty,
       dedId: selectedDed?.ded_id || "",
       dedDisplay: selectedDed?.ded_display || "",
-      townland: selectedTownland?.townland_display || "",
+      // selectedTownland is only set when the customer explicitly picked one from the
+      // dropdown — a DED with just one townland auto-selects straight to its house
+      // (handleSelectDed) without ever touching that state, so selectedHouse's own
+      // townland_display is the fallback (same pattern the Review Details step already
+      // uses below to display this correctly).
+      townland: selectedTownland?.townland_display || selectedHouse?.townland_display || "",
       houseNo: selectedHouse?.house_no || "",
       houseUid: selectedHouse?.house_uid || "",
       household,
@@ -1158,10 +1152,23 @@ function CensusLanding() {
                       </button>
                     </div>
 
+                    {/* One box, not two — pinSource and geocodeState are set together by
+                        findProperty and were almost always saying the same thing twice
+                        (a bright amber/emerald verdict box plus this translucent one).
+                        A short match-status label replaces the verdict box; the body
+                        keeps only the drag-to-adjust instruction that's actually specific
+                        to each case. */}
                     {pin && (
                       <div className="rounded-md border border-white/20 bg-white/10 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[13px] font-medium">Marker placed</span>
+                          <span className="text-[13px] font-medium">
+                            {pinSource === "geocoder" && "House match found"}
+                            {pinSource === "neighbour" && "Nearby house found"}
+                            {pinSource === "street" && "Street match found"}
+                            {pinSource === "centroid" && "No match found"}
+                            {pinSource === "manual" && "Placed by hand"}
+                            {!pinSource && "Marker placed"}
+                          </span>
                           <button
                             type="button"
                             onClick={removeMarker}
@@ -1172,38 +1179,17 @@ function CensusLanding() {
                         </div>
                         <p className="mt-1 text-[12px] text-white/75">
                           {pinSource === "geocoder" &&
-                            "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
+                            "Please confirm the location — drag it on the map to adjust."}
                           {pinSource === "neighbour" &&
-                            `No. ${selectedHouse?.house_no || "?"} couldn't be found, but No. ${pinMatchedLabel} on the same street was. The marker is on No. ${pinMatchedLabel} — drag it along to the right door.`}
+                            `No. ${selectedHouse?.house_no || "?"} couldn't be found, but No. ${pinMatchedLabel} on the same street was — drag it along to the right door.`}
                           {pinSource === "street" &&
-                            `No house number could be found, but ${pinMatchedLabel} itself was. The marker is on the street — drag it to the right house.`}
+                            `No house number found, but ${pinMatchedLabel} itself was — drag it to the right house.`}
                           {pinSource === "centroid" &&
-                            "This is the middle of the district, not the house. Please drag it to the right place."}
-                          {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
+                            "Placed at the middle of the district — drag it to the right place."}
+                          {pinSource === "manual" && "Drag it on the map to adjust."}
                           {!pinSource && "Drag it on the map to place it."}
                         </p>
                       </div>
-                    )}
-
-                    {geocodeState === "not-found" && (
-                      <p className="rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                        Couldn&apos;t find the property from the 1901 address — place it
-                        manually by dragging the marker on the map.
-                      </p>
-                    )}
-                    {geocodeState === "found" && (
-                      <p className="rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
-                        Found a likely match. Please confirm the location before ordering —
-                        1901 addresses are approximate, and OpenStreetMap doesn&apos;t label
-                        a house number on every building, especially outside towns.
-                      </p>
-                    )}
-                    {geocodeState === "approximate" && (
-                      <p className="rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                        {pinSource === "neighbour"
-                          ? `Placed on No. ${pinMatchedLabel} instead — the nearest house on this street we could find. Drag the marker to the right door before ordering.`
-                          : `Placed on ${pinMatchedLabel} — the street was found but no house number on it. Drag the marker to the right house before ordering.`}
-                      </p>
                     )}
 
                     {!pin && (
@@ -1369,24 +1355,6 @@ function CensusLanding() {
           </div>
         )}
 
-        {pin && (
-          <div className="border-t border-stone-200 pt-4">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-stone-500">
-              Marker
-            </p>
-            <p className="mt-1 text-[12.5px] text-stone-600">
-              {pinSource === "geocoder" && "Found from the 1901 address — confirm it before ordering."}
-              {pinSource === "neighbour" &&
-                `Placed on the nearest known house, No. ${pinMatchedLabel}.`}
-              {pinSource === "street" &&
-                `Placed on the street (${pinMatchedLabel}) — no house number found.`}
-              {pinSource === "centroid" && "Placed at the district centre — not yet confirmed."}
-              {pinSource === "manual" && "Placed by hand."}
-              {!pinSource && "Placed."}
-            </p>
-          </div>
-        )}
-
         <div className="border-t border-stone-200 pt-4">
           <button
             type="button"
@@ -1464,42 +1432,7 @@ function CensusLanding() {
                   ? 19
                   : 16
               }
-              flyTo={flyTo}
-              onCentreChange={setMapCentre}
             />
-
-            {/* Floating controls — the map's own title bar and place search. Offset to
-                clear Leaflet's zoom buttons, which own the top-left corner. The title
-                card is dropped below sm — the map stage is a fraction of the screen
-                there, the rail immediately below already says what's selected, and
-                "Where the X family lived" is redundant weight on a card that's
-                otherwise just a place search box. */}
-            <div className="absolute left-14 top-2 z-[500] space-y-1.5 sm:left-16 sm:top-4 sm:space-y-2">
-              <div className="hidden rounded-md bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm sm:block pointer-events-none">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
-                  1901 Census
-                </p>
-                <p className="text-[14px] text-stone-900">
-                  {surnameTitle
-                    ? `Where the ${surnameTitle} family lived`
-                    : "Search a surname to begin"}
-                </p>
-              </div>
-
-              {/* Moves the camera only — it never changes which records are shown, so
-                  searching a place with no returns simply takes you there. */}
-              <MapPlaceSearch
-                proximity={mapCentre}
-                onSelect={(place) =>
-                  setFlyTo((current) => ({
-                    lng: place.lng,
-                    lat: place.lat,
-                    zoom: place.kind === "Address" || place.kind === "Place" ? 16 : 13,
-                    token: (current?.token ?? 0) + 1,
-                  }))
-                }
-              />
-            </div>
 
             {(loadingMessage || error) && (
               <div className="pointer-events-none absolute left-1/2 top-2 z-[500] -translate-x-1/2 sm:top-4">

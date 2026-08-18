@@ -52,7 +52,17 @@ function ExamplesCollections({
   columns: "grid-cols-1" | "grid-cols-3";
 }) {
   return (
-    <div className={`grid gap-5 ${columns}`}>
+    <div>
+      <Link
+        href="/examples"
+        onClick={onNavigate}
+        className="text-sm font-medium underline-offset-4 transition-colors hover:underline"
+        style={{ color: GOLD }}
+      >
+        View all examples
+      </Link>
+
+      <div className={`mt-4 grid gap-5 border-t pt-4 ${columns}`} style={{ borderColor: RULE }}>
       {CENSUS_COLLECTIONS.map((collection) => {
         const hasAvailable = collection.editions.some((edition) => edition.available);
         return (
@@ -99,6 +109,7 @@ function ExamplesCollections({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -259,21 +270,32 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
         <nav className="hidden items-center gap-6 sm:flex">
           <div
             ref={examplesDesktopRef}
-            className="relative"
+            className="relative -my-2 flex items-center gap-1 py-2"
             onMouseEnter={openExamples}
             onMouseLeave={scheduleCloseExamples}
             onFocus={openExamples}
             onBlur={handleExamplesBlur}
           >
+            {/* The label itself is a real link to the gallery — for "no specific year,
+                just show me examples" — separate from the chevron, which only opens the
+                dropdown to pick a collection/year. Clicking "Examples" used to do nothing
+                but toggle this menu; now it actually goes somewhere. */}
+            <Link
+              href="/examples"
+              className="text-sm transition-colors hover:text-[#1e2b18]"
+              style={{ color: MUTED }}
+            >
+              Examples
+            </Link>
             <button
               type="button"
               onClick={() => (examplesOpen ? closeExamplesNow() : openExamples())}
               aria-expanded={examplesOpen}
               aria-haspopup="true"
-              className="-my-2 flex items-center gap-1 py-2 text-sm transition-colors hover:text-[#1e2b18]"
+              aria-label="Show example collections"
+              className="flex items-center p-1 transition-colors hover:text-[#1e2b18]"
               style={{ color: MUTED }}
             >
-              Examples
               <svg
                 width="10"
                 height="10"
@@ -302,8 +324,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             )}
           </div>
 
-          <HeaderLink href="/#irish-census">Irish Census</HeaderLink>
-          <HeaderLink href="/irish-census-1901">1901 Census</HeaderLink>
+          <HeaderLink href="/background">Background</HeaderLink>
           <HeaderLink href="/contact">Contact</HeaderLink>
         </nav>
 

@@ -43,6 +43,10 @@ jobs:
           # rendered on demand at runtime. Real values stay in Vercel.
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: build-placeholder
+          # lib/supabase-admin.ts constructs its client eagerly at module scope, so this
+          # has to exist too — every route that imports it gets pulled in during Next's
+          # "collect page data" build phase, not just the ones that call it at runtime.
+          SUPABASE_SERVICE_ROLE_KEY: build-placeholder
 
       # Fails the build on a high or critical advisory in shipped dependencies. This is the
       # automated half of "scan dependencies" — Dependabot opens the PRs, this stops a

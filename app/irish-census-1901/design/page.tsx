@@ -32,6 +32,7 @@ import {
   layoutFamilyAspect,
   layoutFamilyToGroup,
   loadCatalogueSkus,
+  MIN_MODERN_BASEMAP_PPI,
   printSizeForSku,
   PRODUCTS_FOR_CATEGORY,
   type CatalogueSku,
@@ -120,8 +121,7 @@ import {
 } from "@/app/components/designer/Controls";
 import {
   ColourIcon,
-  ExtentIcon,
-  FamilyIcon,
+  InformationIcon,
   FrameIcon,
   HelpIcon,
   MapStyleIcon,
@@ -840,8 +840,12 @@ function ModernDesignContent() {
     return catalogueSkus
       .filter((sku) => sku.layout_family === layoutFamily && sku.product === productKind)
       .filter((sku) => (sku.framed ? sku.frame_colour === frameColour : true))
+      // Modern's map is a raster capture with a real resolution ceiling (basemap_ppi);
+      // Historic is vector SVG and has none, so this guard only applies to Modern —
+      // otherwise it would needlessly narrow Historic's sizes for a Modern-only limit.
+      .filter((sku) => template !== "modern" || sku.basemap_ppi >= MIN_MODERN_BASEMAP_PPI)
       .sort((a, b) => a.short_in - b.short_in);
-  }, [catalogueSkus, layoutFamily, productKind, frameColour]);
+  }, [catalogueSkus, layoutFamily, productKind, frameColour, template]);
 
   // Derived rather than synced in an effect, so changing shape or product can never
   // leave a SKU selected that is no longer on offer.
@@ -1173,25 +1177,49 @@ function ModernDesignContent() {
 
       // ── Width fit ──
       // A row must never run onto a second line, so the font is capped at whatever
-      // keeps the widest row inside the poster. Unwrapped text scales very close to
-      // linearly with font size, so the ratio of wanted width to available width
-      // gives the cap directly. This is the ceiling every branch below works from.
+      // keeps the widest row inside the poster. Each cell also carries a fixed px
+      // amount of padding that does not shrink with font size, so width is not
+      // proportional to font size the way a one-point ratio (ceiling font × available
+      // ÷ needed) assumes — that undershoots the true fit by however much of the
+      // natural width is padding rather than glyphs, worse the more columns are on.
+      // Fitting a line through two real measurements (the same ceiling/floor clones
+      // already rendered for the height calc below) captures that fixed cost and
+      // extrapolates accurately instead.
+      //
+      // No HOUSEHOLD_TABLE_MIN_FONT_PX floor here on purpose: this container is
+      // overflow-hidden and gets rasterised verbatim for the actual print, with no
+      // wrap or scroll fallback — on a narrow (mobile) poster with many columns
+      // enabled, clamping to the usual floor could still be wider than the poster,
+      // silently cropping a column out of the artwork instead of shrinking to fit.
+      // 1px is only a guard against a zero/negative font, never a target.
       const naturalWidthAtCeiling = naturalTableWidth(ceilingEl);
-      const widthCappedFont =
-        naturalWidthAtCeiling > posterWidthPx && naturalWidthAtCeiling > 0
-          ? Math.max(
-              HOUSEHOLD_TABLE_MIN_FONT_PX,
-              Math.floor(
-                HOUSEHOLD_TABLE_CEILING_FONT_PX * (posterWidthPx / naturalWidthAtCeiling)
-              )
-            )
-          : HOUSEHOLD_TABLE_CEILING_FONT_PX;
+      const naturalWidthAtFloor = naturalTableWidth(minEl);
+      let widthCappedFont = HOUSEHOLD_TABLE_CEILING_FONT_PX;
+      if (naturalWidthAtCeiling > posterWidthPx && naturalWidthAtCeiling > 0) {
+        if (naturalWidthAtCeiling > naturalWidthAtFloor) {
+          const slope =
+            (HOUSEHOLD_TABLE_CEILING_FONT_PX - HOUSEHOLD_TABLE_MIN_FONT_PX) /
+            (naturalWidthAtCeiling - naturalWidthAtFloor);
+          const fitFont =
+            HOUSEHOLD_TABLE_MIN_FONT_PX + (posterWidthPx - naturalWidthAtFloor) * slope;
+          // -1px past the fitted value as the same non-linearity safety margin the
+          // height branch below already uses, rather than trusting the fit exactly.
+          widthCappedFont = Math.max(1, Math.floor(fitFont) - 1);
+        } else {
+          widthCappedFont = 1;
+        }
+      }
 
       if (budgetPx <= 0 || naturalAtCeiling <= budgetPx) {
         setHouseholdTableFontPx(widthCappedFont);
         setHouseholdMaxRows(null);
         return;
       }
+
+      // The usual floor, but never bigger than what the width fit above allows —
+      // the two hidden measurement clones are pinned to HOUSEHOLD_TABLE_MIN_FONT_PX,
+      // so on a normal (non-crowded) poster this is just that constant, unchanged.
+      const effectiveMinFont = Math.min(HOUSEHOLD_TABLE_MIN_FONT_PX, widthCappedFont);
 
       // Row height doesn't scale linearly with font size — each row's padding is a fixed
       // px amount — so extrapolating a target font straight from the ceiling measurement
@@ -1201,9 +1229,9 @@ function ModernDesignContent() {
 
       if (naturalAtMin <= budgetPx) {
         const t = (budgetPx - naturalAtMin) / (naturalAtCeiling - naturalAtMin);
-        const interpolatedFont = HOUSEHOLD_TABLE_MIN_FONT_PX
-          + t * (HOUSEHOLD_TABLE_CEILING_FONT_PX - HOUSEHOLD_TABLE_MIN_FONT_PX);
-        const heightFont = Math.max(HOUSEHOLD_TABLE_MIN_FONT_PX, Math.floor(interpolatedFont) - 1);
+        const interpolatedFont = effectiveMinFont
+          + t * (HOUSEHOLD_TABLE_CEILING_FONT_PX - effectiveMinFont);
+        const heightFont = Math.max(effectiveMinFont, Math.floor(interpolatedFont) - 1);
         // Whichever constraint bites harder wins. Height at a smaller font is never
         // worse than at a larger one, so taking the minimum satisfies both.
         setHouseholdTableFontPx(Math.min(heightFont, widthCappedFont));
@@ -1215,7 +1243,7 @@ function ModernDesignContent() {
       // "+N more" hint line, plus a safety margin against the same non-linearity.
       const rowCount = visibleHousehold.length;
       const rowsThatFit = Math.floor(rowCount * (budgetPx / naturalAtMin) * 0.92) - 1;
-      setHouseholdTableFontPx(HOUSEHOLD_TABLE_MIN_FONT_PX);
+      setHouseholdTableFontPx(effectiveMinFont);
       setHouseholdMaxRows(Math.max(1, Math.min(rowCount - 1, rowsThatFit)));
     }
 
@@ -1488,6 +1516,17 @@ function ModernDesignContent() {
 
   // ── Panel sections ─────────────────────────────────────────────────
 
+  // Deepest map preset each detail field needs before it means anything — a County
+  // typed in at "country" level, or a Townland typed in at "county" level, describes
+  // somewhere the current map preset doesn't actually show.
+  const LEVEL_ORDER: Record<ModernLevel, number> = { country: 0, county: 1, ded: 2, street: 3 };
+  const FIELD_MIN_LEVEL: Record<string, ModernLevel> = {
+    County: "county",
+    District: "ded",
+    Townland: "street",
+    House: "street",
+  };
+
   const detailFields: { label: string; value: string; set: (v: string) => void }[] = [
     { label: "County", value: county, set: setCounty },
     { label: "District", value: dedDisplayText, set: setDedDisplayText },
@@ -1508,8 +1547,8 @@ function ModernDesignContent() {
           value={template}
           onChange={(id) => setTemplate(id)}
           options={[
-            { id: "modern", label: "Modern", detail: "Real map, framed" },
-            { id: "historic", label: "Historic", detail: "Celtic line art" },
+            { id: "modern", label: "Modern", detail: "Available all extents" },
+            { id: "historic", label: "Historic", detail: "Country wide only" },
           ]}
         />
         {template === "historic" && (
@@ -1517,6 +1556,126 @@ function ModernDesignContent() {
             The county drawn as line art inside a Celtic border, with your surname and a
             chosen symbol.
           </HelpText>
+        )}
+
+        <div className="border-t border-stone-200 pt-4">
+          <FieldLabel>Map preset</FieldLabel>
+          {template === "historic" ? (
+            <>
+              <ChoiceCards
+                columns={2}
+                ariaLabel="Map preset"
+                value="county"
+                onChange={() => {}}
+                options={[{ id: "county", label: "County" }]}
+              />
+              <HelpText>Historic prints are drawn from the whole county.</HelpText>
+            </>
+          ) : (
+            <>
+              <ChoiceCards
+                columns={2}
+                ariaLabel="Map preset"
+                value={level}
+                onChange={changeLevel}
+                options={availableLevels(deepestLevel).map((l) => ({
+                  id: l,
+                  label: MODERN_PRESETS[l].label,
+                }))}
+              />
+              {/* Only House needs explaining — it's the one preset that behaves
+                  differently (household record + marker); Country/County/District are
+                  self-explanatory from their names alone. */}
+              {level === "street" && <HelpText>{preset.description}</HelpText>}
+            </>
+          )}
+          {template === "modern" && !preset.allowsPin && pin && (
+            <p className="mt-2 rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
+              Your marker is kept but not shown at this extent.
+            </p>
+          )}
+        </div>
+
+        {template === "modern" && level === "street" && household.length > 0 && (
+          <div className="border-t border-stone-200 pt-4">
+            <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
+              <GroupLabel>Household record</GroupLabel>
+              <div className="mb-4">
+                <Segmented
+                  ariaLabel="Household layout"
+                  value={householdDisplayMode}
+                  onChange={setHouseholdDisplayMode}
+                  options={[
+                    { id: "table" as const, label: "Table" },
+                    { id: "list" as const, label: "List" },
+                  ]}
+                />
+                <HelpText>
+                  {householdDisplayMode === "table" ? "Columns" : "Grouped by surname"}
+                </HelpText>
+              </div>
+
+              <p className="mb-2 text-[12px] font-medium text-stone-700">Who to print</p>
+              <div className="mb-4 space-y-1">
+                {household.map((person, index) => {
+                  const hidden = hiddenHouseholdIndices.has(index);
+                  return (
+                    <label
+                      key={`${person.full_name || "person"}-${index}`}
+                      className="flex items-center gap-2 text-[13px] text-stone-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!hidden}
+                        onChange={() =>
+                          setHiddenHouseholdIndices((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(index)) next.delete(index);
+                            else next.add(index);
+                            return next;
+                          })
+                        }
+                        className="h-4 w-4 rounded border-stone-300"
+                      />
+                      <span className={hidden ? "text-stone-400" : ""}>
+                        {person.full_name || "Unnamed"}
+                        {person.age ? ` (${person.age})` : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="mb-2 text-[12px] font-medium text-stone-700">Details to print</p>
+              <div className="flex flex-wrap gap-1.5">
+                {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
+                  const active = visibleHouseholdFields.has(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setVisibleHouseholdFields((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(f.id)) next.delete(f.id);
+                          else next.add(f.id);
+                          return next;
+                        })
+                      }
+                      className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                        active
+                          ? "border-stone-800 bg-stone-800 text-white"
+                          : "border-stone-300 bg-white text-stone-600 hover:bg-white"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         )}
 
         {familyOptions.length > 1 && (
@@ -1541,150 +1700,37 @@ function ModernDesignContent() {
   };
 
   const familySection: DesignerSection = {
-    id: "family",
-    title: "Family",
+    id: "information",
+    title: "Information",
     summary: "The names and places printed on your artwork.",
-    icon: <FamilyIcon />,
+    icon: <InformationIcon />,
     body: (
       <div className="space-y-4">
         <TextField label="Surname" value={headingText} onChange={setHeadingText} />
 
-        {template === "modern" && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              {detailFields.map((field) => (
-                <TextField
-                  key={field.label}
-                  label={field.label}
-                  value={field.value}
-                  onChange={field.set}
-                  disabled={field.value.trim() === ""}
-                  placeholder="Not selected"
-                />
-              ))}
-            </div>
-            <HelpText>
-              Greyed-out fields weren&apos;t part of your search. Use Back to search to add them.
-            </HelpText>
-
-            {level === "street" && household.length > 0 && (
-              <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
-                <GroupLabel>Household record</GroupLabel>
-                <div className="mb-4">
-                  <Segmented
-                    ariaLabel="Household layout"
-                    value={householdDisplayMode}
-                    onChange={setHouseholdDisplayMode}
-                    options={[
-                      { id: "table" as const, label: "Table" },
-                      { id: "list" as const, label: "List" },
-                    ]}
-                  />
-                  <HelpText>
-                    {householdDisplayMode === "table" ? "Columns" : "Grouped by surname"}
-                  </HelpText>
-                </div>
-
-                <p className="mb-2 text-[12px] font-medium text-stone-700">Who to print</p>
-                <div className="mb-4 space-y-1">
-                  {household.map((person, index) => {
-                    const hidden = hiddenHouseholdIndices.has(index);
-                    return (
-                      <label
-                        key={`${person.full_name || "person"}-${index}`}
-                        className="flex items-center gap-2 text-[13px] text-stone-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!hidden}
-                          onChange={() =>
-                            setHiddenHouseholdIndices((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(index)) next.delete(index);
-                              else next.add(index);
-                              return next;
-                            })
-                          }
-                          className="h-4 w-4 rounded border-stone-300"
-                        />
-                        <span className={hidden ? "text-stone-400" : ""}>
-                          {person.full_name || "Unnamed"}
-                          {person.age ? ` (${person.age})` : ""}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <p className="mb-2 text-[12px] font-medium text-stone-700">Details to print</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
-                    const active = visibleHouseholdFields.has(f.id);
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() =>
-                          setVisibleHouseholdFields((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(f.id)) next.delete(f.id);
-                            else next.add(f.id);
-                            return next;
-                          })
-                        }
-                        className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
-                          active
-                            ? "border-stone-800 bg-stone-800 text-white"
-                            : "border-stone-300 bg-white text-stone-600 hover:bg-white"
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    ),
-  };
-
-  /**
-   * How much of the country the map shows. Its own section rather than a field inside
-   * Family: it decides what the map is a picture of, and it gates which later options
-   * exist at all — the marker is only offered at the closer extents, and the basemap
-   * choices change with it.
-   */
-  const mapPresetSection: DesignerSection = {
-    id: "mapPreset",
-    title: "Map preset",
-    summary: "How much of the map to show.",
-    icon: <ExtentIcon />,
-    body: (
-      <div className="space-y-4">
-        <div>
-          <FieldLabel>Map preset</FieldLabel>
-          <ChoiceCards
-            columns={2}
-            ariaLabel="Map preset"
-            value={level}
-            onChange={changeLevel}
-            options={availableLevels(deepestLevel).map((l) => ({
-              id: l,
-              label: MODERN_PRESETS[l].label,
-            }))}
-          />
-          <HelpText>{preset.description}</HelpText>
+        <div className="grid grid-cols-2 gap-3">
+          {detailFields.map((field) => {
+            const disabled =
+              template === "historic" ||
+              field.value.trim() === "" ||
+              LEVEL_ORDER[level] < LEVEL_ORDER[FIELD_MIN_LEVEL[field.label]];
+            return (
+              <TextField
+                key={field.label}
+                label={field.label}
+                value={field.value}
+                onChange={field.set}
+                disabled={disabled}
+                placeholder="Not selected"
+              />
+            );
+          })}
         </div>
-
-        {!preset.allowsPin && pin && (
-          <p className="rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
-            Your marker is kept but not shown at this extent.
-          </p>
-        )}
+        <HelpText>
+          {template === "historic"
+            ? "Historic prints use the county only — these aren't editable for this template."
+            : "Greyed-out fields weren't part of your search, or aren't shown at the current map preset."}
+        </HelpText>
       </div>
     ),
   };
@@ -1768,7 +1814,7 @@ function ModernDesignContent() {
   const mapFeaturesSection: DesignerSection = {
     id: "map-features",
     title: "Map Features",
-    summary: "Basemap, layers, and the house marker.",
+    summary: "",
     icon: <MapStyleIcon />,
     body: (
       <div className="space-y-4">
@@ -1850,6 +1896,12 @@ function ModernDesignContent() {
           />
         </div>
 
+        {/* Only House knows which building is yours — a marker at any other preset
+            would just be dropped somewhere in the district, not on a real match, so
+            the whole control group is hidden rather than left active with nothing
+            meaningful to place. Mirrors preset.allowsPin, which already gates the
+            marker on the live map and in the print export. */}
+        {level === "street" && (
         <div className="border-t border-stone-200 pt-4">
           <GroupLabel>Marker</GroupLabel>
 
@@ -1970,6 +2022,7 @@ function ModernDesignContent() {
             maxLabel="Large"
           />
         </div>
+        )}
       </div>
     ),
   };
@@ -2059,9 +2112,14 @@ function ModernDesignContent() {
               }))}
             />
           )}
-          {printSize && (
+          {printSize && selectedSku && (
             <HelpText>
-              Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px, 300dpi.
+              {/* Historic renders as vector SVG, so it hits true 300dpi at any size —
+                  Modern's map is a raster capture and its real ceiling is basemap_ppi,
+                  which drops below 300 at the larger sizes. Claiming 300dpi for those
+                  was inaccurate; this shows what the print actually delivers. */}
+              Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px
+              {template === "historic" ? ", 300dpi." : `, ~${selectedSku.basemap_ppi}dpi.`}
             </HelpText>
           )}
         </div>
@@ -2297,7 +2355,6 @@ function ModernDesignContent() {
       ? [
           templateSection,
           familySection,
-          mapPresetSection,
           colourSection,
           mapFeaturesSection,
           sizeSection,
@@ -2413,6 +2470,14 @@ function ModernDesignContent() {
             style={{
               background: framed ? frameHex : "transparent",
               padding: framed ? "3.5%" : 0,
+              // content-box, overriding Tailwind Preflight's global border-box reset:
+              // width/maxWidth below must size the paper itself (posterRef, "w-full"
+              // inside this box), with the frame's padding added on top of that rather
+              // than carved out of it. Prodigi's physical frame sits around the paper,
+              // not on it, so the frame must not change the paper's own size — border-box
+              // would shrink posterRef by the padding amount every time a frame is picked,
+              // which also threw off the household table's fit-to-width measurement below.
+              boxSizing: "content-box",
               // Was "100vh - 13rem", hand-tuned to the old masthead this page carried
               // itself. That masthead is gone (folded into the shared SiteHeader, which
               // is shorter), so the deduction is now the header's own height plus the

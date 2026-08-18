@@ -72,33 +72,6 @@ export default function Home() {
           is why it is a component fed by lib/censusEditions.ts rather than markup. */}
       <CensusBlock collection={IRISH_CENSUS} />
 
-      {/* ── BLOCK 3 · ON ACCURACY ──────────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-10 sm:py-12">
-        <div className="max-w-2xl">
-          <p
-            style={{
-              fontFamily: "var(--font-plex-mono)",
-              fontSize: "0.68rem",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: GOLD,
-            }}
-          >
-            On accuracy
-          </p>
-
-          <p
-            className="mt-4 text-base leading-relaxed"
-            style={{ color: MUTED, fontWeight: 300 }}
-          >
-            Townland and district boundaries have changed a lot over the years. They&apos;ve been
-            redrawn, renamed, and merged many times. So the boundaries we use today aren&apos;t the same
-            as they were in 1901. We do our best to match addresses to the old boundaries, but
-            there will be mistakes.
-          </p>
-        </div>
-      </section>
-
       <SiteFooter />
     </div>
   );

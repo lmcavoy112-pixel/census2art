@@ -45,6 +45,25 @@ export function FamilyIcon(props: IconProps) {
   );
 }
 
+/** An italic "Aa" — the free text (surname, places, household) printed on the artwork. */
+export function InformationIcon({ size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <text
+        x="12"
+        y="17.5"
+        textAnchor="middle"
+        fontStyle="italic"
+        fontFamily="Georgia, 'Times New Roman', serif"
+        fontSize="15"
+        fill="currentColor"
+      >
+        Aa
+      </text>
+    </svg>
+  );
+}
+
 /** Painter's palette. */
 export function ColourIcon(props: IconProps) {
   return (

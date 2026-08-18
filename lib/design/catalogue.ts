@@ -272,6 +272,16 @@ export const GALLERY_FAMILY_ORDER = ["7:5/√2", "1:1"];
  */
 const ARCHIVED_RATIO_FAMILIES = ["7:5"];
 
+/**
+ * Minimum acceptable print resolution for the Modern designer's rasterised map capture,
+ * in the SKU's own basemap_ppi terms. 150 is the standard floor for large-format wall art
+ * viewed from a normal distance — well below the 300dpi a small print wants, but every
+ * currently-offered size already clears it (161 at 18x26", the lowest). Applies to Modern
+ * only: Historic renders as vector SVG, so it hits true 300dpi at any size and has no
+ * resolution ceiling to guard against.
+ */
+export const MIN_MODERN_BASEMAP_PPI = 150;
+
 // NOTE: unlike the layout families above, re-offering "7:5" is NOT just a matter of
 // removing it from this list. layoutFamilyAspect() returns one ratio per *layout*
 // family, and returns √2 for "7:5/√2" — correct only because these rows are excluded.
