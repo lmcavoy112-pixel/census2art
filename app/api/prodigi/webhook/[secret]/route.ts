@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "../../../../../lib/supabase-admin";
+import { getOrder } from "../../../../../lib/prodigi";
+import { fulfillLineItem, type TrackingInfo } from "../../../../../lib/shopify-admin";
 
 // Prodigi callbacks are unsigned, so the secret path segment (kept out of
 // callbackUrl logs by not exposing it anywhere else) is the only verification
@@ -25,6 +27,30 @@ function mapProdigiStage(stage: unknown): string | null {
   if (stage === "Cancelled") return "cancelled";
   if (stage === "InProgress") return "in_production";
   return null;
+}
+
+/**
+ * Pulls carrier/tracking off a Prodigi order's `shipments` array.
+ *
+ * The webhook payload itself only carries a status summary, not shipment detail, so the
+ * caller re-fetches the full order via getOrder() first. Multiple shipments are possible
+ * (Prodigi can split one order across parcels) but every line here is one copy of one
+ * design, so taking the first is enough — Shopify's tracking_info accepts only one entry
+ * per fulfillment anyway.
+ */
+function extractTracking(fullOrder: Record<string, unknown>): TrackingInfo | undefined {
+  const shipments = fullOrder.shipments as
+    | Array<{ carrier?: { name?: string }; tracking?: { number?: string; url?: string } }>
+    | undefined;
+
+  const shipment = shipments?.[0];
+  if (!shipment) return undefined;
+
+  return {
+    number: shipment.tracking?.number,
+    url: shipment.tracking?.url,
+    company: shipment.carrier?.name,
+  };
 }
 
 export async function POST(
@@ -57,7 +83,7 @@ export async function POST(
 
   const { data: order, error: fetchError } = await supabaseAdmin
     .from("orders")
-    .select("id, status, image_path")
+    .select("id, status, image_path, copies, shopify_order_id, shopify_line_item_id")
     .eq("prodigi_order_id", prodigiOrderId)
     .maybeSingle();
 
@@ -73,6 +99,7 @@ export async function POST(
   }
 
   const nextStatus = mapProdigiStage(event.data?.status?.stage) ?? order.status;
+  const justCompleted = nextStatus === "complete" && order.status !== "complete";
 
   await supabaseAdmin
     .from("orders")
@@ -84,6 +111,37 @@ export async function POST(
     source: "webhook",
     payload: event as unknown as Record<string, unknown>,
   });
+
+  // Only real, Shopify-paid orders carry these — the admin-gated manual-submit flow
+  // (/api/orders/[id]) never sets them, and has no Shopify order to notify anyway.
+  // Guarding on the *previous* status (not just "is this Complete") stops a redelivered
+  // or duplicate "Complete" event from asking Shopify to fulfil the same line twice.
+  if (justCompleted && order.shopify_order_id && order.shopify_line_item_id) {
+    try {
+      const { order: fullOrder } = await getOrder(prodigiOrderId);
+      const tracking = extractTracking(fullOrder);
+
+      await fulfillLineItem(
+        order.shopify_order_id,
+        order.shopify_line_item_id,
+        order.copies ?? 1,
+        tracking
+      );
+
+      console.log(
+        `Prodigi order ${prodigiOrderId}: fulfilled Shopify order ${order.shopify_order_id} line ${order.shopify_line_item_id}` +
+          (tracking?.number ? ` (tracking ${tracking.number})` : " (no tracking on shipment)")
+      );
+    } catch (error) {
+      // Prodigi already shows this order complete regardless of whether Shopify's side
+      // succeeds, so this can't roll anything back — it's logged loudly for manual
+      // fulfilment rather than left to fail silently the way the original bug did.
+      console.error(
+        `ALERT: Prodigi order ${prodigiOrderId} complete but Shopify fulfilment failed for order ${order.shopify_order_id} line ${order.shopify_line_item_id}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
 
   const assetsPrepared = event.data?.status?.details?.printReadyAssetsPrepared === "Complete";
   if (assetsPrepared && order.image_path) {

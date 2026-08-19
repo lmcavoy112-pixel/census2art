@@ -88,6 +88,23 @@ function attributesToMap(
   return map;
 }
 
+const ORDER_ID_IN_IMAGE_PATH = /\/orders\/([0-9a-f-]{36})\//i;
+
+/**
+ * Recovers the Supabase `orders` row id for a line item's print asset.
+ *
+ * POST /api/orders (app/api/orders/route.ts) is what created that row, in the earlier
+ * "upload the artwork" step — its image path is `orders/{orderId}/{filename}.png`, and
+ * that same public URL becomes the cart line's `_imageUrl`. Recovering the id here (rather
+ * than adding a redundant `_orderId` line attribute) is what lets a successful Prodigi
+ * submission update the existing row instead of leaving it stuck on `status: "pending"`
+ * forever, which is also why /api/prodigi/webhook/[secret] could never find these orders
+ * by `prodigi_order_id` — nothing had written one against a real, paid order.
+ */
+function localOrderIdFromImageUrl(imageUrl: string): string | null {
+  return imageUrl.match(ORDER_ID_IN_IMAGE_PATH)?.[1] ?? null;
+}
+
 /**
  * Builds a ProdigiRecipient from a Shopify shipping address.
  */
@@ -113,25 +130,28 @@ function buildProdigiRecipient(
 }
 
 /**
- * Delivers every digital line on an address-less order by email.
+ * Delivers a Shopify order's Digital Print lines by email.
  *
  * Shopify skips the shipping-address step entirely when every line's variant has
- * requiresShipping:false, so "no shipping_address" now means "digital order", not just
- * "nothing to fulfil" — this used to be the only case and was simply ignored.
+ * requiresShipping:false, but an order can just as easily mix a Digital Print line with
+ * a physical one bought in the same checkout — that still collects an address (for the
+ * physical line), so "digital" can no longer be inferred from "no shipping_address" on
+ * the whole order. The caller now classifies lines individually and passes only the
+ * Digital Print ones here, whether or not the order also has physical lines.
  *
  * Returns whether every line was delivered, so the caller can decide whether Shopify
  * should retry the delivery (same reasoning as the Prodigi results[] below: a silent
  * 200 on a paid-but-undelivered order is the failure mode to avoid).
  */
-async function deliverDigitalOrder(order: ShopifyOrder): Promise<boolean> {
+async function deliverDigitalOrder(order: ShopifyOrder, lines: ShopifyLineItem[]): Promise<boolean> {
   const to = order.email || order.customer?.email;
   if (!to) {
     console.error(`ALERT Shopify order ${order.id}: digital order but no customer email on file — cannot deliver`);
     return false;
   }
 
-  const lines: DigitalDownloadLine[] = [];
-  for (const line of order.line_items) {
+  const targets: { line: DigitalDownloadLine; localOrderId: string | null }[] = [];
+  for (const line of lines) {
     const attrs = attributesToMap(line.properties || []);
     const imageUrl = attrs._imageUrl;
 
@@ -147,15 +167,18 @@ async function deliverDigitalOrder(order: ShopifyOrder): Promise<boolean> {
       continue;
     }
 
-    lines.push({
-      product: line.title || "Digital Print",
-      sizeLabel: attrs["Size"] || "",
-      surname: attrs["Surname"],
-      downloadUrl: imageUrl,
+    targets.push({
+      line: {
+        product: line.title || "Digital Print",
+        sizeLabel: attrs["Size"] || "",
+        surname: attrs["Surname"],
+        downloadUrl: imageUrl,
+      },
+      localOrderId: localOrderIdFromImageUrl(imageUrl),
     });
   }
 
-  if (lines.length === 0) {
+  if (targets.length === 0) {
     console.error(
       `ALERT Shopify order ${order.id}: digital order paid but nothing could be delivered — ` +
         `no line had a valid _imageUrl. This order needs manual attention.`
@@ -163,10 +186,28 @@ async function deliverDigitalOrder(order: ShopifyOrder): Promise<boolean> {
     return false;
   }
 
+  // Shopify redelivers the whole webhook payload if ANY line fails — on a mixed order
+  // that's the physical line erroring at Prodigi, which would otherwise re-send this same
+  // email on every retry. A local order row already marked "delivered" is skipped instead.
+  const localOrderIds = targets.map((t) => t.localOrderId).filter((id): id is string => id !== null);
+  const delivered = new Set<string>();
+  if (localOrderIds.length > 0) {
+    const { data } = await supabaseAdmin.from("orders").select("id, status").in("id", localOrderIds);
+    for (const row of data ?? []) {
+      if (row.status === "delivered") delivered.add(row.id);
+    }
+  }
+
+  const pending = targets.filter((t) => !(t.localOrderId && delivered.has(t.localOrderId)));
+  if (pending.length === 0) {
+    console.log(`Shopify order ${order.id}: digital line(s) already delivered, skipping resend`);
+    return true;
+  }
+
   const result = await sendDigitalDownloadEmail({
     to,
     orderName: order.name ?? `#${order.id}`,
-    lines,
+    lines: pending.map((t) => t.line),
   });
 
   if (!result.success) {
@@ -177,7 +218,18 @@ async function deliverDigitalOrder(order: ShopifyOrder): Promise<boolean> {
     return false;
   }
 
-  console.log(`Shopify order ${order.id}: digital download email sent to ${to} (${lines.length} line(s))`);
+  const deliveredIds = pending.map((t) => t.localOrderId).filter((id): id is string => id !== null);
+  if (deliveredIds.length > 0) {
+    const { error: linkError } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "delivered", shopify_order_id: order.id })
+      .in("id", deliveredIds);
+    if (linkError) {
+      console.error(`Order ${order.id}: could not mark digital order(s) delivered:`, linkError.message);
+    }
+  }
+
+  console.log(`Shopify order ${order.id}: digital download email sent to ${to} (${pending.length} line(s))`);
   return true;
 }
 
@@ -198,6 +250,7 @@ type ShopifyCustomer = {
 };
 
 type ShopifyLineItem = {
+  id: number;
   sku?: string;
   quantity: number;
   properties?: Array<{ name: string; value: string }>;
@@ -275,25 +328,52 @@ export async function POST(request: NextRequest) {
     prodigiOrderId?: string;
   }> = [];
 
-  const recipient = buildProdigiRecipient(order);
+  // Digital Print lines are delivered by email, never sent to Prodigi (see
+  // ProductCategory "Digital" in lib/design/catalogue.ts — "no Prodigi fulfilment at
+  // all"). This used to be inferred from "the whole order has no shipping_address", which
+  // only held when every line was digital; a Digital Print line bought alongside a
+  // physical one in the same checkout still collects an address for the physical line, so
+  // each line's catalogue product kind is checked individually instead.
+  const lineProducts = new Map<ShopifyLineItem, string | undefined>();
+  for (const line of order.line_items) {
+    if (!line.sku) continue;
+    const { data: catalogueRows } = await supabaseAdmin
+      .from("catalogue_skus")
+      .select("product")
+      .eq("sku", line.sku)
+      .limit(1);
+    lineProducts.set(line, catalogueRows?.[0]?.product);
+  }
 
-  if (!recipient) {
-    // No shipping address means no line needed one — Shopify skips that step entirely
-    // when every line's variant is requiresShipping:false, so this is the digital-order
-    // path now rather than a dead end. Failure is retried the same way the physical
-    // path retries below: release the dedup claim so Shopify redelivers.
-    const delivered = await deliverDigitalOrder(order);
-    if (!delivered) {
+  const digitalLines = order.line_items.filter((line) => lineProducts.get(line) === "Digital Print");
+  const physicalLines = order.line_items.filter((line) => lineProducts.get(line) !== "Digital Print");
+
+  let digitalOk = true;
+  if (digitalLines.length > 0) {
+    digitalOk = await deliverDigitalOrder(order, digitalLines);
+  }
+
+  if (physicalLines.length === 0) {
+    // Failure is retried the same way the physical path retries below: release the
+    // dedup claim so Shopify redelivers.
+    if (!digitalOk) {
       await supabaseAdmin.from("processed_webhooks").delete().eq("webhook_id", deliveryId);
       return NextResponse.json({ error: "Digital order could not be delivered" }, { status: 500 });
     }
     return NextResponse.json({ digital: true }, { status: 200 });
   }
 
+  const recipient = buildProdigiRecipient(order);
+  if (!recipient) {
+    console.error(`ALERT Shopify order ${order.id}: has physical line(s) but no shipping address on the order`);
+    await supabaseAdmin.from("processed_webhooks").delete().eq("webhook_id", deliveryId);
+    return NextResponse.json({ error: "Physical order missing shipping address" }, { status: 500 });
+  }
+
   // Each line is fulfilled independently, and the index keeps the idempotency key unique
   // when one order legitimately contains two lines of the same SKU — keying on SKU alone
   // made Prodigi treat the second line as a repeat and silently drop it.
-  for (const [index, line] of order.line_items.entries()) {
+  for (const [index, line] of physicalLines.entries()) {
     if (!line.sku) {
       console.warn(`Order ${order.id}, line ${line.title}: no SKU`);
       continue;
@@ -313,20 +393,10 @@ export async function POST(request: NextRequest) {
     // requires a `mountColor` (the mat board inside the frame), Framed Canvas requires
     // a `wrap` (how the image treats the canvas edge), and Stretched Canvas requires
     // that same `wrap` even though it's unframed and carries no "Frame colour" line
-    // attribute at all — so the product lookup below runs unconditionally, not just
-    // when a frame colour is present, and buildProdigiAttributes() (shared with the
-    // cart-add path) decides what Prodigi actually needs per product.
-    //
-    // Not .maybeSingle(): black/white variants of the same framed product currently
-    // share one SKU (a separate catalogue data issue), so this can legitimately match
-    // more than one row. Both rows agree on `product`, which is all this needs.
-    const { data: catalogueRows } = await supabaseAdmin
-      .from("catalogue_skus")
-      .select("product")
-      .eq("sku", line.sku)
-      .limit(1);
-
-    const catalogueProduct = catalogueRows?.[0]?.product;
+    // attribute at all — so buildProdigiAttributes() (shared with the cart-add path)
+    // decides what Prodigi actually needs per product, from the kind already resolved
+    // above in lineProducts.
+    const catalogueProduct = lineProducts.get(line);
     const prodigiAttributes: Record<string, string> = isProductKind(catalogueProduct)
       ? buildProdigiAttributes(catalogueProduct, attrs["Frame colour"] ?? null)
       : {};
@@ -378,6 +448,36 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`Order ${order.id} (${line.sku}): sent to Prodigi as ${prodigiOrderId}`);
+
+      // Best-effort: links this Prodigi order back to the Supabase row so status
+      // callbacks (/api/prodigi/webhook/[secret]) can find it. A miss here (row deleted,
+      // URL from somewhere unexpected) doesn't undo the Prodigi submission above, so it's
+      // logged rather than allowed to fail the webhook.
+      const localOrderId = localOrderIdFromImageUrl(imageUrl);
+      if (localOrderId) {
+        const { error: linkError } = await supabaseAdmin
+          .from("orders")
+          .update({
+            status: "submitted",
+            prodigi_order_id: prodigiOrderId,
+            prodigi_status: result.order,
+            shopify_order_id: order.id,
+            shopify_line_item_id: line.id,
+          })
+          .eq("id", localOrderId);
+
+        if (linkError) {
+          console.error(`Order ${order.id} (${line.sku}): could not link local order ${localOrderId}:`, linkError.message);
+        } else {
+          await supabaseAdmin.from("order_events").insert({
+            order_id: localOrderId,
+            source: "create",
+            payload: result as unknown as Record<string, unknown>,
+          });
+        }
+      } else {
+        console.warn(`Order ${order.id} (${line.sku}): could not recover local order id from image URL, status callbacks won't find it`);
+      }
     } catch (error) {
       const message =
         error instanceof ProdigiApiError ? error.message : "Unknown Prodigi error";
@@ -393,35 +493,39 @@ export async function POST(request: NextRequest) {
   }
 
   const successful = results.filter((r) => r.success).length;
-  console.log(`Shopify webhook: ${successful}/${results.length} items sent to Prodigi`);
+  console.log(`Shopify webhook: ${successful}/${results.length} items sent to Prodigi, digital ${digitalOk ? "delivered" : "FAILED"}`);
 
-  // A paid order where every line was skipped produces no results and would otherwise exit
-  // 200 as though it had been handled — the same silent-success shape that hid the original
-  // outage. Retrying will not help (a missing SKU or _imageUrl never appears later), so this
-  // stays 200, but it is logged at error level as something a human must go and fulfil.
-  if (results.length === 0 && order.line_items.length > 0) {
+  // A paid order where every physical line was skipped produces no results and would
+  // otherwise exit 200 as though it had been handled — the same silent-success shape that
+  // hid the original outage. Retrying won't help THIS half (a missing SKU or _imageUrl
+  // never appears later), but a failed digital line is a different, retriable failure
+  // mode, so that alone still earns a 500.
+  if (results.length === 0 && physicalLines.length > 0) {
     console.error(
       `ALERT Shopify order ${order.id}: paid but nothing could be fulfilled — ` +
-        `${order.line_items.length} line(s), none had both a SKU and a valid _imageUrl. ` +
+        `${physicalLines.length} physical line(s), none had both a SKU and a valid _imageUrl. ` +
         `This order needs manual attention.`
     );
-    return NextResponse.json({ error: "Order could not be fulfilled" }, { status: 200 });
+    if (!digitalOk) await supabaseAdmin.from("processed_webhooks").delete().eq("webhook_id", deliveryId);
+    return NextResponse.json({ error: "Order could not be fulfilled" }, { status: digitalOk ? 200 : 500 });
   }
 
-  // A failed line means a paid order did not reach the printer, so the delivery has to be
-  // reported as failed for Shopify to retry it. Returning 200 unconditionally — as this
-  // did — meant a Prodigi outage silently swallowed orders with no retry and no alert.
+  // A failed line (physical or digital) means a paid order did not fully reach the
+  // customer, so the delivery has to be reported as failed for Shopify to retry it.
+  // Returning 200 unconditionally — as this did — meant a Prodigi outage or email failure
+  // silently swallowed orders with no retry and no alert.
   //
   // The dedup claim above is released on failure so the retry can actually do the work;
-  // Prodigi's per-line idempotencyKey is what stops the successful lines from repeating.
-  if (successful < results.length) {
+  // Prodigi's per-line idempotencyKey, and deliverDigitalOrder's own "already delivered"
+  // check, are what stop the parts that already succeeded from repeating.
+  if (successful < results.length || !digitalOk) {
     await supabaseAdmin.from("processed_webhooks").delete().eq("webhook_id", deliveryId);
 
     return NextResponse.json(
-      { processed: results, error: "Some items could not be fulfilled" },
+      { processed: results, digitalDelivered: digitalOk, error: "Some items could not be fulfilled" },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ processed: results });
+  return NextResponse.json({ processed: results, digitalDelivered: digitalOk });
 }

@@ -39,9 +39,16 @@ function contentSecurityPolicy(frameAncestors: string = "'none'"): string {
   const supabase = supabaseOrigin();
   const tiles = TILE_HOSTS.join(" ");
 
+  // Turbopack/React call eval() in dev mode for HMR and debugging overlays; production
+  // never does (see comment block above), so this only loosens the policy locally.
+  const scriptSrc =
+    process.env.NODE_ENV === "production"
+      ? "script-src 'self' 'unsafe-inline'"
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    scriptSrc,
     // MapLibre and the designer set element styles directly, which no nonce can cover.
     "style-src 'self' 'unsafe-inline'",
     // blob:/data: are how html2canvas-pro and the PNG export build previews; the Supabase
