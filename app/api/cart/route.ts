@@ -149,15 +149,43 @@ export async function POST(request: NextRequest) {
         // enabled+designable(+basemap_ppi for Modern), but this is the one place that
         // actually gates the sale, so a stale page, a replayed request, or a future UI
         // bug can't add a retired or under-quality print to a real cart.
-        const { data: catalogueRow } = await supabase
+        //
+        // Not .maybeSingle(): Classic Frame and Framed Canvas each have a black row and
+        // a white row sharing one sku (enabled/designable/basemap_ppi agree across both),
+        // so two rows legitimately match. .maybeSingle() errors on 2+ rows — silently
+        // discarded here since only `data` was destructured — which made every add of
+        // those two product lines fail with "no longer available", in any currency.
+        const { data: catalogueRows } = await supabase
           .from("catalogue_skus")
           .select("enabled, designable, basemap_ppi")
           .eq("sku", body.sku)
-          .maybeSingle();
+          .limit(1);
+
+        const catalogueRow = catalogueRows?.[0];
 
         if (!catalogueRow || !catalogueRow.enabled || !catalogueRow.designable) {
           return NextResponse.json(
             { error: "That size is no longer available." },
+            { status: 422 }
+          );
+        }
+
+        // Currency-specific: Prodigi only prints part of the range at its EU/US labs
+        // (see catalogue_sku_pricing), so a SKU that's enabled/designable can still be
+        // unsellable in the visitor's chosen currency. The designer's size picker
+        // already excludes these, so reaching this branch means a stale page, a
+        // replayed request, or a future UI bug — same reasoning as the check above.
+        const currency = await readCurrency();
+        const { data: pricingRow } = await supabase
+          .from("catalogue_sku_pricing")
+          .select("available")
+          .eq("sku", body.sku)
+          .eq("currency", currency)
+          .maybeSingle();
+
+        if (!pricingRow?.available) {
+          return NextResponse.json(
+            { error: `That size isn't available in ${currency}.` },
             { status: 422 }
           );
         }
@@ -193,8 +221,6 @@ export async function POST(request: NextRequest) {
         // its first line. An existing cart already carries a buyerIdentity and keeps it —
         // switching markets mid-cart goes through "setCurrency", which checks every line
         // is sellable there first.
-        const currency = await readCurrency();
-
         const cart = existing
           ? await addLine(existing.id, variantId, quantity, attributes)
           : await createCart(variantId, quantity, attributes, CURRENCY_TO_COUNTRY[currency]);

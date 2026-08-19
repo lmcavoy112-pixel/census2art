@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isAllowedPrintAssetUrl } from "@/lib/print-asset";
 import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
 import { isProductKind } from "@/lib/design/catalogue";
+import { sendDigitalDownloadEmail, type DigitalDownloadLine } from "@/lib/email";
 
 // Named to match .env.local and scripts/get-shopify-access-token.ts. This previously read
 // SHOPIFY_API_SECRET, which is defined nowhere — so the secret resolved to "", every
@@ -67,15 +68,22 @@ async function claimDelivery(webhookId: string): Promise<boolean> {
 }
 
 /**
- * Converts Shopify line item attributes array to a map.
- * Shopify line_item.attributes is: { key: string, value: string }[]
+ * Converts a Shopify order line item's custom key/value pairs to a map.
+ *
+ * Confirmed live against a real order's REST payload (the same shape orders/create
+ * delivers): the field is `properties`, an array of `{ name, value }` — NOT
+ * `attributes`/`{ key, value }`, which is the Storefront *Cart* API's shape for the
+ * same data before checkout. This code read `line.attributes` (always undefined on the
+ * real payload) since the webhook existed, so `attrs._imageUrl` was always undefined —
+ * every real order failed the "no _imageUrl attribute" check and never reached Prodigi,
+ * not just a batch of them.
  */
 function attributesToMap(
-  attributes: Array<{ key: string; value: string }>
+  properties: Array<{ name: string; value: string }>
 ): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const attr of attributes) {
-    map[attr.key] = attr.value;
+  for (const prop of properties) {
+    map[prop.name] = prop.value;
   }
   return map;
 }
@@ -104,6 +112,75 @@ function buildProdigiRecipient(
   };
 }
 
+/**
+ * Delivers every digital line on an address-less order by email.
+ *
+ * Shopify skips the shipping-address step entirely when every line's variant has
+ * requiresShipping:false, so "no shipping_address" now means "digital order", not just
+ * "nothing to fulfil" — this used to be the only case and was simply ignored.
+ *
+ * Returns whether every line was delivered, so the caller can decide whether Shopify
+ * should retry the delivery (same reasoning as the Prodigi results[] below: a silent
+ * 200 on a paid-but-undelivered order is the failure mode to avoid).
+ */
+async function deliverDigitalOrder(order: ShopifyOrder): Promise<boolean> {
+  const to = order.email || order.customer?.email;
+  if (!to) {
+    console.error(`ALERT Shopify order ${order.id}: digital order but no customer email on file — cannot deliver`);
+    return false;
+  }
+
+  const lines: DigitalDownloadLine[] = [];
+  for (const line of order.line_items) {
+    const attrs = attributesToMap(line.properties || []);
+    const imageUrl = attrs._imageUrl;
+
+    if (!imageUrl) {
+      console.warn(`Order ${order.id}, line ${line.title}: no _imageUrl attribute, cannot deliver`);
+      continue;
+    }
+
+    // Same check as the physical path: the URL came from the browser via the cart, so
+    // it is verified here rather than trusted because Shopify echoed it back.
+    if (!isAllowedPrintAssetUrl(imageUrl)) {
+      console.error(`Order ${order.id}, line ${line.sku}: refusing off-origin download asset`);
+      continue;
+    }
+
+    lines.push({
+      product: line.title || "Digital Print",
+      sizeLabel: attrs["Size"] || "",
+      surname: attrs["Surname"],
+      downloadUrl: imageUrl,
+    });
+  }
+
+  if (lines.length === 0) {
+    console.error(
+      `ALERT Shopify order ${order.id}: digital order paid but nothing could be delivered — ` +
+        `no line had a valid _imageUrl. This order needs manual attention.`
+    );
+    return false;
+  }
+
+  const result = await sendDigitalDownloadEmail({
+    to,
+    orderName: order.name ?? `#${order.id}`,
+    lines,
+  });
+
+  if (!result.success) {
+    console.error(
+      `ALERT Shopify order ${order.id}: digital order paid but email failed (${result.error}). ` +
+        `This order needs manual attention.`
+    );
+    return false;
+  }
+
+  console.log(`Shopify order ${order.id}: digital download email sent to ${to} (${lines.length} line(s))`);
+  return true;
+}
+
 type ShopifyAddress = {
   name?: string;
   address1?: string;
@@ -123,12 +200,13 @@ type ShopifyCustomer = {
 type ShopifyLineItem = {
   sku?: string;
   quantity: number;
-  attributes?: Array<{ key: string; value: string }>;
+  properties?: Array<{ name: string; value: string }>;
   title?: string;
 };
 
 type ShopifyOrder = {
   id: number;
+  name?: string;
   email?: string;
   shipping_address?: ShopifyAddress;
   customer?: ShopifyCustomer;
@@ -200,9 +278,16 @@ export async function POST(request: NextRequest) {
   const recipient = buildProdigiRecipient(order);
 
   if (!recipient) {
-    // Nothing to retry: a digital-only or address-less order is never going to gain one.
-    console.warn(`Order ${order.id}: no shipping address, nothing to fulfil`);
-    return NextResponse.json({ ignored: "no shipping address" }, { status: 200 });
+    // No shipping address means no line needed one — Shopify skips that step entirely
+    // when every line's variant is requiresShipping:false, so this is the digital-order
+    // path now rather than a dead end. Failure is retried the same way the physical
+    // path retries below: release the dedup claim so Shopify redelivers.
+    const delivered = await deliverDigitalOrder(order);
+    if (!delivered) {
+      await supabaseAdmin.from("processed_webhooks").delete().eq("webhook_id", deliveryId);
+      return NextResponse.json({ error: "Digital order could not be delivered" }, { status: 500 });
+    }
+    return NextResponse.json({ digital: true }, { status: 200 });
   }
 
   // Each line is fulfilled independently, and the index keeps the idempotency key unique
@@ -214,7 +299,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const attrs = attributesToMap(line.attributes || []);
+    const attrs = attributesToMap(line.properties || []);
     const imageUrl = attrs._imageUrl;
 
     // Shopify's line item attributes carry customer-facing info (Surname, County,

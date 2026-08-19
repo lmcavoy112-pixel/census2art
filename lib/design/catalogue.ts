@@ -9,11 +9,13 @@ export type ProductKind =
   | "Classic Frame"
   | "Framed Canvas"
   | "Stretched Canvas"
-  | "Art Print";
+  | "Art Print"
+  | "Digital Print";
 
 // "Framed" = Wall art (Classic Frame / Framed Canvas / Stretched Canvas).
 // "Printed" = Prints & posters (unframed Art Print paper).
-export type ProductCategory = "Framed" | "Printed";
+// "Digital" = instant PNG download, no Prodigi fulfilment at all.
+export type ProductCategory = "Framed" | "Printed" | "Digital";
 
 export type SizeGroup = "metric" | "square" | "3-2" | "4-3" | "5-4";
 
@@ -65,6 +67,15 @@ export type PrintSizeOption = {
 
 export const PRODUCT_OPTIONS: ProductOption[] = [
   {
+    id: "Digital Print",
+    label: "Digital",
+    description: "High-resolution PNG, delivered by email straight after checkout. Nothing shipped.",
+    supplier: "—",
+    material: "PNG file",
+    supplierCode: "DIGITAL-PNG",
+    skuStatus: "Active",
+  },
+  {
     id: "Art Print",
     label: "Art Print",
     description: "Unframed fine art print on museum-grade paper, ready for you to frame.",
@@ -105,6 +116,7 @@ export const PRODUCT_OPTIONS: ProductOption[] = [
 export const PRODUCTS_FOR_CATEGORY: Record<ProductCategory, ProductKind[]> = {
   Framed: ["Classic Frame", "Framed Canvas", "Stretched Canvas"],
   Printed: ["Art Print"],
+  Digital: ["Digital Print"],
 };
 
 // Pixel dimensions are the true 300dpi targets Prodigi expects, and are what
@@ -219,11 +231,13 @@ export function isProductKind(value: string | undefined): value is ProductKind {
     value === "Classic Frame" ||
     value === "Framed Canvas" ||
     value === "Stretched Canvas" ||
-    value === "Art Print"
+    value === "Art Print" ||
+    value === "Digital Print"
   );
 }
 
 export function categoryForProductKind(kind: ProductKind): ProductCategory {
+  if (kind === "Digital Print") return "Digital";
   return kind === "Art Print" ? "Printed" : "Framed";
 }
 

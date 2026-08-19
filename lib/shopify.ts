@@ -377,7 +377,7 @@ export async function setDiscountCodes(
 ): Promise<Cart | null> {
   const data = await shopifyFetch<{ cartDiscountCodesUpdate: { cart: RawCart | null; userErrors: { message: string }[] } }>(
     `${CART_FRAGMENT}
-     mutation SetDiscounts($cartId: ID!, $discountCodes: [String!]) {
+     mutation SetDiscounts($cartId: ID!, $discountCodes: [String!]!) {
        cartDiscountCodesUpdate(cartId: $cartId, discountCodes: $discountCodes) {
          cart { ...CartParts }
          userErrors { message }

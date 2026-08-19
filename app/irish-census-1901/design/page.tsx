@@ -560,6 +560,7 @@ function ModernDesignContent() {
   // the held id isn't on offer, so keeping the id means going Print → Framed → Print
   // restores the size the customer had picked.
   useEffect(() => {
+    if (fulfilment === "digital") setProductKind(PRODUCTS_FOR_CATEGORY.Digital[0]);
     if (fulfilment === "print") setProductKind(PRODUCTS_FOR_CATEGORY.Printed[0]);
     if (fulfilment === "framed") setProductKind(PRODUCTS_FOR_CATEGORY.Framed[0]);
   }, [fulfilment]);
@@ -2036,7 +2037,7 @@ function ModernDesignContent() {
             value={fulfilment}
             onChange={setFulfilment}
             options={[
-              { id: "digital", label: "Digital", detail: "Coming soon", disabled: true },
+              { id: "digital", label: "Digital", detail: "Instant download" },
               { id: "print", label: "Print", detail: "Poster shipped" },
               { id: "framed", label: "Framed", detail: "Ready to hang" },
             ]}
@@ -2142,7 +2143,9 @@ function ModernDesignContent() {
                   : "Choose a size to see the price"}
               </p>
               <p className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
-                Made to order — typically 5–8 working days
+                {fulfilment === "digital"
+                  ? "Delivered by email within minutes — nothing shipped"
+                  : "Made to order — typically 5–8 working days"}
               </p>
             </div>
             <button

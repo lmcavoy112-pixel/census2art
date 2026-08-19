@@ -1,12 +1,19 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import {
   CURRENCY_COOKIE,
   DEFAULT_CURRENCY,
+  isCurrencyCode,
   type CurrencyCode,
 } from "@/lib/currency";
+
+function readCookieCurrency(): CurrencyCode | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CURRENCY_COOKIE}=([^;]*)`));
+  const value = match ? decodeURIComponent(match[1]) : undefined;
+  return isCurrencyCode(value) ? value : null;
+}
 
 type CurrencyContextValue = {
   currency: CurrencyCode;
@@ -22,10 +29,14 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 /**
  * Site-wide currency preference.
  *
- * The initial value is read from the cookie server-side (app/layout.tsx) and passed in,
- * rather than read from `document.cookie` on mount — otherwise every price would render
- * once in GBP and then flip, which looks like a pricing glitch on a page whose whole
- * job is showing prices.
+ * `initialCurrency` is a static default (app/layout.tsx passes DEFAULT_CURRENCY), not a
+ * per-request cookie read — reading cookies() in the root layout would force every page
+ * on the site out of static generation (confirmed: it flipped the home page, /background,
+ * /examples, /contact and /legal from prerendered to server-rendered-per-request). The
+ * real stored preference is reconciled from document.cookie in an effect on mount
+ * instead. This means a currency-dependent value can render once at the default before
+ * flipping — acceptable today since nothing reads `currency` above the fold until the
+ * header picker itself ships (Phase 5); worth revisiting if that stops being true.
  *
  * The cookie is written directly here rather than through an API route: it carries no
  * authority (the server re-derives what's purchasable from catalogue_sku_pricing either
@@ -40,6 +51,13 @@ export function CurrencyProvider({
   children: React.ReactNode;
 }) {
   const [currency, setCurrencyState] = useState<CurrencyCode>(initialCurrency);
+
+  useEffect(() => {
+    const stored = readCookieCurrency();
+    if (stored && stored !== currency) setCurrencyState(stored);
+    // Only ever reconciles once, on mount — after that, setCurrency is the sole writer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setCurrency = useCallback((next: CurrencyCode) => {
     setCurrencyState(next);
