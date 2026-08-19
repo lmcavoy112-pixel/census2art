@@ -167,14 +167,33 @@ async function deliverDigitalOrder(order: ShopifyOrder, lines: ShopifyLineItem[]
       continue;
     }
 
+    const localOrderId = localOrderIdFromImageUrl(imageUrl);
+
+    // The email shows a thumbnail from the *separate*, deliberately small "order-previews"
+    // bucket (see app/api/orders/route.ts — a 640px-max-edge JPEG) — never the full-res
+    // print asset above. That asset is the paid deliverable; embedding it as an <img> would
+    // let anyone who ever sees this email (a forward, a compromised inbox, an email
+    // provider's own image cache) load the full-quality print for free. No preview row
+    // means no thumbnail, not a fallback to the real file.
+    let previewUrl: string | undefined;
+    if (localOrderId) {
+      const { data } = await supabaseAdmin
+        .from("orders")
+        .select("preview_url")
+        .eq("id", localOrderId)
+        .maybeSingle();
+      previewUrl = data?.preview_url ?? undefined;
+    }
+
     targets.push({
       line: {
         product: line.title || "Digital Print",
         sizeLabel: attrs["Size"] || "",
         surname: attrs["Surname"],
         downloadUrl: imageUrl,
+        previewUrl,
       },
-      localOrderId: localOrderIdFromImageUrl(imageUrl),
+      localOrderId,
     });
   }
 
