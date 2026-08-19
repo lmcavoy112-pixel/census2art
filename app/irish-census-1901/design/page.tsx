@@ -39,6 +39,9 @@ import {
   type ProductKind,
 } from "@/lib/design/catalogue";
 import { submitPrintOrder } from "@/lib/design/order";
+import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
+import { formatMoney } from "@/lib/currency";
+import { useCurrency } from "@/app/components/CurrencyProvider";
 import {
   canvasToPngBlob,
   renderPrintReadyCanvas,
@@ -335,6 +338,7 @@ function PolygonSwatchRow({
 function ModernDesignContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currency } = useCurrency();
 
   // ── Selection carried over from the census search ───────────────────
   // designKey and houseUid are tracked but not otherwise used by the designer itself —
@@ -544,9 +548,12 @@ function ModernDesignContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Re-runs on currency change: pricing and availability are both per-currency, and
+  // Prodigi only prints part of the range at its EU/US labs, so switching currency can
+  // genuinely remove sizes from sale rather than just relabel their prices.
   useEffect(() => {
-    void loadCatalogueSkus().then(setCatalogueSkus);
-  }, []);
+    void loadCatalogueSkus(currency).then(setCatalogueSkus);
+  }, [currency]);
 
   // Switching how the print is delivered changes which products are on offer. The size
   // is not reset here: selectedSku already falls back to the first available option when
@@ -1408,24 +1415,7 @@ function ModernDesignContent() {
           fileName: `${safeFileNamePart(headingText || "artwork")}.png`,
           sku: selectedSku.sku,
           priceGbp: selectedSku.price_gbp,
-          // Frame colour maps to Prodigi's `color`, but Classic Frame and Framed
-          // Canvas each require a second attribute Prodigi won't default for —
-          // confirmed live against GET /v4.0/products/{sku}. Neither is a
-          // customer-facing choice yet, so both get a neutral default: "Snow
-          // white" mount reads correctly against either frame colour, and
-          // "ImageWrap" continues the map/artwork around the canvas edge
-          // rather than a flat colour band cutting into it.
-          attributes:
-            selectedSku.framed && selectedSku.frame_colour
-              ? {
-                  color: selectedSku.frame_colour,
-                  ...(selectedSku.product === "Classic Frame"
-                    ? { mountColor: "Snow white" }
-                    : selectedSku.product === "Framed Canvas"
-                      ? { wrap: "ImageWrap" }
-                      : {}),
-                }
-              : {},
+          attributes: buildProdigiAttributes(selectedSku.product, selectedSku.frame_colour),
           design: {
             surname: headingText,
             county,
@@ -2112,7 +2102,7 @@ function ModernDesignContent() {
               options={sizeOptions.map((sku) => ({
                 id: String(sku.id),
                 label: sku.size_label,
-                detail: `£${Number(sku.price_gbp).toFixed(2)}`,
+                detail: formatMoney(sku.sellingPrice, currency),
               }))}
             />
           )}
@@ -2140,7 +2130,7 @@ function ModernDesignContent() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[19px] font-semibold leading-none tracking-tight">
-                {selectedSku ? `£${Number(selectedSku.price_gbp).toFixed(2)}` : "—"}
+                {selectedSku ? formatMoney(selectedSku.sellingPrice, currency) : "—"}
               </p>
               <p className="mt-0.5 truncate text-[12px] text-stone-700">
                 {selectedSku

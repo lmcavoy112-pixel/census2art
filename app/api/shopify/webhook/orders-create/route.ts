@@ -3,6 +3,8 @@ import crypto from "crypto";
 import { createOrder, ProdigiApiError, type ProdigiRecipient } from "@/lib/prodigi";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isAllowedPrintAssetUrl } from "@/lib/print-asset";
+import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
+import { isProductKind } from "@/lib/design/catalogue";
 
 // Named to match .env.local and scripts/get-shopify-access-token.ts. This previously read
 // SHOPIFY_API_SECRET, which is defined nowhere — so the secret resolved to "", every
@@ -223,39 +225,26 @@ export async function POST(request: NextRequest) {
     //
     // Frame colour maps to Prodigi's `color`, confirmed live against
     // GET /v4.0/products/{sku} — but that alone isn't sufficient: Classic Frame also
-    // requires a `mountColor` (the mat board inside the frame) and Framed Canvas
-    // requires a `wrap` (how the image treats the canvas edge), neither of which our
-    // catalogue exposes as a customer choice today. Both are looked up per-order
-    // rather than pattern-matched on the SKU string, because the two product families
-    // don't share a SKU prefix (Framed Canvas is both "CAN-38MM-FRA-SC-*" and
-    // "GLOBAL-FRA-CAN-*").
-    const prodigiAttributes: Record<string, string> = {};
-    if (attrs["Frame colour"]) {
-      prodigiAttributes.color = attrs["Frame colour"];
+    // requires a `mountColor` (the mat board inside the frame), Framed Canvas requires
+    // a `wrap` (how the image treats the canvas edge), and Stretched Canvas requires
+    // that same `wrap` even though it's unframed and carries no "Frame colour" line
+    // attribute at all — so the product lookup below runs unconditionally, not just
+    // when a frame colour is present, and buildProdigiAttributes() (shared with the
+    // cart-add path) decides what Prodigi actually needs per product.
+    //
+    // Not .maybeSingle(): black/white variants of the same framed product currently
+    // share one SKU (a separate catalogue data issue), so this can legitimately match
+    // more than one row. Both rows agree on `product`, which is all this needs.
+    const { data: catalogueRows } = await supabaseAdmin
+      .from("catalogue_skus")
+      .select("product")
+      .eq("sku", line.sku)
+      .limit(1);
 
-      // Not .maybeSingle(): black/white variants of the same framed product
-      // currently share one SKU (a separate catalogue data issue), so this can
-      // legitimately match more than one row. Both rows agree on `product`, which
-      // is all this needs.
-      const { data: catalogueRows } = await supabaseAdmin
-        .from("catalogue_skus")
-        .select("product")
-        .eq("sku", line.sku)
-        .limit(1);
-
-      const catalogueRow = catalogueRows?.[0];
-
-      if (catalogueRow?.product === "Classic Frame") {
-        // Not yet a customer-facing choice — "Snow white" is a neutral default that
-        // reads correctly against either frame colour.
-        prodigiAttributes.mountColor = "Snow white";
-      } else if (catalogueRow?.product === "Framed Canvas") {
-        // The map/artwork continues around the canvas edge rather than a flat colour
-        // band cutting into it — the standard choice, and the only one some sizes
-        // (e.g. GLOBAL-FRA-CAN-17X21) actually offer.
-        prodigiAttributes.wrap = "ImageWrap";
-      }
-    }
+    const catalogueProduct = catalogueRows?.[0]?.product;
+    const prodigiAttributes: Record<string, string> = isProductKind(catalogueProduct)
+      ? buildProdigiAttributes(catalogueProduct, attrs["Frame colour"] ?? null)
+      : {};
 
     if (!imageUrl) {
       console.warn(`Order ${order.id}, line ${line.title}: no _imageUrl attribute`);

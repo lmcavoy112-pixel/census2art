@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import type { Cart } from "@/lib/shopify";
+import { formatMoney, isCurrencyCode } from "@/lib/currency";
 
 const GROUND = "#f2ece0";
 const RAISED = "#fdfaf5";
@@ -13,10 +14,13 @@ const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 
+// Shopify reports the cart's own currency, so this stays driven by whatever the cart
+// says rather than by the site-wide preference. An unrecognised code means Shopify is
+// pricing in a currency the storefront doesn't know about — show nothing rather than
+// a number with a misleading symbol.
 function money(amount: string, currency: string) {
-  const value = Number(amount);
-  if (!Number.isFinite(value)) return "";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(value);
+  if (!isCurrencyCode(currency)) return "";
+  return formatMoney(Number(amount), currency);
 }
 
 type CartResponse = {

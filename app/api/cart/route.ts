@@ -7,6 +7,7 @@ import {
   findVariantIdBySku,
   getCart,
   removeLine,
+  setCartCountry,
   setDiscountCodes,
   shopifyConfigured,
   updateLineQuantity,
@@ -15,6 +16,13 @@ import {
 import { cartRequestSchema, type CartRequest } from "@/lib/validation";
 import { MIN_MODERN_BASEMAP_PPI } from "@/lib/design/catalogue";
 import { supabase } from "@/lib/supabase";
+import {
+  CURRENCY_COOKIE,
+  CURRENCY_TO_COUNTRY,
+  DEFAULT_CURRENCY,
+  isCurrencyCode,
+  type CurrencyCode,
+} from "@/lib/currency";
 
 /**
  * The cart's whole surface. Everything runs here rather than in the browser so the
@@ -39,6 +47,37 @@ async function writeCartId(cartId: string) {
     path: "/",
     maxAge: CART_COOKIE_MAX_AGE,
   });
+}
+
+/** The visitor's currency preference. Unlike the cart id this cookie is not httpOnly
+ *  (the header picker reads it client-side), so it is validated rather than trusted. */
+async function readCurrency(): Promise<CurrencyCode> {
+  const store = await cookies();
+  const value = store.get(CURRENCY_COOKIE)?.value;
+  return isCurrencyCode(value) ? value : DEFAULT_CURRENCY;
+}
+
+/**
+ * The SKUs on a cart that can't be sold in `currency`.
+ *
+ * Prodigi prints only part of the range at its EU and US labs, so switching currency can
+ * genuinely strip a product from sale rather than just relabel its price. Checked against
+ * the same catalogue_sku_pricing rows the designer reads, so the cart can never hold a
+ * line the storefront wouldn't have offered in that market.
+ */
+async function unavailableSkus(cart: Cart, currency: CurrencyCode): Promise<string[]> {
+  const skus = [...new Set(cart.lines.map((line) => line.sku).filter(Boolean))];
+  if (skus.length === 0) return [];
+
+  const { data } = await supabase
+    .from("catalogue_sku_pricing")
+    .select("sku")
+    .eq("currency", currency)
+    .eq("available", true)
+    .in("sku", skus);
+
+  const sellable = new Set((data ?? []).map((row) => row.sku));
+  return skus.filter((sku) => !sellable.has(sku));
 }
 
 function notConfigured() {
@@ -150,9 +189,15 @@ export async function POST(request: NextRequest) {
         // rather than silently replacing it.
         const existing = cartId ? await getCart(cartId).catch(() => null) : null;
 
+        // A new cart is opened in the visitor's chosen market so it prices correctly from
+        // its first line. An existing cart already carries a buyerIdentity and keeps it —
+        // switching markets mid-cart goes through "setCurrency", which checks every line
+        // is sellable there first.
+        const currency = await readCurrency();
+
         const cart = existing
           ? await addLine(existing.id, variantId, quantity, attributes)
-          : await createCart(variantId, quantity, attributes);
+          : await createCart(variantId, quantity, attributes, CURRENCY_TO_COUNTRY[currency]);
 
         if (cart && cart.id !== cartId) await writeCartId(cart.id);
         return ok(cart);
@@ -199,6 +244,40 @@ export async function POST(request: NextRequest) {
           configured: true,
           discountRejected: rejected,
         });
+      }
+
+      case "setCurrency": {
+        if (!body.currency) {
+          return NextResponse.json({ error: "A currency is required." }, { status: 400 });
+        }
+
+        // No cart yet is a success, not an error: the preference is held in the cookie
+        // and the next "add" opens the cart in that market.
+        if (!cartId) return ok(null);
+
+        const existing = await getCart(cartId).catch(() => null);
+        if (!existing) return ok(null);
+
+        // Rejected rather than silently dropped or mis-priced — a customer who loses a
+        // print from their cart without being told is worse than one who is asked to
+        // remove it themselves.
+        const blocked = await unavailableSkus(existing, body.currency);
+        if (blocked.length > 0) {
+          return NextResponse.json(
+            {
+              cart: existing,
+              configured: true,
+              error:
+                blocked.length === existing.lines.length
+                  ? "Nothing in your cart can be shipped in that currency. Remove the items to switch."
+                  : "Some items in your cart aren't available in that currency. Remove them to switch.",
+              unavailableSkus: blocked,
+            },
+            { status: 409 }
+          );
+        }
+
+        return ok(await setCartCountry(cartId, CURRENCY_TO_COUNTRY[body.currency]));
       }
 
       default:

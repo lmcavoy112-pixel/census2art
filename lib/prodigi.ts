@@ -101,7 +101,12 @@ export type GetQuoteRequest = {
   shippingMethod: CreateProdigiOrderRequest["shippingMethod"];
   destinationCountryCode: string;
   currencyCode?: string;
-  items: Pick<ProdigiOrderItem, "sku" | "copies" | "attributes" | "assets">[];
+  // Confirmed live against POST /v4.0/quotes: unlike a real order, a quote's assets
+  // take a bare `printArea` with no `url` — Prodigi rejects `url` as an unknown field
+  // since there's no file to quote against, only a product/attribute combination.
+  items: (Pick<ProdigiOrderItem, "sku" | "copies" | "attributes"> & {
+    assets: { printArea: string }[];
+  })[];
 };
 
 export function getQuote(quote: GetQuoteRequest) {

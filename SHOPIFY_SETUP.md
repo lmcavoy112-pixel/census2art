@@ -17,7 +17,7 @@ SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
 SHOPIFY_STOREFRONT_TOKEN=<Storefront API access token>
 SHOPIFY_APP_SECRET=<Admin API credential secret>   # signs the orders/create webhook
 SHOPIFY_PRINT_PRODUCT_HANDLE=custom-census-print
-SHOPIFY_API_VERSION=2025-01          # optional, defaults to 2025-01
+SHOPIFY_API_VERSION=2026-07          # optional, defaults to 2026-07
 ```
 
 ### Tokens & secrets
@@ -96,7 +96,7 @@ In your Shopify admin:
 3. Set:
    - **Topic**: `Orders` → `Order creation`
    - **Delivery URL**: `https://your-domain.com/api/shopify/webhook/orders-create`
-   - **API version**: Match your `SHOPIFY_API_VERSION` (default 2025-01)
+   - **API version**: Match your `SHOPIFY_API_VERSION` (default 2026-07)
 
 The app's Admin API scopes must include `read_orders` to see webhook permissions.
 

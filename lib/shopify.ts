@@ -16,7 +16,11 @@
 // surname, the place, the rendered artwork — travels as line item attributes, which is
 // also what puts those details on the cart line and the order.
 
-const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-01";
+// Shopify supports each version for ~12 months. "2025-01" was the default here well
+// past its sunset — confirmed unsupported against the store's own publicApiVersions,
+// which lists 2025-10 / 2026-01 / 2026-04 / 2026-07. The cart queries and mutations
+// below (including buyerIdentity) were re-verified live against 2026-07.
+const API_VERSION = process.env.SHOPIFY_API_VERSION || "2026-07";
 
 export type CartLineAttribute = { key: string; value: string };
 
@@ -186,58 +190,115 @@ export async function getCart(cartId: string): Promise<Cart | null> {
   return normaliseCart(data.cart);
 }
 
+type ShopifyVariant = {
+  id: string;
+  sku: string | null;
+  price: { amount: string; currencyCode: string };
+};
+
+/**
+ * Every variant across every product, in one request.
+ *
+ * The catalogue's ~108 SKUs are split across several Shopify products (Art Print,
+ * Classic Frame, Framed Canvas, Stretched Canvas, Digital Print) rather than one —
+ * Shopify caps variants per product, so this fetches every product's variants rather
+ * than assuming a SKU lives under one known handle. Shared by findVariantIdBySku and
+ * findVariantPriceBySku so the two don't duplicate the same query independently.
+ */
+async function fetchAllVariants(): Promise<ShopifyVariant[]> {
+  const data = await shopifyFetch<{
+    products: { nodes: { variants: { nodes: ShopifyVariant[] } }[] };
+  }>(
+    `query FindVariants {
+       products(first: 50) {
+         nodes {
+           variants(first: 100) { nodes { id sku price { amount currencyCode } } }
+         }
+       }
+     }`
+  );
+
+  return data.products.nodes.flatMap((product) => product.variants.nodes);
+}
+
 /**
  * Resolves one of our catalogue SKUs to a Shopify variant.
  *
  * Matching on SKU rather than holding Shopify variant ids in our own tables means the
  * catalogue stays the single source of truth for what is sellable, and adding a size in
  * Shopify needs no code change here.
- *
- * The catalogue's ~108 SKUs are split across several Shopify products (Art Print,
- * Classic Frame, Framed Canvas, Stretched Canvas, Digital Print) rather than one —
- * Shopify caps variants per product, so this searches every product's variants for the
- * SKU rather than assuming it lives under one known handle.
  */
 export async function findVariantIdBySku(sku: string): Promise<string | null> {
-  const data = await shopifyFetch<{
-    products: { nodes: { variants: { nodes: { id: string; sku: string | null }[] } }[] };
-  }>(
-    `query FindVariant {
-       products(first: 50) {
-         nodes {
-           variants(first: 100) { nodes { id sku } }
-         }
-       }
-     }`
-  );
-
-  for (const product of data.products.nodes) {
-    const match = product.variants.nodes.find((v) => v.sku === sku);
-    if (match) return match.id;
-  }
-  return null;
+  const variants = await fetchAllVariants();
+  return variants.find((v) => v.sku === sku)?.id ?? null;
 }
 
+/** The live Shopify price for one catalogue SKU's variant — the real, margin-bearing
+ *  price a customer pays, as opposed to catalogue_skus.price_gbp's raw Prodigi cost. */
+export async function findVariantPriceBySku(
+  sku: string
+): Promise<{ amount: string; currencyCode: string } | null> {
+  const variants = await fetchAllVariants();
+  return variants.find((v) => v.sku === sku)?.price ?? null;
+}
+
+/**
+ * What currency a cart prices in is decided by `buyerIdentity.countryCode`, not by the
+ * `@inContext` directive — Shopify's docs are explicit that @inContext's buyer/country
+ * arguments are ignored on Cart queries and mutations. Verified live: the same variant
+ * comes back as GBP for GB, EUR for IE and USD for US purely from this field.
+ *
+ * Note this alone does not make the price *correct* — without a fixed price list Shopify
+ * simply FX-converts the GBP price, which for these products lands below our landed cost
+ * in EUR. Markets + price lists are what make the number right; this is what selects it.
+ */
 export async function createCart(
   variantId: string,
   quantity: number,
-  attributes: CartLineAttribute[]
+  attributes: CartLineAttribute[],
+  countryCode?: string
 ): Promise<Cart | null> {
   const data = await shopifyFetch<{ cartCreate: { cart: RawCart | null; userErrors: { message: string }[] } }>(
     `${CART_FRAGMENT}
-     mutation CreateCart($lines: [CartLineInput!]!) {
-       cartCreate(input: { lines: $lines }) {
+     mutation CreateCart($lines: [CartLineInput!]!, $buyerIdentity: CartBuyerIdentityInput) {
+       cartCreate(input: { lines: $lines, buyerIdentity: $buyerIdentity }) {
          cart { ...CartParts }
          userErrors { message }
        }
      }`,
-    { lines: [{ merchandiseId: variantId, quantity, attributes }] }
+    {
+      lines: [{ merchandiseId: variantId, quantity, attributes }],
+      buyerIdentity: countryCode ? { countryCode } : null,
+    }
   );
 
   const errors = data.cartCreate.userErrors;
   if (errors?.length) throw new ShopifyError(errors[0].message);
 
   return normaliseCart(data.cartCreate.cart);
+}
+
+/** Re-points an existing cart at another market, re-pricing every line. Used when a
+ *  customer switches currency with items already in the cart. */
+export async function setCartCountry(
+  cartId: string,
+  countryCode: string
+): Promise<Cart | null> {
+  const data = await shopifyFetch<{ cartBuyerIdentityUpdate: { cart: RawCart | null; userErrors: { message: string }[] } }>(
+    `${CART_FRAGMENT}
+     mutation SetCartCountry($cartId: ID!, $buyerIdentity: CartBuyerIdentityInput!) {
+       cartBuyerIdentityUpdate(cartId: $cartId, buyerIdentity: $buyerIdentity) {
+         cart { ...CartParts }
+         userErrors { message }
+       }
+     }`,
+    { cartId, buyerIdentity: { countryCode } }
+  );
+
+  const errors = data.cartBuyerIdentityUpdate.userErrors;
+  if (errors?.length) throw new ShopifyError(errors[0].message);
+
+  return normaliseCart(data.cartBuyerIdentityUpdate.cart);
 }
 
 export async function addLine(

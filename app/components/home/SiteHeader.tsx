@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
+import { CURRENCIES, type CurrencyCode } from "@/lib/currency";
+import { useCurrency } from "../CurrencyProvider";
 
 const GROUND = "#f2ece0";
 const INK = "#1e2b18";
@@ -111,6 +113,156 @@ function ExamplesCollections({
         );
       })}
       </div>
+    </div>
+  );
+}
+
+const CURRENCY_LABELS: Record<CurrencyCode, { symbol: string; name: string }> = {
+  GBP: { symbol: "£", name: "British pound" },
+  EUR: { symbol: "€", name: "Euro" },
+  USD: { symbol: "$", name: "US dollar" },
+};
+
+/**
+ * Currency picker.
+ *
+ * Portalled to `document.body` like the Examples menu, and for the same reason: the
+ * designer's Step 1 paints a MapLibre WebGL canvas below the header, and a WebGL canvas
+ * gets its own GPU compositor layer that can win over the header's z-50 regardless of
+ * CSS stacking. Anything that must open over that page has to leave the header's subtree.
+ *
+ * One trigger at every breakpoint rather than the desktop/mobile pair Examples needs —
+ * this control changes real prices sitewide, so unlike Account (`hidden sm:block`) it
+ * stays available on a phone.
+ */
+function CurrencyMenu() {
+  const { currency, setCurrency } = useCurrency();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+
+  function isInGroup(node: Node | null): boolean {
+    return !!triggerRef.current?.contains(node) || !!panelRef.current?.contains(node);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!isInGroup(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+
+    function update() {
+      const el = triggerRef.current;
+      if (!el) return setPos(null);
+      const r = el.getBoundingClientRect();
+      setPos({
+        top: r.bottom + window.scrollY + 12,
+        right: window.innerWidth - (r.right + window.scrollX),
+      });
+    }
+
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  return (
+    <div ref={triggerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={`Currency: ${CURRENCY_LABELS[currency].name}`}
+        className="flex items-center gap-1 rounded-full px-3 py-2 text-sm transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
+        style={{ color: MUTED, outlineColor: GOLD }}
+      >
+        <span style={{ fontWeight: 600 }}>{CURRENCY_LABELS[currency].symbol}</span>
+        <span className="hidden md:inline">{currency}</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="M3 4.5L6 7.5L9 4.5" />
+        </svg>
+      </button>
+
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="Currency"
+            className="w-44 rounded-xl p-1.5 shadow-lg"
+            style={{
+              position: "absolute",
+              top: pos.top,
+              right: pos.right,
+              zIndex: 9999,
+              background: RAISED,
+              border: `1px solid ${RULE}`,
+            }}
+          >
+            {CURRENCIES.map((code) => {
+              const selected = code === currency;
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    setCurrency(code);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-[#f2ece0]"
+                  style={{ color: selected ? INK : MUTED }}
+                >
+                  <span style={{ width: "1em", fontWeight: 600 }}>
+                    {CURRENCY_LABELS[code].symbol}
+                  </span>
+                  <span style={{ fontWeight: selected ? 600 : 400 }}>{code}</span>
+                  <span className="ml-auto text-[11px]" style={{ color: GOLD }}>
+                    {selected ? "✓" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -503,6 +655,10 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             <span className="hidden md:inline">Cart</span>
           </Link>
 
+          {/* CurrencyMenu is built and verified but deliberately not rendered yet: until
+              Shopify Markets is configured (and EUR/USD checkout proven end to end), a
+              customer could pick EUR, see a correct EUR price, and be charged in GBP.
+              Rendering it is the whole of the reveal step — add <CurrencyMenu /> here. */}
           <div ref={accountRef} className="relative hidden sm:block">
           <button
             type="button"

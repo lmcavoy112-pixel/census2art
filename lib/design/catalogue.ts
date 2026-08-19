@@ -3,6 +3,7 @@
 // Step 1/2 format gallery so all three stay pinned to the same catalogue_skus rows.
 
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_CURRENCY, type CurrencyCode } from "@/lib/currency";
 
 export type ProductKind =
   | "Classic Frame"
@@ -28,11 +29,15 @@ export type CatalogueSku = {
   ratio_family: string;
   layout_family: string;
   basemap_ppi: number;
+  /** Prodigi's raw wholesale cost. NOT a customer-facing price — display sellingPrice. */
   price_gbp: number;
   enabled: boolean;
   designable: boolean;
   category: "Wall art" | "Prints & posters";
   framed: boolean;
+  /** The real, margin-bearing price in the requested currency, from
+   *  catalogue_sku_pricing. This is the only figure that should ever be shown. */
+  sellingPrice: number;
 };
 
 export type ProductOption = {
@@ -316,18 +321,48 @@ export function buildGalleryGroups(skus: CatalogueSku[], order: string[]) {
   return byFamily;
 }
 
-/** The sellable, designable SKUs. Returns [] rather than throwing so a catalogue
- *  outage degrades to "no formats available" instead of blanking the designer. */
-export async function loadCatalogueSkus(): Promise<CatalogueSku[]> {
-  const { data } = await supabase
-    .from("catalogue_skus")
-    .select("*")
-    .eq("enabled", true)
-    .eq("designable", true)
-    .order("layout_family")
-    .order("short_in");
+/**
+ * The sellable, designable SKUs priced in one currency.
+ *
+ * Two tables rather than one: catalogue_skus says what exists and how it's laid out,
+ * catalogue_sku_pricing says what it costs and whether it can be sold in a given market.
+ * A SKU with no available pricing row for `currency` is dropped — Prodigi only prints
+ * part of the range at its EU and US labs, and shipping the rest internationally is
+ * uneconomic under all-in pricing, so those sizes genuinely aren't on sale there.
+ *
+ * Returns [] rather than throwing so a catalogue outage degrades to "no formats
+ * available" instead of blanking the designer.
+ */
+export async function loadCatalogueSkus(
+  currency: CurrencyCode = DEFAULT_CURRENCY
+): Promise<CatalogueSku[]> {
+  const [{ data: skuRows }, { data: pricingRows }] = await Promise.all([
+    supabase
+      .from("catalogue_skus")
+      .select("*")
+      .eq("enabled", true)
+      .eq("designable", true)
+      .order("layout_family")
+      .order("short_in"),
+    supabase
+      .from("catalogue_sku_pricing")
+      .select("sku, selling_price")
+      .eq("currency", currency)
+      .eq("available", true),
+  ]);
+
+  // Joined here rather than by PostgREST: catalogue_skus.sku isn't unique (framed
+  // products have a black row and a white row sharing one SKU), so there's no FK for
+  // an embedded select to follow.
+  const priceBySku = new Map<string, number>();
+  for (const row of pricingRows ?? []) priceBySku.set(row.sku, Number(row.selling_price));
 
   // Retired shapes are filtered out here rather than in the database, so re-offering a
   // family is a one-line change in GALLERY_FAMILY_ORDER with its SKUs and prices intact.
-  return ((data as CatalogueSku[] | null) ?? []).filter(isActiveLayoutFamily);
+  return ((skuRows as Omit<CatalogueSku, "sellingPrice">[] | null) ?? [])
+    .filter(isActiveLayoutFamily)
+    .flatMap((sku) => {
+      const sellingPrice = priceBySku.get(sku.sku);
+      return sellingPrice === undefined ? [] : [{ ...sku, sellingPrice }];
+    });
 }

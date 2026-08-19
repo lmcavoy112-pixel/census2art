@@ -27,13 +27,17 @@ export const cartAttributeSchema = z.object({
 });
 
 export const cartRequestSchema = z.object({
-  action: z.enum(["add", "setQuantity", "remove", "applyDiscount"]),
+  action: z.enum(["add", "setQuantity", "remove", "applyDiscount", "setCurrency"]),
   sku: z.string().min(1).max(SHORT_TEXT).optional(),
   // Capped so a single request cannot commit the shop to an absurd Prodigi order.
   quantity: z.number().int().min(0).max(100).optional(),
   lineId: z.string().max(500).optional(),
   code: z.string().max(SHORT_TEXT).optional(),
   attributes: z.array(cartAttributeSchema).max(30).optional(),
+  // Enumerated rather than a free string: it selects a Shopify market and therefore
+  // what the customer is charged, so an unrecognised value must fail here rather than
+  // reach the Storefront API.
+  currency: z.enum(["GBP", "EUR", "USD"]).optional(),
 });
 
 export type CartRequest = z.infer<typeof cartRequestSchema>;

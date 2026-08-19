@@ -42,6 +42,7 @@ import {
   type ProductKind,
   type SizeGroup,
 } from "@/lib/design/catalogue";
+import { DEFAULT_CURRENCY, formatMoney } from "@/lib/currency";
 import AccentSwatch from "../components/AccentSwatch";
 import SiteHeader from "../components/home/SiteHeader";
 import {
@@ -2453,7 +2454,9 @@ function DesignPageContent() {
                               }`}
                             >
                               <span className="block">{sku.size_label}</span>
-                              <span className="block text-xs opacity-70">£{Number(sku.price_gbp).toFixed(2)}</span>
+                              <span className="block text-xs opacity-70">
+                                {formatMoney(sku.sellingPrice, DEFAULT_CURRENCY)}
+                              </span>
                             </button>
                           ))}
                         </div>
