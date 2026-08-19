@@ -119,3 +119,75 @@ If a line item is missing a SKU or `_imageUrl`, it's skipped and logged. To debu
 2. Verify the SKU exists and matches a Prodigi product variant
 3. Confirm the image URL in `_imageUrl` is reachable
 4. Test manually with `/api/orders` if you need direct Prodigi error details
+
+## 6 · Customer sign-in (Customer Account API)
+
+The Account panel in `SiteHeader.tsx` links to `/api/auth/login`, which starts a real
+OAuth 2.0 (authorization code + PKCE) flow against Shopify's own hosted login —
+`lib/shopify-customer-account.ts` is the client for this. This is **not** the client-side
+"Sign in with Shop" button — that approach was tried first and doesn't work on this store.
+
+### Why this path, not the Shop SDK button
+
+Confirmed via the Shopify Admin API (`shop.customerAccountsV2.customerAccountsVersion`):
+this store is on **`NEW_CUSTOMER_ACCOUNTS`**, not Classic. The Shop SDK's login button
+issues a classic Storefront API `customerAccessToken`, which only exists under Classic
+customer accounts — on this store it silently renders nothing, no matter what client id
+is supplied. The Customer Account API (OAuth) is Shopify's actual mechanism for new
+accounts.
+
+### 1 · Admin-side setup
+
+The **Headless** sales channel is already installed (`Census2Art Web` — the same channel
+this app's Storefront API token comes from), so there's nothing new to install. In the
+Shopify admin: **Sales channels → Headless → [this storefront] → Storefront settings →
+Customer Account API → Application setup → Edit**, then set:
+
+- **Callback URI**: `https://<production-domain>/api/auth/callback`
+- **Logout URI**: `https://<production-domain>/` (or wherever you want signed-out
+  customers to land — `/api/auth/logout` builds this dynamically as
+  `post_logout_redirect_uri`)
+
+Shopify does not support `localhost`/`http` callback URLs at all — the full login
+round-trip can only be tested against a real HTTPS deployment (a Vercel preview works),
+not localhost.
+
+Copy the **Client ID** into:
+
+```
+SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_ID=<Client ID>
+SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET=<Client Secret, if one was issued>
+```
+
+The Headless channel may set this client up as **public** (PKCE-secured, no secret at
+all) rather than confidential — if the admin UI doesn't show a Client Secret, that's
+expected, not a mistake; leave `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET` blank.
+`lib/shopify-customer-account.ts` only sends `client_secret` in the token exchange when
+one is actually set. Whichever type it is, the token exchange happens entirely in
+`app/api/auth/callback/route.ts`, never in the browser — both vars stay server-only, no
+`NEXT_PUBLIC_` prefix, unlike the abandoned Shop SDK approach.
+
+### 2 · How the flow works
+
+- `GET /api/auth/login` — generates `state` + a PKCE `code_verifier`, stores both in
+  short-lived cookies, redirects to Shopify's `authorization_endpoint` (discovered live
+  from `https://{SHOPIFY_STORE_DOMAIN}/.well-known/openid-configuration`, not hardcoded).
+- `GET /api/auth/callback` — validates `state`, exchanges the code for tokens, stores
+  `{ accessToken, refreshToken, expiresAt }` as one httpOnly `c2a_customer` cookie.
+  **This route is intentionally not behind `lib/same-origin.ts`'s `requireSameOrigin`** —
+  a real callback is by definition a cross-site redirect arriving from Shopify's domain;
+  its CSRF defense is the `state` check instead.
+- `POST /api/auth/logout` — **is** behind `requireSameOrigin` (only ever called from our
+  own header). Clears the cookie and redirects through Shopify's `end_session_endpoint` so
+  the Shopify-hosted session ends too.
+- `GET /api/account/me` — reads the cookie, refreshes the access token first if it's
+  about to expire, returns the signed-in customer's name/email for the header.
+
+### 3 · Known gap
+
+Linking the signed-in customer to the Storefront API cart's `buyerIdentity`, so Shopify's
+hosted checkout is personalised, is **not implemented** — the classic
+`buyerIdentity.customerAccessToken` field is shaped for the old token type, and no
+confirmed equivalent for Customer Account API sessions was found. Sign-in/out and
+showing the customer's identity work standalone; checkout personalisation is a later
+follow-up.

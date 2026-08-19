@@ -139,13 +139,6 @@ export default function CartView() {
           Find your family in the census records and turn the place they lived into a
           print.
         </p>
-        <Link
-          href="/irish-census-1901"
-          className="mt-6 inline-block rounded-full px-7 py-3.5 text-sm transition-opacity hover:opacity-90"
-          style={{ background: INK, color: GROUND }}
-        >
-          Search the 1901 census
-        </Link>
       </div>
     );
   }

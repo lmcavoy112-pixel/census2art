@@ -6,6 +6,11 @@ const RAISED = "#fdfaf5";
 /**
  * A print in a frame: dark moulding, cream mat, artwork. The artwork files carry
  * their own drawn border, so the mat is what stops that border reading as the frame.
+ *
+ * The frame box holds a fixed aspect ratio and the artwork is contained within it
+ * (never cropped or stretched) — the static placeholders are all one shape, but real
+ * orders (GET /api/recent-orders) can be any catalogue ratio from a square print to
+ * a tall A-series sheet, and this frame has to hold either without distortion.
  */
 export default function FramedPrint({
   src,
@@ -30,15 +35,16 @@ export default function FramedPrint({
       }}
     >
       <div style={{ background: RAISED, padding: matPadding }}>
-        <Image
-          src={src}
-          alt={alt}
-          width={400}
-          height={520}
-          unoptimized
-          priority={priority}
-          className="block h-auto w-full"
-        />
+        <div className="relative aspect-[4/5]">
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            unoptimized
+            priority={priority}
+            className="object-contain"
+          />
+        </div>
       </div>
     </div>
   );

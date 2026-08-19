@@ -99,3 +99,16 @@ export function safeParam(value: string | null, maxLength = SHORT_TEXT): string 
 
   return trimmed;
 }
+
+/**
+ * True for a same-site relative path an OAuth `returnTo`-style redirect can safely target.
+ *
+ * Rejects anything starting `//` (protocol-relative) *and* anything starting `/\` or
+ * containing a backslash — `new URL()` (used by both browsers and Next's own redirect
+ * handling) normalises a leading backslash to `/` for http(s) URLs before resolving
+ * authority, so `/\evil.com` becomes `https://evil.com/` even though it never starts with
+ * `//`. A plain `startsWith("//")` check alone misses that case.
+ */
+export function isSafeReturnPath(value: string): boolean {
+  return /^\/[^/\\]/.test(value) && !value.includes("\\");
+}

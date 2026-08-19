@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currency";
@@ -279,6 +280,7 @@ function CurrencyMenu() {
  * rather than a hardcoded pixel value that only matched one of the two heights.
  */
 export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteHeaderProps) {
+  const pathname = usePathname();
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -301,6 +303,37 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [accountOpen]);
+
+  // Sign-in state is fetched client-side rather than read from a cookie in a server
+  // component, so pages carrying the header stay statically rendered (same reasoning as
+  // CurrencyProvider in app/layout.tsx).
+  const [customer, setCustomer] = useState<{
+    signedIn: boolean;
+    firstName?: string | null;
+    email?: string | null;
+  }>({ signedIn: false });
+
+  const refreshCustomer = useCallback(() => {
+    fetch("/api/account/me")
+      .then((response) => response.json())
+      .then(setCustomer)
+      .catch(() => setCustomer({ signedIn: false }));
+  }, []);
+
+  useEffect(() => {
+    refreshCustomer();
+  }, [refreshCustomer]);
+
+  function signOut() {
+    fetch("/api/auth/logout", { method: "POST" })
+      .then((response) => response.json())
+      .then((body: { redirectTo?: string }) => {
+        // Follows through to Shopify's own end-session endpoint so the Shopify-hosted
+        // login session ends too, not just this site's cookie.
+        window.location.href = body.redirectTo || "/";
+      })
+      .catch(() => setCustomer({ signedIn: false }));
+  }
 
   // ── Examples menu ──
   // Two triggers (a desktop nav link, a mobile-only icon) share this one open state —
@@ -473,8 +506,13 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             href="/"
             className="shrink-0 truncate text-[1.05rem] sm:text-[1.15rem]"
             style={{
-              fontFamily: "var(--font-cormorant)",
-              fontWeight: 600,
+              // Bold system sans, not Cormorant — this reproduces what the designer
+              // page showed by accident (its wrapper never applies siteFontVars, so
+              // var(--font-cormorant) was undefined there and this fell back to the
+              // page's default Arial/Helvetica; Arial has no 600 weight, so it snapped
+              // to true Bold 700 rather than a synthetic bold). Kept deliberately.
+              fontFamily: "Arial, Helvetica, sans-serif",
+              fontWeight: 700,
               letterSpacing: "0.18em",
               color: INK,
             }}
@@ -660,63 +698,96 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
               customer could pick EUR, see a correct EUR price, and be charged in GBP.
               Rendering it is the whole of the reveal step — add <CurrencyMenu /> here. */}
           <div ref={accountRef} className="relative hidden sm:block">
-          <button
-            type="button"
-            onClick={() => setAccountOpen((open) => !open)}
-            aria-expanded={accountOpen}
-            aria-haspopup="dialog"
-            className="flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
-            style={{ color: MUTED, outlineColor: GOLD }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-            </svg>
-            <span className="hidden md:inline">Account</span>
-          </button>
+            {customer.signedIn ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setAccountOpen((open) => !open)}
+                  aria-expanded={accountOpen}
+                  aria-haspopup="dialog"
+                  className="flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ color: MUTED, outlineColor: GOLD }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+                  </svg>
+                  <span className="hidden md:inline">{customer.firstName || "Account"}</span>
+                </button>
 
-          {accountOpen ? (
-            <div
-              role="dialog"
-              aria-label="Account"
-              className="absolute right-0 top-full mt-3 w-72 rounded-xl p-5 shadow-lg"
-              style={{ background: RAISED, border: `1px solid ${RULE}` }}
-            >
-              <p
-                style={{
-                  fontFamily: "var(--font-cormorant)",
-                  fontSize: "1.25rem",
-                  color: INK,
-                }}
+                {accountOpen ? (
+                  <div
+                    role="dialog"
+                    aria-label="Account"
+                    className="absolute right-0 top-full mt-3 w-72 rounded-xl p-5 shadow-lg"
+                    style={{ background: RAISED, border: `1px solid ${RULE}` }}
+                  >
+                    <p
+                      style={{
+                        fontFamily: "var(--font-cormorant)",
+                        fontSize: "1.25rem",
+                        color: INK,
+                      }}
+                    >
+                      Signed in
+                    </p>
+                    <p
+                      className="mt-2 text-sm leading-relaxed break-words"
+                      style={{ color: MUTED }}
+                    >
+                      {customer.firstName || customer.email}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        signOut();
+                        setAccountOpen(false);
+                      }}
+                      className="mt-4 inline-block rounded-full px-4 py-2 text-sm transition-opacity hover:opacity-90"
+                      style={{ background: INK, color: "#f2ece0" }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              // Brand-purple pill (Shop Pay's own brand colour) rather than a generic
+              // "Account" control — clicking goes straight to Shopify's sign-in, no
+              // intermediate dialog, so the button itself says exactly what it does and
+              // where it leads.
+              <a
+                href={`/api/auth/login?returnTo=${encodeURIComponent(pathname || "/")}`}
+                aria-label="Sign in with Shop"
+                className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                style={{ background: "#5a31f4", color: "#ffffff" }}
               >
-                Accounts are on the way
-              </p>
-              <p
-                className="mt-2 text-sm leading-relaxed"
-                style={{ color: MUTED }}
-              >
-                Sign-in arrives with the shop, and will keep your saved designs and
-                past orders together. You can design and order a print now without
-                one.
-              </p>
-              <Link
-                href="/irish-census-1901"
-                onClick={() => setAccountOpen(false)}
-                className="mt-4 inline-block rounded-full px-4 py-2 text-sm transition-opacity hover:opacity-90"
-                style={{ background: INK, color: "#f2ece0" }}
-              >
-                Search the 1901 census
-              </Link>
-            </div>
-          ) : null}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 8h12l-1 12H7L6 8z" />
+                  <path d="M9 8V6a3 3 0 016 0v2" />
+                  <path d="M9.5 11l1.5 1.5L14.5 9" />
+                </svg>
+                <span className="hidden md:inline">Sign in with Shop</span>
+              </a>
+            )}
           </div>
         </div>
       </div>

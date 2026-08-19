@@ -23,11 +23,13 @@ export default function CartPage() {
         color: INK,
         fontFamily: "var(--font-jost)",
         minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <SiteHeader />
 
-      <main className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12 sm:py-16">
         <h1
           style={{
             fontFamily: "var(--font-cormorant)",

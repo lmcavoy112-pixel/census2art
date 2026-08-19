@@ -47,3 +47,9 @@ next-env.d.ts
 # credentials. They hold no literals today, but they are the kind of file that grows one —
 # and they were previously untracked yet unignored, so a single `git add .` would commit them.
 /scripts/
+
+# Internal cost/pricing exports — real supplier costs and margins, not for the repo.
+/pricing/
+
+# Personal Claude Code permission preferences — machine-specific paths, not shared config.
+.claude/settings.local.json

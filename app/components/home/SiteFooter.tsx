@@ -18,7 +18,10 @@ export default function SiteFooter() {
           <Link
             href="/"
             style={{
-              fontFamily: "var(--font-cormorant)",
+              // Matches the header wordmark (SiteHeader.tsx) — bold system sans, not
+              // Cormorant. See that file's comment for why.
+              fontFamily: "Arial, Helvetica, sans-serif",
+              fontWeight: 700,
               fontSize: "1rem",
               letterSpacing: "0.16em",
               color: ON_DEEP,

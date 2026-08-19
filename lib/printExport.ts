@@ -31,6 +31,44 @@ export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+/**
+ * Downscales the print-ready canvas to a small JPEG for the permanent showcase preview
+ * (see lib/design/order.ts). The full-res PNG this is derived from gets deleted from
+ * storage soon after Prodigi ingests it (app/api/prodigi/webhook/[secret]/route.ts) — this
+ * thumbnail lives in a separate bucket that nothing ever cleans up, so it's what the
+ * homepage's recent-orders gallery reads from.
+ */
+export function canvasToPreviewBlob(
+  canvas: HTMLCanvasElement,
+  maxDimensionPx = 640
+): Promise<Blob> {
+  const scale = Math.min(1, maxDimensionPx / Math.max(canvas.width, canvas.height));
+  const width = Math.max(1, Math.round(canvas.width * scale));
+  const height = Math.max(1, Math.round(canvas.height * scale));
+
+  const preview = document.createElement("canvas");
+  preview.width = width;
+  preview.height = height;
+
+  const ctx = preview.getContext("2d");
+  if (!ctx) return Promise.reject(new Error("Could not create preview canvas context"));
+  ctx.drawImage(canvas, 0, 0, width, height);
+
+  return new Promise((resolve, reject) => {
+    preview.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Preview canvas could not be exported as JPEG"));
+        }
+      },
+      "image/jpeg",
+      0.85
+    );
+  });
+}
+
 export function safeFileNamePart(value: string): string {
   return value
     .toLowerCase()

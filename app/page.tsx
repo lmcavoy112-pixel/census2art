@@ -18,59 +18,63 @@ export default function Home() {
         color: INK,
         fontFamily: "var(--font-jost)",
         minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <SiteHeader showExamplesOnMobile />
 
-      {/* ── BLOCK 1 · WHAT THIS IS ───────────────────────────────────────────
-          Deliberately short. The search box in the block below is the thing people
-          come for, so this earns its place in a headline, a paragraph and a caveat
-          — anything longer pushes the search under the fold. */}
-      <section className="mx-auto max-w-6xl px-6 pt-10 pb-10 sm:pt-12 sm:pb-12">
-        <div className="home-rise max-w-2xl">
-          <p
-            style={{
-              fontFamily: "var(--font-plex-mono)",
-              fontSize: "0.68rem",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: GOLD,
-            }}
-          >
-            Census records, mapped
-          </p>
+      <main style={{ flex: 1 }}>
+        {/* ── BLOCK 1 · WHAT THIS IS ───────────────────────────────────────────
+            Deliberately short. The search box in the block below is the thing people
+            come for, so this earns its place in a headline, a paragraph and a caveat
+            — anything longer pushes the search under the fold. */}
+        <section className="mx-auto max-w-6xl px-6 pt-10 pb-10 sm:pt-12 sm:pb-12">
+          <div className="home-rise max-w-2xl">
+            <p
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                fontSize: "0.68rem",
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: GOLD,
+              }}
+            >
+              Census records, mapped
+            </p>
 
-          <h1
-            style={{
-              fontFamily: "var(--font-cormorant)",
-              fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
-              lineHeight: 1.1,
-              fontWeight: 500,
-              marginTop: "1.25rem",
-            }}
-          >
-            Your family was written down.
-            <span className="block">
-              We figured out{" "}
-              <em style={{ color: GOLD, fontStyle: "italic" }}>where</em>.
-            </span>
-          </h1>
+            <h1
+              style={{
+                fontFamily: "var(--font-cormorant)",
+                fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
+                lineHeight: 1.1,
+                fontWeight: 500,
+                marginTop: "1.25rem",
+              }}
+            >
+              Your family was written down.
+              <span className="block">
+                We figured out{" "}
+                <em style={{ color: GOLD, fontStyle: "italic" }}>where</em>.
+              </span>
+            </h1>
 
-          <p
-            className="mt-4 text-base leading-relaxed"
-            style={{ color: MUTED, fontWeight: 300 }}
-          >
-            Census records are published free by national archives, but they&apos;re kept
-            as text. You can find your family without ever finding the place. What we
-            do is match those written addresses to real locations.
-          </p>
-        </div>
-      </section>
+            <p
+              className="mt-4 text-base leading-relaxed"
+              style={{ color: MUTED, fontWeight: 300 }}
+            >
+              Census records are published free by national archives, but they&apos;re kept
+              as text. You can find your family without ever finding the place. What we
+              do is match those written addresses to real locations.
+            </p>
+          </div>
+        </section>
 
-      {/* ── BLOCK 2 · IRISH CENSUS ───────────────────────────────────────────
-          One block per country. England and the rest follow this same shape, which
-          is why it is a component fed by lib/censusEditions.ts rather than markup. */}
-      <CensusBlock collection={IRISH_CENSUS} />
+        {/* ── BLOCK 2 · IRISH CENSUS ───────────────────────────────────────────
+            One block per country. England and the rest follow this same shape, which
+            is why it is a component fed by lib/censusEditions.ts rather than markup. */}
+        <CensusBlock collection={IRISH_CENSUS} />
+      </main>
 
       <SiteFooter />
     </div>

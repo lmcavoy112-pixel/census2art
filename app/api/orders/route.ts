@@ -18,14 +18,21 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
 /** 300dpi A1 exports land around 8 MB; 15 leaves headroom without inviting abuse. */
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
+/** A 640px-max-edge JPEG (see canvasToPreviewBlob) is a few hundred KB at most; 2 leaves headroom. */
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+
 /** PNG signature, per the spec's first eight bytes. */
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** JPEG signature (SOI marker), per the spec's first two bytes plus the JFIF/Exif marker. */
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
     const image = formData.get("image");
+    const preview = formData.get("preview");
     const sku = formData.get("sku");
     const copiesRaw = formData.get("copies");
     const priceGbpRaw = formData.get("priceGbp");
@@ -96,6 +103,35 @@ export async function POST(request: NextRequest) {
       data: { publicUrl: imageUrl },
     } = supabaseAdmin.storage.from("print-exports").getPublicUrl(imagePath);
 
+    // Optional: a small permanent thumbnail (see canvasToPreviewBlob, lib/printExport.ts).
+    // Unlike the full-res asset above, nothing ever deletes this — it's what backs the
+    // homepage's recent-orders gallery once this order is actually paid. A failure here
+    // shouldn't block the order itself, so it's best-effort.
+    let previewPath: string | null = null;
+    let previewUrl: string | null = null;
+    if (preview instanceof Blob) {
+      if (preview.size > MAX_PREVIEW_BYTES) {
+        console.warn("Order preview upload skipped: too large.");
+      } else {
+        const previewBuffer = Buffer.from(await preview.arrayBuffer());
+        if (previewBuffer.subarray(0, JPEG_MAGIC.length).equals(JPEG_MAGIC)) {
+          const path = `orders/${orderId}.jpg`;
+          const { error: previewUploadError } = await supabaseAdmin.storage
+            .from("order-previews")
+            .upload(path, previewBuffer, { contentType: "image/jpeg", upsert: true });
+
+          if (previewUploadError) {
+            console.error("Preview upload error:", previewUploadError);
+          } else {
+            previewPath = path;
+            previewUrl = supabaseAdmin.storage.from("order-previews").getPublicUrl(path).data.publicUrl;
+          }
+        } else {
+          console.warn("Order preview upload skipped: not a JPEG.");
+        }
+      }
+    }
+
     const { data: order, error: insertError } = await supabaseAdmin
       .from("orders")
       .insert({
@@ -113,6 +149,11 @@ export async function POST(request: NextRequest) {
         template: pickString(design.template),
         size_label: pickString(design.sizeLabel),
         frame_colour: pickString(design.frameColour),
+        county: pickString(design.county),
+        district: pickString(design.dedDisplayText),
+        townland: pickString(design.townlandText),
+        preview_path: previewPath,
+        preview_url: previewUrl,
       })
       .select("id")
       .single();
@@ -125,7 +166,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ orderId: order.id, imageUrl });
+    return NextResponse.json({ orderId: order.id, imageUrl, previewUrl });
   } catch (error) {
     console.error("Order creation error:", error);
     return NextResponse.json(

@@ -44,6 +44,7 @@ import { formatMoney } from "@/lib/currency";
 import { useCurrency } from "@/app/components/CurrencyProvider";
 import {
   canvasToPngBlob,
+  canvasToPreviewBlob,
   renderPrintReadyCanvas,
   safeFileNamePart,
 } from "@/lib/printExport";
@@ -1409,11 +1410,15 @@ function ModernDesignContent() {
     setBusy("order");
     setOrderError("");
     try {
-      const imageUrl = await withPrintReadyPoster(async (canvas) => {
+      const { imageUrl, previewUrl } = await withPrintReadyPoster(async (canvas) => {
         const blob = await canvasToPngBlob(canvas);
+        const previewBlob = await canvasToPreviewBlob(canvas).catch(() => undefined);
+        const fileNamePart = safeFileNamePart(headingText || "artwork");
         const result = await submitPrintOrder({
           blob,
-          fileName: `${safeFileNamePart(headingText || "artwork")}.png`,
+          fileName: `${fileNamePart}.png`,
+          previewBlob,
+          previewFileName: `${fileNamePart}.jpg`,
           sku: selectedSku.sku,
           priceGbp: selectedSku.price_gbp,
           attributes: buildProdigiAttributes(selectedSku.product, selectedSku.frame_colour),
@@ -1464,7 +1469,7 @@ function ModernDesignContent() {
                 }),
           },
         });
-        return result.imageUrl;
+        return { imageUrl: result.imageUrl, previewUrl: result.previewUrl };
       });
 
       // The rendered artwork is uploaded first because Shopify needs a real URL to
@@ -1491,6 +1496,10 @@ function ModernDesignContent() {
               ? [{ key: "Frame colour", value: selectedSku.frame_colour }]
               : []),
             { key: "_imageUrl", value: imageUrl },
+            // Small showcase JPEG, never the full-res file above — see canvasToPreviewBlob.
+            // Absent when preview generation failed; Shopify's order-confirmation email
+            // just shows no thumbnail rather than falling back to the real deliverable.
+            ...(previewUrl ? [{ key: "_previewUrl", value: previewUrl }] : []),
           ],
         }),
       });
