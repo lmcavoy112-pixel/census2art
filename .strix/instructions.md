@@ -115,3 +115,43 @@ files, and resource exhaustion from unbounded geometry queries.
   means an injected inline `<script>` would execute. External script loading, `object-src`,
   `base-uri`, `form-action` and framing are all blocked, so exfiltration should be hard even
   if injection succeeds — verify that.
+
+## 6. Customer OAuth and admin dashboard (new)
+
+Added in the commit that introduced Shopify customer sign-in: `app/api/auth/login`,
+`app/api/auth/callback`, `app/api/auth/logout`, `app/api/account/me`,
+`app/admin/orders/page.tsx`, `app/api/admin/orders/stats`, `app/api/recent-orders`.
+
+- **OAuth flow** (`lib/shopify-customer-account.ts`): authorization-code + PKCE against
+  Shopify's Customer Account API, `state` cookie checked against the callback's `state`
+  query param, single-use OAuth cookies (deleted on first callback regardless of outcome).
+  Session (`accessToken`, `refreshToken`, `expiresAt`) is stored as JSON in an `httpOnly`,
+  `SameSite=Lax` cookie — test that it cannot be read from JS and that a stolen cookie file
+  (if one ever leaks via another vector) is the actual blast radius, since nothing else
+  encrypts it at rest.
+- **`returnTo` redirect** — `/api/auth/login?returnTo=...` is restricted by
+  `isSafeReturnPath()` (`lib/validation.ts`) to a same-site relative path, then echoed back
+  by `/api/auth/callback` after a real login. This was found and fixed to reject embedded
+  ASCII control characters (tab/CR/LF), which the WHATWG URL parser strips before resolving
+  authority, turning `/\t/evil.com` into `//evil.com`. Re-verify the fix holds; also probe
+  other control-character/unicode tricks the URL parser might normalise (fullwidth solidus,
+  other whitespace-like codepoints) that the regex doesn't yet account for.
+- **`/api/auth/logout`** is POST-only and gated by `requireSameOrigin()`
+  (`lib/same-origin.ts`), which checks a *present* `Origin` header matches the request's own
+  origin. Confirm a request with no `Origin` header at all (some non-fetch navigations omit
+  it) can't be abused to force a sign-out, and that this same-origin check isn't reused
+  anywhere it'd need to be a real CSRF token instead (e.g. a future route that also reads a
+  request body).
+- **`/api/admin/orders/stats`** reuses `requireAdmin()` — same shared `x-admin-token` gate as
+  the Prodigi order routes in section 1. It returns surnames, counties, districts and
+  townlands from *every* design session (not just paid orders), i.e. genealogy-interest
+  signal for non-purchasing visitors too. Confirm the gate holds under the same tricks listed
+  in section 1, and that the token (kept in the browser's `localStorage` by
+  `app/admin/orders/page.tsx`, key `census2art_admin_token`) isn't reachable via XSS anywhere
+  else on the site.
+- **`/api/recent-orders`** is intentionally public (feeds the homepage gallery) and scoped to
+  `shopify_order_id is not null` — real paid orders only. It returns `surname`, `county`,
+  `district`, `product`, `template`, `preview_url`, `created_at`, deliberately excluding
+  `recipient` and the raw design blob. Confirm no other column (e.g. full address fields, if
+  the `orders` table schema changes later) can leak through this route, and that
+  `preview_url` points only at the `order-previews` bucket, never `print-exports`.

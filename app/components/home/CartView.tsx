@@ -23,6 +23,21 @@ function money(amount: string, currency: string) {
   return formatMoney(Number(amount), currency);
 }
 
+// Cart-level buyerIdentity has no equivalent for the Customer Account API's session, so a
+// signed-in customer is instead recognised by Shopify Checkout itself via `sso=silent`,
+// which checks for an active session on the Customer Accounts domain (set by the OAuth
+// login this site already does) rather than anything carried on the cart or this URL.
+function checkoutHref(url: string, signedIn: boolean) {
+  if (!signedIn) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("sso", "silent");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 type CartResponse = {
   cart: Cart | null;
   configured: boolean;
@@ -36,6 +51,7 @@ export default function CartView() {
   const [loading, setLoading] = useState(true);
   const [busyLine, setBusyLine] = useState("");
   const [error, setError] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
 
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
@@ -54,6 +70,11 @@ export default function CartView() {
       .then(apply)
       .catch(() => setError("Could not load your cart."))
       .finally(() => setLoading(false));
+
+    fetch("/api/account/me")
+      .then((r) => r.json())
+      .then((body: { signedIn?: boolean }) => setSignedIn(Boolean(body.signedIn)))
+      .catch(() => setSignedIn(false));
   }, [apply]);
 
   async function mutate(body: Record<string, unknown>, lineId = "") {
@@ -349,7 +370,7 @@ export default function CartView() {
         )}
 
         <a
-          href={cart?.checkoutUrl ?? "#"}
+          href={cart?.checkoutUrl ? checkoutHref(cart.checkoutUrl, signedIn) : "#"}
           className="mt-5 block rounded-full px-7 py-4 text-center text-sm transition-opacity hover:opacity-90"
           style={{ background: INK, color: GROUND }}
         >

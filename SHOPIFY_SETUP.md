@@ -156,16 +156,17 @@ Copy the **Client ID** into:
 
 ```
 SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_ID=<Client ID>
-SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET=<Client Secret, if one was issued>
 ```
 
-The Headless channel may set this client up as **public** (PKCE-secured, no secret at
-all) rather than confidential — if the admin UI doesn't show a Client Secret, that's
-expected, not a mistake; leave `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET` blank.
+**Confirmed with Shopify support (2026-08-20): this client is public, PKCE-only — no
+client secret exists or is needed.** The Application setup screen showing no Client
+Secret field is correct, not a missing step. Don't set
+`SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET` at all;
 `lib/shopify-customer-account.ts` only sends `client_secret` in the token exchange when
-one is actually set. Whichever type it is, the token exchange happens entirely in
-`app/api/auth/callback/route.ts`, never in the browser — both vars stay server-only, no
-`NEXT_PUBLIC_` prefix, unlike the abandoned Shop SDK approach.
+that env var is actually set, so leaving it unset is what makes the exchange PKCE-only,
+as it should be here. The token exchange happens entirely in
+`app/api/auth/callback/route.ts`, never in the browser — server-only, no `NEXT_PUBLIC_`
+prefix, unlike the abandoned Shop SDK approach.
 
 ### 2 · How the flow works
 
@@ -183,11 +184,12 @@ one is actually set. Whichever type it is, the token exchange happens entirely i
 - `GET /api/account/me` — reads the cookie, refreshes the access token first if it's
   about to expire, returns the signed-in customer's name/email for the header.
 
-### 3 · Known gap
+### 3 · Checkout personalisation
 
-Linking the signed-in customer to the Storefront API cart's `buyerIdentity`, so Shopify's
-hosted checkout is personalised, is **not implemented** — the classic
-`buyerIdentity.customerAccessToken` field is shaped for the old token type, and no
-confirmed equivalent for Customer Account API sessions was found. Sign-in/out and
-showing the customer's identity work standalone; checkout personalisation is a later
-follow-up.
+Cart-level linking (`buyerIdentity.customerAccessToken`) doesn't apply here — that field
+is shaped for the classic token type, and there's no Customer Account API equivalent.
+Instead `CartView.tsx` appends `?sso=silent` to `checkoutUrl` whenever `/api/account/me`
+reports the customer as signed in. Checkout then does its own check for a live session on
+the Customer Accounts domain (set by the OAuth login above) and logs the buyer in
+server-side — independent of anything carried on the cart. If that domain session has
+expired, checkout falls back to guest rather than erroring.

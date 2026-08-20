@@ -108,7 +108,13 @@ export function safeParam(value: string | null, maxLength = SHORT_TEXT): string 
  * handling) normalises a leading backslash to `/` for http(s) URLs before resolving
  * authority, so `/\evil.com` becomes `https://evil.com/` even though it never starts with
  * `//`. A plain `startsWith("//")` check alone misses that case.
+ *
+ * Also rejects any ASCII control character (tabs, newlines, CR). The URL parser strips
+ * these from the *entire* string, not just the edges, so `/\t/evil.com` — which otherwise
+ * satisfies every check above — collapses to `//evil.com` once parsed and becomes the same
+ * protocol-relative bypass by another route.
  */
 export function isSafeReturnPath(value: string): boolean {
-  return /^\/[^/\\]/.test(value) && !value.includes("\\");
+  // eslint-disable-next-line no-control-regex -- deliberately scanning for control chars
+  return /^\/[^/\\]/.test(value) && !value.includes("\\") && !/[\x00-\x1f\x7f]/.test(value);
 }
