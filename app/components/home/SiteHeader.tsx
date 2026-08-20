@@ -705,16 +705,22 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
                   onClick={() => setAccountOpen((open) => !open)}
                   aria-expanded={accountOpen}
                   aria-haspopup="dialog"
-                  className="flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ color: MUTED, outlineColor: GOLD }}
+                  // Kept the same Shop-purple as the signed-out trigger, deliberately — this
+                  // is the one control on the page whose whole job is to say "you are signed
+                  // in", so it shouldn't fade back into the muted Cart/Examples pill styling
+                  // once it's clicked and the dropdown state is dealt with elsewhere.
+                  className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ background: "#5a31f4", color: "#ffffff", outlineColor: GOLD }}
                 >
                   <svg
-                    width="18"
-                    height="18"
+                    width="16"
+                    height="16"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.4"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     aria-hidden="true"
                   >
                     <circle cx="12" cy="8" r="4" />

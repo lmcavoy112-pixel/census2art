@@ -1668,7 +1668,7 @@ function ModernDesignContent() {
             : "Greyed-out fields weren't part of your search, or aren't shown at the current map preset."}
         </HelpText>
 
-        {template === "modern" && level !== "street" && household.length > 0 && (
+        {template === "modern" && level === "street" && household.length > 0 && (
           <div className="border-t border-stone-200 pt-4">
             <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
               <GroupLabel>Household record</GroupLabel>
