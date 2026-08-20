@@ -33,7 +33,7 @@ export async function GET() {
   try {
     // A few seconds of slack so a token that's about to expire mid-request still refreshes.
     if (session.expiresAt < Date.now() + 5000) {
-      session = await refreshSession(session.refreshToken);
+      session = await refreshSession(session.refreshToken, session.idToken);
       store.set(CUSTOMER_COOKIE, JSON.stringify(session), {
         httpOnly: true,
         sameSite: "lax",

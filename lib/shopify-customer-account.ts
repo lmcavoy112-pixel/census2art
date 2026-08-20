@@ -22,6 +22,7 @@ export const OAUTH_RETURN_TO_COOKIE = "c2a_oauth_return_to";
 export type CustomerSession = {
   accessToken: string;
   refreshToken: string;
+  idToken: string;
   expiresAt: number; // ms since epoch
 };
 
@@ -118,20 +119,29 @@ export async function buildAuthorizationUrl(params: {
 type TokenResponse = {
   access_token: string;
   refresh_token: string;
+  id_token?: string;
   expires_in: number;
   error?: string;
   error_description?: string;
 };
 
-function toSession(body: TokenResponse): CustomerSession {
+// id_token is only guaranteed on the initial authorization_code exchange — the OIDC spec
+// leaves it optional on a refresh_token grant, and Shopify's own response omits it there.
+// Falling back to the previous session's id_token keeps buildEndSessionUrl's
+// id_token_hint alive across a refresh instead of quietly losing it.
+function toSession(body: TokenResponse, previousIdToken?: string): CustomerSession {
   return {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
+    idToken: body.id_token || previousIdToken || "",
     expiresAt: Date.now() + body.expires_in * 1000,
   };
 }
 
-async function postToTokenEndpoint(params: Record<string, string>): Promise<CustomerSession> {
+async function postToTokenEndpoint(
+  params: Record<string, string>,
+  previousIdToken?: string
+): Promise<CustomerSession> {
   const { tokenEndpoint } = await discoverEndpoints();
 
   const form = new URLSearchParams({ client_id: clientId(), ...params });
@@ -155,7 +165,7 @@ async function postToTokenEndpoint(params: Record<string, string>): Promise<Cust
     );
   }
 
-  return toSession(body);
+  return toSession(body, previousIdToken);
 }
 
 export async function exchangeCodeForTokens(
@@ -171,16 +181,28 @@ export async function exchangeCodeForTokens(
   });
 }
 
-export async function refreshSession(refreshToken: string): Promise<CustomerSession> {
-  return postToTokenEndpoint({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
+export async function refreshSession(refreshToken: string, previousIdToken?: string): Promise<CustomerSession> {
+  return postToTokenEndpoint(
+    {
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    },
+    previousIdToken
+  );
 }
 
-export async function buildEndSessionUrl(postLogoutRedirectUri: string): Promise<string> {
+/**
+ * Shopify's end_session_endpoint (OIDC RP-Initiated Logout) requires `id_token_hint` to
+ * identify which session to end — omitting it fails with "Invalid id_token." rather than
+ * just skipping the check, which is what silently broke sign-out entirely.
+ */
+export async function buildEndSessionUrl(
+  postLogoutRedirectUri: string,
+  idTokenHint: string
+): Promise<string> {
   const { endSessionEndpoint } = await discoverEndpoints();
   const url = new URL(endSessionEndpoint);
+  url.searchParams.set("id_token_hint", idTokenHint);
   url.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
   return url.toString();
 }
