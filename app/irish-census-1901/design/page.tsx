@@ -28,14 +28,14 @@ import {
 } from "@/lib/design/fetching";
 import {
   buildGalleryGroups,
-  GALLERY_FAMILY_ORDER,
-  layoutFamilyAspect,
-  layoutFamilyToGroup,
+  FORMAT_ORDER,
+  formatAspect,
   loadCatalogueSkus,
   MIN_MODERN_BASEMAP_PPI,
   printSizeForSku,
   PRODUCTS_FOR_CATEGORY,
   type CatalogueSku,
+  type Format,
   type ProductKind,
 } from "@/lib/design/catalogue";
 import { submitPrintOrder } from "@/lib/design/order";
@@ -270,13 +270,21 @@ const MARKER_SIZES = [
 // supplies the wording, since the catalogue's own names are too long for a card.
 const FRAMED_PRODUCT_LABELS: Partial<Record<ProductKind, { label: string; detail: string }>> = {
   "Classic Frame": { label: "Classic", detail: "Framed print" },
-  "Framed Canvas": { label: "Canvas", detail: "Float frame" },
   "Stretched Canvas": { label: "Stretched", detail: "No frame" },
 };
 
-const FRAME_COLOURS: { id: "black" | "white"; label: string; hex: string }[] = [
+// `id` is Prodigi's own `color` attribute value for GLOBAL-CFPM-* — confirmed live
+// against GET /v4.0/products/GLOBAL-CFPM-A2 — and travels verbatim through
+// buildProdigiAttributes() to the Prodigi order, so these strings must match exactly.
+const FRAME_COLOURS: { id: string; label: string; hex: string }[] = [
   { id: "black", label: "Black", hex: "#1B1B1B" },
   { id: "white", label: "White", hex: "#F7F7F5" },
+  { id: "silver", label: "Silver", hex: "#C7C9CC" },
+  { id: "dark grey", label: "Dark Grey", hex: "#4A4A4A" },
+  { id: "light grey", label: "Light Grey", hex: "#B8B8B8" },
+  { id: "natural", label: "Natural", hex: "#D8C4A0" },
+  { id: "brown", label: "Brown", hex: "#6B4423" },
+  { id: "gold", label: "Gold", hex: "#C9A227" },
 ];
 
 /**
@@ -383,7 +391,7 @@ function ModernDesignContent() {
   // Bumped on every placement request so a slow geocode can never clobber a newer state.
   const pinRequestRef = useRef(0);
 
-  const [layoutFamily, setLayoutFamily] = useState("7:5/√2");
+  const [format, setFormat] = useState<Format>("ISO");
 
   // ── Historic template ──────────────────────────────────────────────
   // Separate from the Modern state above on purpose: the two templates share only the
@@ -424,8 +432,8 @@ function ModernDesignContent() {
   const [catalogueSkus, setCatalogueSkus] = useState<CatalogueSku[]>([]);
   const [fulfilment, setFulfilment] = useState<Fulfilment>("print");
   const [productKind, setProductKind] = useState<ProductKind>("Art Print");
-  const [frameColour, setFrameColour] = useState<"black" | "white">("black");
-  const [selectedSkuId, setSelectedSkuId] = useState<number | null>(null);
+  const [frameColour, setFrameColour] = useState<string>("black");
+  const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
 
   // ── Panel state ────────────────────────────────────────────────────
   const [openSection, setOpenSection] = useState("template");
@@ -515,11 +523,11 @@ function ModernDesignContent() {
 
     setHeadingText(nextSurname || "Irish Family History");
 
-    // Only accept a shape still on sale: an older bookmark can carry a retired family
-    // (?layoutFamily=3:2), which would otherwise preview at that ratio with no sizes,
-    // no price and a dead Add to cart.
-    const family = getParam(params, "layoutFamily");
-    if (family && GALLERY_FAMILY_ORDER.includes(family)) setLayoutFamily(family);
+    // Only accept a shape still on sale: an older bookmark can carry a retired format
+    // (?format=3:2-era value), which would otherwise preview at that ratio with no
+    // sizes, no price and a dead Add to cart.
+    const savedFormat = getParam(params, "format");
+    if (savedFormat === "ISO" || savedFormat === "Square") setFormat(savedFormat);
 
     if (isAccentId(saved?.accent)) setAccentId(saved.accent);
 
@@ -777,12 +785,12 @@ function ModernDesignContent() {
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
   // shape of the map's own container, and without this the camera stays put and just
   // gets cropped rather than the extent adjusting to still show everything. That's
-  // `layoutFamily` (Portrait/Square, chosen up front in Template) — deliberately not
+  // `format` (Portrait/Square, chosen up front in Template) — deliberately not
   // `selectedSkuId`: picking a size, frame colour or product in Step 2 changes which SKU
   // is selected without changing the container's aspect ratio, and re-fitting on every
   // such pick was wiping out a customer's manually panned/zoomed view each time.
   const [refitNonce, setRefitNonce] = useState(0);
-  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${layoutFamily}-${refitNonce}`;
+  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${format}-${refitNonce}`;
 
   const centre = useMemo(() => {
     if (view) return view.center;
@@ -823,7 +831,7 @@ function ModernDesignContent() {
 
   // Shape is decided up front, in the Template section, because it gates what the rest
   // of the designer can offer — square has no symbol divider and only one border.
-  const isSquare = layoutFamilyToGroup(layoutFamily) === "square";
+  const isSquare = format === "Square";
 
   // Declared here (not down by the Historic sections that mainly use it) because the
   // print-order snapshot builder below also reads effectiveBorder, and needs it defined
@@ -836,10 +844,10 @@ function ModernDesignContent() {
     ? historicBorder
     : borderChoices[0].id;
 
-  const familyOptions = useMemo(() => {
-    const groups = buildGalleryGroups(catalogueSkus, GALLERY_FAMILY_ORDER);
-    return GALLERY_FAMILY_ORDER.filter((f) => (groups.get(f)?.size ?? 0) > 0).map((f) => {
-      const square = layoutFamilyToGroup(f) === "square";
+  const formatOptions = useMemo(() => {
+    const groups = buildGalleryGroups(catalogueSkus, FORMAT_ORDER);
+    return FORMAT_ORDER.filter((f) => (groups.get(f)?.size ?? 0) > 0).map((f) => {
+      const square = f === "Square";
       return {
         id: f,
         label: square ? "Square" : "Portrait",
@@ -851,30 +859,33 @@ function ModernDesignContent() {
   // ── Sizes ──────────────────────────────────────────────────────────
   const sizeOptions = useMemo(() => {
     return catalogueSkus
-      .filter((sku) => sku.layout_family === layoutFamily && sku.product === productKind)
-      .filter((sku) => (sku.framed ? sku.frame_colour === frameColour : true))
-      // Modern's map is a raster capture with a real resolution ceiling (basemap_ppi);
-      // Historic is vector SVG and has none, so this guard only applies to Modern —
-      // otherwise it would needlessly narrow Historic's sizes for a Modern-only limit.
-      .filter((sku) => template !== "modern" || sku.basemap_ppi >= MIN_MODERN_BASEMAP_PPI)
+      .filter((sku) => sku.format === format && sku.product === productKind)
+      // Frame colour never filters sizes here: Prodigi's SKU (and this row) doesn't vary
+      // by colour, so every colour is available at every size. Colour is chosen
+      // separately below and travels to Prodigi as a cart/order-line attribute.
+      //
+      // Modern's map is a raster capture with a real resolution ceiling (basemap_ppi).
+      // Historic doesn't need this guard: A1, the one size that fell short of it, isn't
+      // in the catalogue at all any more.
+      .filter((sku) => template !== "modern" || (sku.basemap_ppi ?? 0) >= MIN_MODERN_BASEMAP_PPI)
       .sort((a, b) => a.short_in - b.short_in);
-  }, [catalogueSkus, layoutFamily, productKind, frameColour, template]);
+  }, [catalogueSkus, format, productKind, template]);
 
   // Derived rather than synced in an effect, so changing shape or product can never
   // leave a SKU selected that is no longer on offer.
   const selectedSku = useMemo(
-    () => sizeOptions.find((sku) => sku.id === selectedSkuId) ?? sizeOptions[0] ?? null,
+    () => sizeOptions.find((sku) => sku.sku === selectedSkuId) ?? sizeOptions[0] ?? null,
     [sizeOptions, selectedSkuId]
   );
 
   const printSize = selectedSku ? printSizeForSku(selectedSku) : null;
 
   // Follow the chosen SKU's real proportions only where sizes genuinely differ in shape.
-  // Every remaining family is one exact shape at different scales — their short_in/long_in
+  // Every remaining format is one exact shape at different scales — their short_in/long_in
   // are decimal-inch roundings of the true mm size (A3 rounds to 11.7×16.5", A4 to
   // 8.3×11.7", which aren't quite the same ratio), so use the canonical ratio or the
-  // preview visibly stretches by a percent or two when switching sizes within a family.
-  const aspect = layoutFamilyAspect(layoutFamily);
+  // preview visibly stretches by a percent or two when switching sizes within a format.
+  const aspect = formatAspect(format);
 
   const householdVisibleFieldOptions = HOUSEHOLD_FIELD_OPTIONS.filter((f) =>
     visibleHouseholdFields.has(f.id)
@@ -1421,7 +1432,10 @@ function ModernDesignContent() {
           previewFileName: `${fileNamePart}.jpg`,
           sku: selectedSku.sku,
           priceGbp: selectedSku.price_gbp,
-          attributes: buildProdigiAttributes(selectedSku.product, selectedSku.frame_colour),
+          attributes: buildProdigiAttributes(
+            selectedSku.product,
+            selectedSku.product === "Classic Frame" ? frameColour : null
+          ),
           design: {
             surname: headingText,
             county,
@@ -1429,7 +1443,7 @@ function ModernDesignContent() {
             product: selectedSku.product,
             template: template === "historic" ? "Historic" : "Modern",
             sizeLabel: selectedSku.size_label,
-            frameColour: selectedSku.frame_colour,
+            frameColour: selectedSku.product === "Classic Frame" ? frameColour : null,
             headingText,
             dedDisplayText,
             townlandText,
@@ -1492,8 +1506,8 @@ function ModernDesignContent() {
             ...(houseNoText ? [{ key: "House", value: houseNoText }] : []),
             { key: "Style", value: template === "historic" ? "Historic" : "Modern" },
             { key: "Size", value: selectedSku.size_label },
-            ...(selectedSku.frame_colour
-              ? [{ key: "Frame colour", value: selectedSku.frame_colour }]
+            ...(selectedSku.product === "Classic Frame"
+              ? [{ key: "Frame colour", value: frameColour }]
               : []),
             { key: "_imageUrl", value: imageUrl },
             // Small showcase JPEG, never the full-res file above — see canvasToPreviewBlob.
@@ -1562,6 +1576,24 @@ function ModernDesignContent() {
           </HelpText>
         )}
 
+        {formatOptions.length > 1 && (
+          <div className="border-t border-stone-200 pt-4">
+            <FieldLabel>Shape</FieldLabel>
+            <ChoiceCards
+              columns={2}
+              ariaLabel="Shape"
+              value={format}
+              onChange={setFormat}
+              options={formatOptions}
+            />
+            {template === "historic" && isSquare && (
+              <HelpText>
+                Square prints have no symbol and are drawn with Celtic Spirals only.
+              </HelpText>
+            )}
+          </div>
+        )}
+
         <div className="border-t border-stone-200 pt-4">
           <FieldLabel>Map preset</FieldLabel>
           {template === "historic" ? (
@@ -1599,8 +1631,44 @@ function ModernDesignContent() {
             </p>
           )}
         </div>
+      </div>
+    ),
+  };
 
-        {template === "modern" && level === "street" && household.length > 0 && (
+  const familySection: DesignerSection = {
+    id: "information",
+    title: "Information",
+    summary: "The names and places printed on your artwork.",
+    icon: <InformationIcon />,
+    body: (
+      <div className="space-y-4">
+        <TextField label="Surname" value={headingText} onChange={setHeadingText} />
+
+        <div className="grid grid-cols-2 gap-3">
+          {detailFields.map((field) => {
+            const disabled =
+              template === "historic" ||
+              field.value.trim() === "" ||
+              LEVEL_ORDER[level] < LEVEL_ORDER[FIELD_MIN_LEVEL[field.label]];
+            return (
+              <TextField
+                key={field.label}
+                label={field.label}
+                value={field.value}
+                onChange={field.set}
+                disabled={disabled}
+                placeholder="Not selected"
+              />
+            );
+          })}
+        </div>
+        <HelpText>
+          {template === "historic"
+            ? "Historic prints use the county only — these aren't editable for this template."
+            : "Greyed-out fields weren't part of your search, or aren't shown at the current map preset."}
+        </HelpText>
+
+        {template === "modern" && level !== "street" && household.length > 0 && (
           <div className="border-t border-stone-200 pt-4">
             <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
               <GroupLabel>Household record</GroupLabel>
@@ -1681,60 +1749,6 @@ function ModernDesignContent() {
             </div>
           </div>
         )}
-
-        {familyOptions.length > 1 && (
-          <div className="border-t border-stone-200 pt-4">
-            <FieldLabel>Shape</FieldLabel>
-            <ChoiceCards
-              columns={2}
-              ariaLabel="Shape"
-              value={layoutFamily}
-              onChange={setLayoutFamily}
-              options={familyOptions}
-            />
-            {template === "historic" && isSquare && (
-              <HelpText>
-                Square prints have no symbol and are drawn with Celtic Spirals only.
-              </HelpText>
-            )}
-          </div>
-        )}
-      </div>
-    ),
-  };
-
-  const familySection: DesignerSection = {
-    id: "information",
-    title: "Information",
-    summary: "The names and places printed on your artwork.",
-    icon: <InformationIcon />,
-    body: (
-      <div className="space-y-4">
-        <TextField label="Surname" value={headingText} onChange={setHeadingText} />
-
-        <div className="grid grid-cols-2 gap-3">
-          {detailFields.map((field) => {
-            const disabled =
-              template === "historic" ||
-              field.value.trim() === "" ||
-              LEVEL_ORDER[level] < LEVEL_ORDER[FIELD_MIN_LEVEL[field.label]];
-            return (
-              <TextField
-                key={field.label}
-                label={field.label}
-                value={field.value}
-                onChange={field.set}
-                disabled={disabled}
-                placeholder="Not selected"
-              />
-            );
-          })}
-        </div>
-        <HelpText>
-          {template === "historic"
-            ? "Historic prints use the county only — these aren't editable for this template."
-            : "Greyed-out fields weren't part of your search, or aren't shown at the current map preset."}
-        </HelpText>
       </div>
     ),
   };
@@ -2096,6 +2110,7 @@ function ModernDesignContent() {
                 </button>
               ))}
             </div>
+            <HelpText>Includes a 2.4mm Snow White mount and glass glaze, every colour.</HelpText>
           </div>
         )}
 
@@ -2107,10 +2122,10 @@ function ModernDesignContent() {
             <ChoiceCards
               columns={4}
               ariaLabel="Size"
-              value={selectedSku ? String(selectedSku.id) : null}
-              onChange={(id) => setSelectedSkuId(Number(id))}
+              value={selectedSku ? selectedSku.sku : null}
+              onChange={(id) => setSelectedSkuId(id)}
               options={sizeOptions.map((sku) => ({
-                id: String(sku.id),
+                id: sku.sku,
                 label: sku.size_label,
                 detail: formatMoney(sku.sellingPrice, currency),
               }))}
@@ -2145,9 +2160,7 @@ function ModernDesignContent() {
               <p className="mt-0.5 truncate text-[12px] text-stone-700">
                 {selectedSku
                   ? `${selectedSku.size_label} ${selectedSku.product}${
-                      selectedSku.framed && selectedSku.frame_colour
-                        ? ` · ${selectedSku.frame_colour} frame`
-                        : ""
+                      selectedSku.product === "Classic Frame" ? ` · ${frameColour} frame` : ""
                     }`
                   : "Choose a size to see the price"}
               </p>
@@ -2499,7 +2512,7 @@ function ModernDesignContent() {
             {template === "historic" ? (
               <div ref={posterRef} className="w-full">
               <HistoricPoster
-                layoutFamily={layoutFamily}
+                format={format}
                 polygons={countryPolygons}
                 surnameDisplay={headingText}
                 pageColour={historicAccent.page}
