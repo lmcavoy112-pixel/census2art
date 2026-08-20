@@ -62,21 +62,24 @@ async function readCurrency(): Promise<CurrencyCode> {
  *
  * Prodigi prints only part of the range at its EU and US labs, so switching currency can
  * genuinely strip a product from sale rather than just relabel its price. Checked against
- * the same catalogue_sku_pricing rows the designer reads, so the cart can never hold a
+ * the same catalogue_skus rows the designer reads, so the cart can never hold a
  * line the storefront wouldn't have offered in that market.
  */
 async function unavailableSkus(cart: Cart, currency: CurrencyCode): Promise<string[]> {
   const skus = [...new Set(cart.lines.map((line) => line.sku).filter(Boolean))];
   if (skus.length === 0) return [];
 
+  const sellColumn = `sell_${currency.toLowerCase()}` as "sell_gbp" | "sell_usd" | "sell_eur";
   const { data } = await supabase
-    .from("catalogue_sku_pricing")
-    .select("sku")
-    .eq("currency", currency)
-    .eq("available", true)
+    .from("catalogue_skus")
+    .select(`sku, ${sellColumn}`)
     .in("sku", skus);
 
-  const sellable = new Set((data ?? []).map((row) => row.sku));
+  const sellable = new Set(
+    (data ?? [])
+      .filter((row) => (row as Record<string, unknown>)[sellColumn] != null)
+      .map((row) => row.sku)
+  );
   return skus.filter((sku) => !sellable.has(sku));
 }
 
@@ -145,45 +148,35 @@ export async function POST(request: NextRequest) {
         }
 
         // Re-validates against the catalogue rather than trusting the client picked a
-        // sellable SKU — the designer's own size picker already filters to
-        // enabled+designable(+basemap_ppi for Modern), but this is the one place that
-        // actually gates the sale, so a stale page, a replayed request, or a future UI
-        // bug can't add a retired or under-quality print to a real cart.
+        // sellable SKU — the designer's own size picker already filters to sizes that
+        // exist, are sold in the visitor's currency, and (for Modern) clear the quality
+        // floor, but this is the one place that actually gates the sale, so a stale page,
+        // a replayed request, or a future UI bug can't add a retired or under-quality
+        // print to a real cart.
         //
-        // Not .maybeSingle(): Classic Frame and Framed Canvas each have a black row and
-        // a white row sharing one sku (enabled/designable/basemap_ppi agree across both),
-        // so two rows legitimately match. .maybeSingle() errors on 2+ rows — silently
-        // discarded here since only `data` was destructured — which made every add of
-        // those two product lines fail with "no longer available", in any currency.
-        const { data: catalogueRows } = await supabase
+        // .maybeSingle() is safe here: frame colour no longer lives on this table (it
+        // never changed the SKU, cost or price — see lib/design/catalogue.ts), so `sku`
+        // is a genuine primary key now and exactly one row can ever match.
+        const currency = await readCurrency();
+        const sellColumn = `sell_${currency.toLowerCase()}` as "sell_gbp" | "sell_usd" | "sell_eur";
+        const { data: catalogueRow } = await supabase
           .from("catalogue_skus")
-          .select("enabled, designable, basemap_ppi")
+          .select(`basemap_ppi, ${sellColumn}`)
           .eq("sku", body.sku)
-          .limit(1);
+          .maybeSingle();
 
-        const catalogueRow = catalogueRows?.[0];
-
-        if (!catalogueRow || !catalogueRow.enabled || !catalogueRow.designable) {
+        if (!catalogueRow) {
           return NextResponse.json(
             { error: "That size is no longer available." },
             { status: 422 }
           );
         }
 
-        // Currency-specific: Prodigi only prints part of the range at its EU/US labs
-        // (see catalogue_sku_pricing), so a SKU that's enabled/designable can still be
-        // unsellable in the visitor's chosen currency. The designer's size picker
-        // already excludes these, so reaching this branch means a stale page, a
-        // replayed request, or a future UI bug — same reasoning as the check above.
-        const currency = await readCurrency();
-        const { data: pricingRow } = await supabase
-          .from("catalogue_sku_pricing")
-          .select("available")
-          .eq("sku", body.sku)
-          .eq("currency", currency)
-          .maybeSingle();
-
-        if (!pricingRow?.available) {
+        // Currency-specific: Prodigi only prints part of the range at its EU/US labs, so
+        // a real SKU can still be unsellable in the visitor's chosen currency (no
+        // sell_{currency} value). The designer's size picker already excludes these, so
+        // reaching this branch means a stale page, a replayed request, or a future UI bug.
+        if ((catalogueRow as Record<string, unknown>)[sellColumn] == null) {
           return NextResponse.json(
             { error: `That size isn't available in ${currency}.` },
             { status: 422 }
@@ -193,7 +186,7 @@ export async function POST(request: NextRequest) {
         const isModern = (body.attributes ?? []).some(
           (a) => a.key === "Style" && a.value === "Modern"
         );
-        if (isModern && catalogueRow.basemap_ppi < MIN_MODERN_BASEMAP_PPI) {
+        if (isModern && (catalogueRow.basemap_ppi ?? 0) < MIN_MODERN_BASEMAP_PPI) {
           return NextResponse.json(
             { error: "That size doesn't meet our print quality minimum." },
             { status: 422 }

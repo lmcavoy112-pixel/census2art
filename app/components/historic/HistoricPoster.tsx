@@ -15,7 +15,7 @@ import { Cormorant_Garamond, Uncial_Antiqua } from "next/font/google";
 
 import IrelandArtworkMap from "@/app/components/IrelandArtworkMap";
 import type { DedRow } from "@/lib/design/fetching";
-import { layoutFamilyAspect, layoutFamilyToGroup, type SizeGroup } from "@/lib/design/catalogue";
+import { formatAspect, type Format } from "@/lib/design/catalogue";
 import { lightenHex } from "@/lib/design/appearance";
 import type { HotspotIntensity } from "@/lib/hotspotStyle";
 
@@ -78,7 +78,7 @@ export const HOTSPOT_COLOURS: { id: string; label: string; hex: string }[] = [
 /* ── Calibrated layout ──────────────────────────────────────────────── */
 
 type HistoricLayout = {
-  group: SizeGroup;
+  group: Format;
   borderTopPct: number;
   borderSidePct: number;
   borderBottomPct: number;
@@ -102,7 +102,7 @@ type HistoricLayout = {
 // which are px against a 560px-wide preview and scaled with it.
 const HISTORIC_LAYOUTS: HistoricLayout[] = [
   {
-    group: "metric",
+    group: "ISO",
     borderTopPct: 12.0,
     borderSidePct: 0.0,
     borderBottomPct: 36.25,
@@ -122,7 +122,7 @@ const HISTORIC_LAYOUTS: HistoricLayout[] = [
     surnameCountGapPx: 13,
   },
   {
-    group: "square",
+    group: "Square",
     borderTopPct: 4.0,
     borderSidePct: 0.0,
     borderBottomPct: 21.5,
@@ -145,11 +145,10 @@ const HISTORIC_LAYOUTS: HistoricLayout[] = [
   },
 ];
 
-function layoutForFamily(family: string): HistoricLayout {
-  const group = layoutFamilyToGroup(family);
-  // HISTORIC_LAYOUTS[0] is the metric layout, which is also the sensible fallback for
+function layoutForFormat(format: Format): HistoricLayout {
+  // HISTORIC_LAYOUTS[0] is the ISO layout, which is also the sensible fallback for
   // any shape without one of its own.
-  return HISTORIC_LAYOUTS.find((l) => l.group === group) ?? HISTORIC_LAYOUTS[0];
+  return HISTORIC_LAYOUTS.find((l) => l.group === format) ?? HISTORIC_LAYOUTS[0];
 }
 
 /* ── SVG asset loading ──────────────────────────────────────────────── */
@@ -210,10 +209,10 @@ function BorderOverlay({
   borderStyle: string | null;
   inkColour: string;
   inkSecondary: string;
-  sizeGroup: SizeGroup;
+  sizeGroup: Format;
 }) {
-  const folder = sizeGroup === "square" ? "Square" : "ISO";
-  const suffix = sizeGroup === "square" ? " Square" : " ISO";
+  const folder = sizeGroup === "Square" ? "Square" : "ISO";
+  const suffix = sizeGroup === "Square" ? " Square" : " ISO";
   const svgMarkup = useSvgAsset(
     borderStyle ? `/artwork/Borders/${folder}/${borderStyle}${suffix}.svg` : null
   );
@@ -495,7 +494,7 @@ export function HistoricSymbolGlyph({
 /* ── The poster ─────────────────────────────────────────────────────── */
 
 export type HistoricPosterProps = {
-  layoutFamily: string;
+  format: Format;
   polygons: DedRow[];
   surnameDisplay: string;
   pageColour: string;
@@ -513,7 +512,7 @@ export type HistoricPosterProps = {
 };
 
 export default function HistoricPoster({
-  layoutFamily,
+  format,
   polygons,
   surnameDisplay,
   pageColour,
@@ -527,10 +526,10 @@ export default function HistoricPoster({
   hotspotColour,
   emptyMessage,
 }: HistoricPosterProps) {
-  const layout = layoutForFamily(layoutFamily);
-  const sizeGroup = layoutFamilyToGroup(layoutFamily);
-  const isSquare = sizeGroup === "square";
-  const { w: canvasAW, h: canvasAH } = layoutFamilyAspect(layoutFamily);
+  const layout = layoutForFormat(format);
+  const sizeGroup = format;
+  const isSquare = sizeGroup === "Square";
+  const { w: canvasAW, h: canvasAH } = formatAspect(format);
 
   // Every calibrated percentage is against the poster's own rendered size, so the
   // layout holds at any preview width and again at print resolution.

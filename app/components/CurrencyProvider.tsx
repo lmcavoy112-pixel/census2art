@@ -39,7 +39,7 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
  * header picker itself ships (Phase 5); worth revisiting if that stops being true.
  *
  * The cookie is written directly here rather than through an API route: it carries no
- * authority (the server re-derives what's purchasable from catalogue_sku_pricing either
+ * authority (the server re-derives what's purchasable from catalogue_skus either
  * way), so a round-trip would buy nothing. It is deliberately not httpOnly for the same
  * reason — there's nothing to protect, and client code reads it.
  */

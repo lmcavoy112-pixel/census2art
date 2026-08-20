@@ -199,11 +199,18 @@ type ShopifyVariant = {
 /**
  * Every variant across every product, in one request.
  *
- * The catalogue's ~108 SKUs are split across several Shopify products (Art Print,
- * Classic Frame, Framed Canvas, Stretched Canvas, Digital Print) rather than one —
- * Shopify caps variants per product, so this fetches every product's variants rather
- * than assuming a SKU lives under one known handle. Shared by findVariantIdBySku and
- * findVariantPriceBySku so the two don't duplicate the same query independently.
+ * The catalogue's SKUs are split across several Shopify products (Art Print, Classic
+ * Frame, Stretched Canvas, Digital Print) rather than one — Shopify caps variants per
+ * product, so this fetches every product's variants rather than assuming a SKU lives
+ * under one known handle. Shared by findVariantIdBySku and findVariantPriceBySku so the
+ * two don't duplicate the same query independently.
+ *
+ * Frame colour is not a Shopify variant dimension: one variant per (product, size), its
+ * SKU identical to the Prodigi SKU, since that SKU is forwarded verbatim to Prodigi's
+ * order API (see orders-create/route.ts). Colour is a cart-line attribute instead —
+ * modelling it as a variant would mean several variants sharing one SKU, and
+ * findVariantIdBySku()'s `.find()` below would silently resolve to whichever came
+ * first, regardless of which colour the customer actually picked.
  */
 async function fetchAllVariants(): Promise<ShopifyVariant[]> {
   const data = await shopifyFetch<{

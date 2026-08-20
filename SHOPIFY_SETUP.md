@@ -39,15 +39,33 @@ SHOPIFY_API_VERSION=2026-07          # optional, defaults to 2026-07
 Create **one** product to represent every print, and give it the handle you put in
 `SHOPIFY_PRINT_PRODUCT_HANDLE`. Suggested title: *Custom Census Print*.
 
-Its **variants** are the sellable combinations — size, format and frame colour. Each
-variant's **SKU must exactly match the `sku` column in the `catalogue_skus` table**,
-because that is how the designer's chosen option is resolved to a Shopify variant at
-add-to-cart time. Nothing else links the two systems, so a mismatch shows up as
-*"No Shopify variant matches SKU …"*.
+Its **variants** are the sellable (product, size) combinations — **not** frame colour.
+One variant per size, full stop. Each variant's **SKU must exactly match the `sku`
+column in the `catalogue_skus` table**, because that SKU is forwarded verbatim, both to
+resolve the designer's chosen size to a Shopify variant at add-to-cart time
+(`findVariantIdBySku` in `lib/shopify.ts`) and to Prodigi's own order API as the item
+SKU (`orders-create/route.ts`) — Prodigi's SKU never varies by colour, so a
+colour-suffixed or colour-specific variant SKU would be rejected by Prodigi, not just
+redundant. A mismatch with `catalogue_skus.sku` shows up as *"No Shopify variant
+matches SKU …"*.
 
-Set each variant's price to match `price_gbp`. Shopify is the authority on price once
-this is live — the figure shown in the designer comes from `catalogue_skus`, so the two
-need to be kept in step.
+**Do not add "Frame colour" as a Shopify option/variant dimension.** Colour is chosen in
+the designer from a fixed list (`FRAME_COLOURS` in
+`app/irish-census-1901/design/page.tsx`) and travels to Prodigi as a line item
+attribute (`Frame colour`, mapped to Prodigi's `color`), the same mechanism as Surname
+or County — never as part of the SKU. Giving colour its own variants would force
+several variants to share one SKU (since Prodigi's SKU doesn't distinguish colour
+either), and `findVariantIdBySku()` matches on SKU alone — it would silently resolve to
+whichever variant happens to come first, regardless of which colour the customer
+actually picked, so the Shopify cart line and order confirmation could show the wrong
+colour even though the physical print (colour comes from the attribute, not the
+variant) would still be correct.
+
+Shopify is the sole authority on price — set each variant's price directly in Shopify,
+nothing in Supabase feeds it. The designer's own price display is a cache: after
+setting/changing prices here, run `npx tsx scripts/repull-prodigi-pricing.ts` to pull
+them back into `catalogue_skus.sell_gbp` / `sell_usd` / `sell_eur` so the size picker
+shows the current figure without an extra request per page load.
 
 Because prints are made to order, on every variant:
 
@@ -68,7 +86,7 @@ cart line, the order, and the confirmation email:
 | `House` | 4 |
 | `Style` | Modern |
 | `Size` | A4 |
-| `Frame colour` | black |
+| `Frame colour` | black, brown, dark grey, gold, light grey, natural, silver or white — Classic Frame only |
 | `_imageUrl` | the rendered print, in Supabase Storage |
 
 `_imageUrl` starts with an underscore, which is Shopify's convention for an attribute
@@ -148,9 +166,19 @@ Customer Account API → Application setup → Edit**, then set:
   customers to land — `/api/auth/logout` builds this dynamically as
   `post_logout_redirect_uri`)
 
-Shopify does not support `localhost`/`http` callback URLs at all — the full login
-round-trip can only be tested against a real HTTPS deployment (a Vercel preview works),
-not localhost.
+**Get these exact** — Shopify compares them byte-for-byte against what the app sends at
+request time (built from `request.nextUrl.origin`, so it's always the exact origin the
+browser is actually on). A trailing slash or scheme mismatch on either one surfaces as
+"redirect_uri mismatch" on login, or the same thing on the *logout* URI once you get that
+far — both were hit and fixed here on 2026-08-20.
+
+**Confirmed (2026-08-20): Shopify's Application setup rejects `http://` outright** — adding
+`http://localhost:3000/api/auth/callback` errors with "Redirect URI is not secured"
+before it's even saved, not a mismatch. So the full login round-trip can never be tested
+against plain `localhost`; it needs a real HTTPS origin. Either test directly against the
+production domain, or point an HTTPS tunnel (ngrok, Cloudflare Tunnel) at `localhost:3000`
+and register that tunnel URL as an additional, temporary Callback/Logout URI — a Vercel
+preview deployment works too but its URL changes every deploy.
 
 Copy the **Client ID** into:
 

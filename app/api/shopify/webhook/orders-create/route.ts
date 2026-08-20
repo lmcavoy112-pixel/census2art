@@ -408,13 +408,12 @@ export async function POST(request: NextRequest) {
     // rejects the whole order on an unrecognised key.
     //
     // Frame colour maps to Prodigi's `color`, confirmed live against
-    // GET /v4.0/products/{sku} — but that alone isn't sufficient: Classic Frame also
-    // requires a `mountColor` (the mat board inside the frame), Framed Canvas requires
-    // a `wrap` (how the image treats the canvas edge), and Stretched Canvas requires
-    // that same `wrap` even though it's unframed and carries no "Frame colour" line
-    // attribute at all — so buildProdigiAttributes() (shared with the cart-add path)
-    // decides what Prodigi actually needs per product, from the kind already resolved
-    // above in lineProducts.
+    // GET /v4.0/products/GLOBAL-CFPM-A2 — but that alone isn't sufficient: Classic Frame
+    // also requires a `mountColor` (the mat board inside the frame), and Stretched Canvas
+    // requires a `wrap` (how the image treats the canvas edge) even though it's unframed
+    // and carries no "Frame colour" line attribute at all — so buildProdigiAttributes()
+    // (shared with the cart-add path) decides what Prodigi actually needs per product,
+    // from the kind already resolved above in lineProducts.
     const catalogueProduct = lineProducts.get(line);
     const prodigiAttributes: Record<string, string> = isProductKind(catalogueProduct)
       ? buildProdigiAttributes(catalogueProduct, attrs["Frame colour"] ?? null)
