@@ -15,16 +15,22 @@ import { budgetFor, checkRateLimit, clientKey } from "@/lib/rate-limit";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const { prefix, limit, windowMs } = budgetFor(pathname);
-  // Keyed on the matched prefix, not the path: see budgetFor.
-  const key = `${clientKey(request.headers)}:${prefix}`;
-  const { allowed, retryAfter } = checkRateLimit(key, limit, windowMs);
+  const { prefix, windows } = budgetFor(pathname);
+  const caller = clientKey(request.headers);
 
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Please slow down." },
-      { status: 429, headers: { "Retry-After": String(retryAfter) } }
-    );
+  // Every window has to allow the request — see budgetFor for why a route can list more
+  // than one. Keyed on the matched prefix plus the window's index, not the path: see
+  // budgetFor's own comment on why the path itself would be the wrong key.
+  for (const [index, { limit, windowMs }] of windows.entries()) {
+    const key = `${caller}:${prefix}:${index}`;
+    const { allowed, retryAfter } = checkRateLimit(key, limit, windowMs);
+
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
   }
 
   return NextResponse.next();

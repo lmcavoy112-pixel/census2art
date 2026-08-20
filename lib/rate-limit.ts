@@ -55,30 +55,45 @@ export function checkRateLimit(key: string, limit: number, windowMs: number): Ra
   return { allowed: true, retryAfter: 0 };
 }
 
+type Budget = { prefix: string; windows: Array<{ limit: number; windowMs: number }> };
+
 /**
  * Per-route budgets, most specific prefix first.
  *
  * The tight tier is for routes that spend money or CPU per call; the default covers the
  * ordinary census lookups, which are cheap reads but still worth metering so the whole
  * dataset cannot be pulled in a tight loop.
+ *
+ * Most routes need only a burst window, but a route can list more than one — every window
+ * is checked, so a caller has to stay under all of them at once. This is what stops a
+ * script that deliberately stays just under a per-minute cap from running indefinitely.
  */
-const BUDGETS: Array<{ prefix: string; limit: number; windowMs: number }> = [
+const BUDGETS: Budget[] = [
   // Billed Mapbox calls, up to six per request.
-  { prefix: "/api/geocode-house", limit: 20, windowMs: 60_000 },
+  { prefix: "/api/geocode-house", windows: [{ limit: 20, windowMs: 60_000 }] },
   // Billed Mapbox geocoding, one per keystroke-ish from the place search.
-  { prefix: "/api/places", limit: 60, windowMs: 60_000 },
+  { prefix: "/api/places", windows: [{ limit: 60, windowMs: 60_000 }] },
   // Whole-island GeoJSON: large response, heavy query.
-  { prefix: "/api/surname-polygons", limit: 20, windowMs: 60_000 },
+  { prefix: "/api/surname-polygons", windows: [{ limit: 20, windowMs: 60_000 }] },
   // O(n·m) Levenshtein over up to 1000 rows.
-  { prefix: "/api/surnames/similar", limit: 40, windowMs: 60_000 },
-  // Writes to storage and creates rows.
-  { prefix: "/api/orders", limit: 10, windowMs: 60_000 },
+  { prefix: "/api/surnames/similar", windows: [{ limit: 40, windowMs: 60_000 }] },
+  // Writes an ~8MB file to storage and creates a row per call. A burst cap alone still lets
+  // a patient script that stays just under it run all day, so a sustained daily cap sits
+  // on top of it — see cleanup-abandoned-orders for the other half of bounding this route's
+  // cost (deleting what never converts to a paid order).
+  {
+    prefix: "/api/orders",
+    windows: [
+      { limit: 6, windowMs: 60_000 },
+      { limit: 40, windowMs: 24 * 60 * 60_000 },
+    ],
+  },
   // Public form, no account behind it — tight budget on top of the honeypot/timing
   // checks in the route itself, since either alone is easy for a script to miss.
-  { prefix: "/api/contact", limit: 5, windowMs: 10 * 60_000 },
+  { prefix: "/api/contact", windows: [{ limit: 5, windowMs: 10 * 60_000 }] },
 ];
 
-const DEFAULT_BUDGET = { prefix: "/api", limit: 120, windowMs: 60_000 };
+const DEFAULT_BUDGET: Budget = { prefix: "/api", windows: [{ limit: 120, windowMs: 60_000 }] };
 
 /**
  * Resolves the budget and, importantly, the key to count against.
@@ -87,7 +102,7 @@ const DEFAULT_BUDGET = { prefix: "/api", limit: 120, windowMs: 60_000 };
  * full path would give every dynamic segment its own allowance — `/api/orders/<uuid>` is a
  * different string for every id, so walking order ids would never hit a limit at all.
  */
-export function budgetFor(pathname: string) {
+export function budgetFor(pathname: string): Budget {
   return BUDGETS.find((b) => pathname.startsWith(b.prefix)) ?? DEFAULT_BUDGET;
 }
 

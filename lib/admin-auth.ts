@@ -58,3 +58,32 @@ export function requireAdmin(request: Request): NextResponse | null {
 
   return null;
 }
+
+const CRON_SECRET = process.env.CRON_SECRET || "";
+
+/**
+ * Shared-secret gate for Vercel Cron-triggered routes.
+ *
+ * Vercel sends `Authorization: Bearer <CRON_SECRET>` automatically on scheduled
+ * invocations once the env var of that name is set, so checking it here is enough to
+ * keep the route from being run by anyone who finds the URL. Same fail-closed and
+ * constant-time comparison as requireAdmin above, but a separate secret: this answers
+ * to infrastructure, not an operator typing a token in by hand.
+ */
+export function requireCronSecret(request: Request): NextResponse | null {
+  if (!CRON_SECRET) {
+    console.error(
+      "admin-auth: CRON_SECRET is not set — refusing all cron requests. Set it in the environment to use the scheduled cleanup routes."
+    );
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  const header = request.headers.get("authorization") || "";
+  const supplied = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+
+  if (!supplied || !secretsMatch(supplied, CRON_SECRET)) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  return null;
+}
