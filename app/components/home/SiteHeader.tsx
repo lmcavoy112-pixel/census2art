@@ -133,8 +133,8 @@ const CURRENCY_LABELS: Record<CurrencyCode, { symbol: string; name: string }> = 
  * CSS stacking. Anything that must open over that page has to leave the header's subtree.
  *
  * One trigger at every breakpoint rather than the desktop/mobile pair Examples needs —
- * this control changes real prices sitewide, so unlike Account (`hidden sm:block`) it
- * stays available on a phone.
+ * this control changes real prices sitewide, so it stays available on a phone same as
+ * Account does.
  */
 function CurrencyMenu() {
   const { currency, setCurrency } = useCurrency();
@@ -274,7 +274,8 @@ function CurrencyMenu() {
  * to, and that panel is the slot the storefront's customer-account widget replaces.
  *
  * Below `sm` the header collapses to a single slim line — wordmark, an optional back
- * chevron, and Cart — to save vertical space on a phone; nav links and Account drop.
+ * chevron, Cart and Account (icon-only; the nav links still drop) — to save
+ * horizontal space on a phone without dropping sign-in access.
  * Both breakpoints share one `height: var(--site-header-h)` (see globals.css), which
  * every page that offsets or sizes against the header reads from the same variable
  * rather than a hardcoded pixel value that only matched one of the two heights.
@@ -697,7 +698,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
               Shopify Markets is configured (and EUR/USD checkout proven end to end), a
               customer could pick EUR, see a correct EUR price, and be charged in GBP.
               Rendering it is the whole of the reveal step — add <CurrencyMenu /> here. */}
-          <div ref={accountRef} className="relative hidden sm:block">
+          <div ref={accountRef} className="relative">
             {customer.signedIn ? (
               <>
                 <button

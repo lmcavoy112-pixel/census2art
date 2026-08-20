@@ -458,6 +458,7 @@ function ModernDesignContent() {
   const [busy, setBusy] = useState<"" | "preview" | "export" | "order">("");
   const [exportNote, setExportNote] = useState("");
   const [orderError, setOrderError] = useState("");
+  const [orderStage, setOrderStage] = useState("");
 
   // The camera is user-controlled, so it must not be a render dependency —
   // otherwise every pan would rebuild the map's props and fight the user.
@@ -1420,11 +1421,22 @@ function ModernDesignContent() {
     if (busy || !selectedSku || !printSize) return;
     setBusy("order");
     setOrderError("");
+    setOrderStage("Rendering your artwork…");
+
+    // A refresh or tab-close mid-order would silently drop the layout the customer just
+    // spent time getting right, with no save to recover it from — worth a native
+    // confirmation for the ~30s this pipeline genuinely takes.
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+
     try {
       const { imageUrl, previewUrl } = await withPrintReadyPoster(async (canvas) => {
         const blob = await canvasToPngBlob(canvas);
         const previewBlob = await canvasToPreviewBlob(canvas).catch(() => undefined);
         const fileNamePart = safeFileNamePart(headingText || "artwork");
+        setOrderStage("Uploading print file…");
         const result = await submitPrintOrder({
           blob,
           fileName: `${fileNamePart}.png`,
@@ -1489,6 +1501,7 @@ function ModernDesignContent() {
       // The rendered artwork is uploaded first because Shopify needs a real URL to
       // show on the cart line and to carry through to fulfilment — the cart holds a
       // reference to the print, not the pixels.
+      setOrderStage("Adding to cart…");
       const response = await fetch("/api/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1528,7 +1541,9 @@ function ModernDesignContent() {
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "Could not start your order.");
     } finally {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
       setBusy("");
+      setOrderStage("");
     }
   }
 
@@ -2176,7 +2191,7 @@ function ModernDesignContent() {
               disabled={!selectedSku || busy !== ""}
               className="flex-none rounded-full bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {busy === "order" ? "Preparing…" : "Add to cart"}
+              {busy === "order" ? orderStage || "Preparing…" : "Add to cart"}
             </button>
           </div>
         </div>

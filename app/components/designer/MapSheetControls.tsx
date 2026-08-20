@@ -27,13 +27,18 @@ export function MapSheetHandle({
       // touch-none stops the browser's own scroll/pull-to-refresh gesture from
       // fighting the drag. The grip itself is a small visual cue; the whole bar is the
       // actual target, wide and tall enough to grab comfortably with a thumb.
-      className={`flex shrink-0 touch-none items-center justify-center py-2.5 ${className}`}
+      className={`flex shrink-0 touch-none flex-col items-center justify-center gap-[3px] py-2.5 ${className}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
-      <span className="h-1 w-10 rounded-full bg-stone-300" />
+      {/* Small bulge above the grip lines — reads as a tab protruding from the
+          boundary, so the handle doesn't just look like a stray divider. */}
+      <span className="h-1.5 w-5 rounded-t-full bg-stone-300" />
+      <span className="h-[3px] w-9 rounded-full bg-stone-400" />
+      <span className="h-[3px] w-9 rounded-full bg-stone-400" />
+      <span className="h-[3px] w-9 rounded-full bg-stone-400" />
     </div>
   );
 }
