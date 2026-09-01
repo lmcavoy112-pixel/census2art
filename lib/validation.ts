@@ -101,6 +101,24 @@ export function safeParam(value: string | null, maxLength = SHORT_TEXT): string 
 }
 
 /**
+ * Trims a query-string parameter and requires it to be a plain integer.
+ *
+ * The Irish census RPCs (get_household, get_person_matches, get_ded_geojson, ...) take
+ * house_uid/ded_id/polygon_id/townland_id as `integer` now, not the old compound text
+ * keys. Returns null on anything that isn't a clean integer string — "12.5" or "12abc"
+ * fail here rather than reaching supabase.rpc() and surfacing as a logged Postgres cast
+ * error; the caller's existing "missing parameter" branch handles it the same way a
+ * genuinely absent value always did.
+ */
+export function safeIntParam(value: string | null, maxLength = SHORT_TEXT): number | null {
+  const trimmed = safeParam(value, maxLength);
+  if (trimmed === null || !/^-?\d+$/.test(trimmed)) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
  * True for a same-site relative path an OAuth `returnTo`-style redirect can safely target.
  *
  * Rejects anything starting `//` (protocol-relative) *and* anything starting `/\` or

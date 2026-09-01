@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
 import { projectPersonMatches } from "../../../lib/census-fields";
+import { safeParam, safeIntParam } from "../../../lib/validation";
 
 function cleanSurname(value: string) {
   return value
@@ -13,13 +14,13 @@ function cleanSurname(value: string) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const surname = searchParams.get("surname");
-  const dedId = searchParams.get("ded_id");
-  // Omitted (or blank) townland means "every townland in this DED" — the merged
+  const surname = safeParam(searchParams.get("surname"));
+  const dedId = safeIntParam(searchParams.get("ded_id"));
+  // Omitted townland_id means "every townland in this DED" — the merged
   // townland/house step's "Viewing all" mode.
-  const townland = searchParams.get("townland");
+  const townlandId = safeIntParam(searchParams.get("townland_id"));
 
-  if (!surname || !dedId) {
+  if (!surname || dedId === null) {
     return NextResponse.json([]);
   }
 
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.rpc("get_person_matches", {
     input_surname_search: cleaned,
     input_ded_id: dedId,
-    input_townland_display: townland || null,
+    input_townland_id: townlandId,
   });
 
   if (error) {

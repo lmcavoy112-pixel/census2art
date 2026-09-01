@@ -5,14 +5,14 @@ import { safeIntParam } from "../../../lib/validation";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const polygonId = safeIntParam(searchParams.get("polygon_id"));
+  const townlandId = safeIntParam(searchParams.get("townland_id"));
 
-  if (polygonId === null) {
+  if (townlandId === null) {
     return NextResponse.json(null);
   }
 
-  const { data, error } = await supabase.rpc("get_ded_geojson", {
-    input_polygon_id: polygonId,
+  const { data, error } = await supabase.rpc("get_townland_geojson", {
+    input_townland_id: townlandId,
   });
 
   if (error) {

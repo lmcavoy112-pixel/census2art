@@ -1,64 +1,42 @@
-# 1911 census import — what needs to be added
+# Irish census schema — 1901 + 1911
 
-The schema was prepped for this ahead of time (see commit history / Supabase migration
-log around `census_year`). `census_people` and `census_houses` are now shared across
-census years, distinguished by a `census_year` column, so 1911 rows land in the same
-two tables as 1901 — not new tables.
+The 1901+1911 import described by earlier drafts of this doc is done. Both years are
+live in the same tables, and the schema was rebuilt from scratch to match the actual
+source export rather than bolting 1911 onto the old 1901-only design. This doc now
+describes what's actually there, not a plan for getting there.
 
-Two tables get new rows. The four summary tables (`surname_lookup`,
-`surname_county_counts`, `surname_ded_counts`, `surname_townland_counts`) are **not**
-hand-populated — they get regenerated from these two afterward, tagged
-`census_year = 1911`.
+`supabase/migrations/0005_irish_census_schema_and_rpcs.sql` is the source of truth —
+read it for exact column types and the 9 RPC function bodies. Nothing below should
+drift from that file; if it does, the migration wins.
 
-## `census_houses` — one row per household
+## Tables
 
-| Field | Value for 1911 |
-|---|---|
-| `house_uid` | `1911\|<ded_id>\|<townland_display>\|<house_no>` — must be unique |
-| `census_year` | `1911` |
-| `ded_id` | Reuse an **existing** code from `deds` (format `COUNTY_DEDNAME_n`) — don't invent new ones |
-| `townland_display` | Townland name as transcribed |
-| `house_no` | Text, not a number (decimals like `"11.1"` for subdivided houses are normal) |
-| `form_a_url` | Link to the household's scan, if available — nullable |
+- `irish_deds` — one row per District Electoral Division, `ded_id` (int) as PK.
+  Merges what used to be two tables (attributes + geometry) since the source ships
+  them together now.
+- `irish_townlands` — one row per townland, `townland_id` (int) as PK, FK to
+  `irish_deds`. Didn't exist before this rebuild. `geom_simplified` is null for
+  ~23.5% of rows (no matched boundary in the source) — a common case the app renders
+  around, not an error condition.
+- `irish_census_houses` — one row per physical **building**, `house_uid` (int) as PK,
+  spanning both census years (`form_a_1901_id`/`form_a_1911_id` are separate nullable
+  columns on the same row). A building can hold multiple unrelated families — kept as
+  the app's "household" unit anyway, by product decision, rather than splitting out a
+  finer family-level concept.
+- `irish_census_people` — one row per person per census year, `census_year` column
+  distinguishes 1901 from 1911. `surname_search` is lowercase with apostrophes and
+  spaces stripped (`O'Brien` → `obrien`) — anything populating this table by hand must
+  match that rule exactly, or search breaks.
+- `irish_surname_lookup`, `irish_surname_county_counts`, `irish_surname_ded_counts`,
+  `irish_surname_townland_counts` — long-format rollups, one row per surname per
+  census year (PK always ends in `census_year`). `ded_id`/`townland_id` are real
+  integer FKs now, not text.
 
-## `census_people` — one row per person
+## App scope
 
-| Field | Value for 1911 |
-|---|---|
-| `census_year` | `1911` |
-| `house_uid` | Must match a `house_uid` already inserted into `census_houses` |
-| `forename_display`, `surname_display` | As transcribed |
-| `surname_search` | Lowercase, **apostrophes and spaces stripped** (`O'Brien` → `obrien`) — must match this exact rule or search breaks |
-| `full_name` | As transcribed |
-| `age` | Text, not a number (blank/non-numeric entries are expected) |
-| `sex`, `relation_to_head`, `occupation`, `birthplace`, `education`, `religion`, `marriage_status` | Same free-text fields as 1901 |
-
-Don't set `id` (auto-generated identity, primary key). Don't include `form_a_url` —
-that column lives on `census_houses` now, not `census_people` (moved during the
-1911-prep migration; each household's scan link used to be duplicated onto every
-person row).
-
-The 1911 Form A also has three extra fields for married women (years married,
-children born alive, children still living) that 1901 doesn't have. Current plan is
-to drop those to match the existing layout — if that changes, they'd need new nullable
-columns on `census_people` rather than forcing them into the fields above.
-
-## DEDs / geometry
-No new rows needed — reuse the existing `deds` rows (District Electoral Divisions are
-the same administrative units in 1901 and 1911) unless a 1911 townland points at a DED
-genuinely missing from that table.
-
-## After loading
-Recompute the four rollup tables for `census_year = 1911`. Their primary keys now
-include the year, so this adds alongside the 1901 rows rather than overwriting them:
-
-- `surname_lookup` — PK `(surname_search, census_year)`
-- `surname_county_counts` — PK `(surname_search, census_year, county_display)`
-- `surname_ded_counts` — PK `(surname_search, census_year, ded_id)`
-- `surname_townland_counts` — PK `(surname_search, census_year, ded_id, townland_display)`
-
-## Not covered here
-The app itself (API routes, RPC functions like `get_household`/`get_person_matches`,
-the `app/irish-census-1901` frontend routing) is still hardcoded to 1901 and has not
-been updated to be year-aware. That's a separate, later piece of work from loading the
-1911 rows.
+Search/browse (surname lookup, county/DED lists, choropleths) is hardcoded to
+`census_year = 1901` in the RPCs and the plain-listing API routes — there's no year
+toggle anywhere in the UI. 1911 residents are reachable once a specific `house_uid` is
+opened (`get_household` returns both years, tagged per row, since a building
+inherently spans both) but are not yet *findable* by surname search. Adding a year
+toggle across search/browse is separate, not-yet-started follow-up work.

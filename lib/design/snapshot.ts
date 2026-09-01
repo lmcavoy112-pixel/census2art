@@ -19,6 +19,7 @@ export type HouseholdPerson = {
   surname_display?: string | null;
   surname_search?: string | null;
   house_uid?: string | null;
+  census_year?: string | number | null;
   age?: string | number | null;
   sex?: string | null;
   relation_to_head?: string | null;
@@ -37,6 +38,7 @@ export type DesignSnapshot = {
   dedId?: string;
   dedDisplay?: string;
   townland?: string;
+  townlandId?: string;
   houseNo?: string;
   houseUid?: string;
   household?: HouseholdPerson[];

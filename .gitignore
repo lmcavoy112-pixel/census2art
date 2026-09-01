@@ -51,5 +51,10 @@ next-env.d.ts
 # Internal cost/pricing exports — real supplier costs and margins, not for the repo.
 /pricing/
 
+# Raw 1901+1911 census source export (9.6GB+: census_people.csv alone is 9.5GB) plus the
+# one-off Python import scripts that loaded it into Supabase directly. Already imported —
+# kept locally for reference/rerun, never meant to enter git history.
+/Irish Census Data/
+
 # Personal Claude Code permission preferences — machine-specific paths, not shared config.
 .claude/settings.local.json

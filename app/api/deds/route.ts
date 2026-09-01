@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { safeParam } from "../../../lib/validation";
 
 function normaliseSurnameSearch(value: string) {
   return value.trim().toLowerCase();
@@ -9,13 +10,13 @@ function getSurnameFromRequest(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   return (
-    searchParams.get("surname_search") ||
-    searchParams.get("surnameSearch") ||
-    searchParams.get("surname") ||
-    searchParams.get("q") ||
-    searchParams.get("query") ||
-    searchParams.get("search") ||
-    searchParams.get("name") ||
+    safeParam(searchParams.get("surname_search")) ||
+    safeParam(searchParams.get("surnameSearch")) ||
+    safeParam(searchParams.get("surname")) ||
+    safeParam(searchParams.get("q")) ||
+    safeParam(searchParams.get("query")) ||
+    safeParam(searchParams.get("search")) ||
+    safeParam(searchParams.get("name")) ||
     ""
   );
 }
@@ -24,9 +25,9 @@ function getCountyFromRequest(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   return (
-    searchParams.get("county_display") ||
-    searchParams.get("countyDisplay") ||
-    searchParams.get("county") ||
+    safeParam(searchParams.get("county_display")) ||
+    safeParam(searchParams.get("countyDisplay")) ||
+    safeParam(searchParams.get("county")) ||
     ""
   );
 }
@@ -45,11 +46,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // irish_surname_ded_counts no longer carries ded_display/county_display directly
+    // (the source dropped them) — pulled in here via the ded_id foreign key instead.
+    // !inner is required because we filter on the embedded table's county_display.
     const { data, error } = await supabase
-      .from("surname_ded_counts")
-      .select("surname_search, ded_id, ded_display, county_display, person_count")
+      .from("irish_surname_ded_counts")
+      .select("ded_id, person_count, irish_deds!inner(ded_display, county_display)")
       .eq("surname_search", surnameSearch)
-      .eq("county_display", countyDisplay)
+      .eq("census_year", 1901)
+      .eq("irish_deds.county_display", countyDisplay)
       .order("person_count", { ascending: false });
 
     if (error) {
@@ -70,10 +75,14 @@ export async function GET(request: NextRequest) {
 
     const deds =
       data?.map((row) => {
+        const ded = row.irish_deds as unknown as {
+          ded_display: string;
+          county_display: string;
+        } | null;
         return {
           ded_id: row.ded_id,
-          ded_display: row.ded_display,
-          county_display: row.county_display,
+          ded_display: ded?.ded_display ?? "",
+          county_display: ded?.county_display ?? countyDisplay,
           person_count: Number(row.person_count || 0),
         };
       }) || [];

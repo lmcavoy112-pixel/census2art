@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
+import { safeParam } from "../../../../lib/validation";
 
 function smartSurnameDisplay(value: string) {
   return value
@@ -19,8 +20,9 @@ function smartSurnameDisplay(value: string) {
 
 async function aggregateTopSurnames(prefix?: string): Promise<Map<string, number>> {
   let query = supabase
-    .from("surname_county_counts")
+    .from("irish_surname_county_counts")
     .select("surname_search, person_count")
+    .eq("census_year", 1901)
     .order("person_count", { ascending: false })
     .limit(500);
 
@@ -40,7 +42,7 @@ async function aggregateTopSurnames(prefix?: string): Promise<Map<string, number
 }
 
 export async function GET(request: NextRequest) {
-  const q = request.nextUrl.searchParams.get("q")?.trim().toLowerCase() ?? "";
+  const q = safeParam(request.nextUrl.searchParams.get("q"))?.toLowerCase() ?? "";
 
   const totals = await aggregateTopSurnames(q || undefined);
 

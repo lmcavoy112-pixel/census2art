@@ -31,8 +31,19 @@ export type CountyCount = {
 export type DedCount = DedRow;
 
 export type TownlandCount = {
+  townland_id: string;
   townland_display: string;
   person_count: number;
+};
+
+/** A single townland's boundary, or a townland_id with no geometry on file — the
+ *  caller distinguishes "not fetched"/"no such townland" (null) from "found it, no
+ *  boundary yet" (geojson: null) and falls back to the DED polygon in both cases. */
+export type TownlandPolygon = {
+  townland_id: string;
+  townland_display: string;
+  polygon_id?: string;
+  geojson: any | null;
 };
 
 /** Every fetcher below sends the same surname under every alias an API route might
@@ -76,6 +87,7 @@ export function normaliseTownlandRows(rows: any[]): TownlandCount[] {
   return rows
     .map((item) => {
       return {
+        townland_id: pickString(item, ["townland_id", "townlandId"]),
         townland_display: pickString(item, [
           "townland_display",
           "townland",
@@ -111,7 +123,9 @@ export function normalisePersonRows(rows: any[]): PersonMatch[] {
       ]),
       surname_search: pickString(item, ["surname_search", "surnameSearch"]),
       house_uid: pickString(item, ["house_uid", "houseUid"]),
+      census_year: pickString(item, ["census_year", "censusYear"]),
       house_no: pickString(item, ["house_no", "houseNo"]),
+      townland_id: pickString(item, ["townland_id", "townlandId"]),
       townland_display: pickString(item, ["townland_display", "townlandDisplay"]),
       age: pickString(item, ["age"]),
       relation_to_head: pickString(item, [
@@ -142,6 +156,7 @@ export function normaliseHouseholdRows(rows: any[]): HouseholdPerson[] {
         ]),
         surname_search: pickString(item, ["surname_search", "surnameSearch"]),
         house_uid: pickString(item, ["house_uid", "houseUid"]),
+        census_year: pickString(item, ["census_year", "censusYear"]),
         age: pickString(item, ["age"]),
         sex: pickString(item, ["sex"]),
         relation_to_head: pickString(item, [
@@ -220,20 +235,19 @@ export async function fetchTownlands(
   return normaliseTownlandRows(readArray(payload, ["townlands", "results", "data"]));
 }
 
-/** Omit townlandDisplay (or pass "") to fetch every household in the DED at once. */
+/** Omit townlandId (or pass "") to fetch every household in the DED at once. */
 export async function fetchPersonMatches(
   surnameSearch: string,
   dedId: string,
-  townlandDisplay?: string
+  townlandId?: string
 ): Promise<PersonMatch[]> {
   const payload = await fetchJson(
     buildUrl("/api/person-matches", {
       ...surnameAliases(surnameSearch),
       ded_id: dedId,
       dedId,
-      townland: townlandDisplay,
-      townland_display: townlandDisplay,
-      townlandDisplay,
+      townland_id: townlandId,
+      townlandId,
     })
   );
   return normalisePersonRows(readArray(payload, ["people", "matches", "results", "data"]));
@@ -244,4 +258,25 @@ export async function fetchHousehold(houseUid: string): Promise<HouseholdPerson[
     buildUrl("/api/household", { house_uid: houseUid, houseUid })
   );
   return normaliseHouseholdRows(readArray(payload, ["household", "people", "results", "data"]));
+}
+
+/** A townland's own boundary, for rendering a finer border than the DED polygon when
+ *  one is available. Returns null if the townland_id itself wasn't found; returns a
+ *  row with geojson: null if the townland exists but has no boundary on file (a
+ *  common case — see get_townland_geojson) — both are "fall back to the DED shape". */
+export async function fetchTownlandPolygon(townlandId: string): Promise<TownlandPolygon | null> {
+  if (!townlandId) return null;
+
+  const payload = await fetchJson(buildUrl("/api/townland-polygon", { townland_id: townlandId }));
+  if (!payload || typeof payload !== "object") return null;
+
+  const id = pickString(payload, ["townland_id", "townlandId"]);
+  if (!id) return null;
+
+  return {
+    townland_id: id,
+    townland_display: pickString(payload, ["townland_display", "townlandDisplay"]),
+    polygon_id: pickString(payload, ["polygon_id", "polygonId"]) || undefined,
+    geojson: (payload as any).geojson ?? null,
+  };
 }

@@ -10,9 +10,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Recommended skills for this project
 
-- **frontend-design** — use for `/create` and `/design` page work. The Celtic-art print calibration UI (borders, symbols, layout presets) is the product itself; avoid generic Tailwind-default styling here.
+- **frontend-design** — use for `app/irish-census-1901/page.tsx` and its `design/` subroute. The Celtic-art print calibration UI (borders, symbols, layout presets) is the product itself; avoid generic Tailwind-default styling here.
 - **dataviz** — use for `IrelandMap` / `IrelandArtworkMap` choropleth work (coloring by `person_count`, legends, tooltips).
-- **simplify** — run after non-trivial changes. Note: `app/create/page.tsx` and `app/design/page.tsx` duplicate the same helpers verbatim (`buildUrl`, `fetchJson`, `readArray`, `pickString`, `pickNumber`, `normaliseDedRows`/`normaliseCountyRows`, `smartSurnameDisplay`) — a candidate for extraction to `lib/` next time either file is touched.
+- **simplify** — run after non-trivial changes. The helpers once duplicated verbatim across the census page and the designer (`buildUrl`, `fetchJson`, `readArray`, `pickString`, `pickNumber`, `normaliseDedRows`, `smartSurnameDisplay`) already live in `lib/design/fetching.ts`; `normaliseCountyRows` lives in `lib/census/queries.ts`. Check both files still import from there before adding a new copy.
 - **security-review** — run before shipping checkout/payment code. The API routes surface real genealogy PII (names, ages, religion, occupation, birthplace) from Supabase, and the product integrates with Prodigi for real print orders.
 - **run** — use to verify UI changes in-browser rather than relying on type-checks alone; the design page is pixel-calibrated and needs visual confirmation.
 - **fewer-permission-prompts** — re-run periodically as new commands come up to keep `.claude/settings.local.json` current and cut down on permission round-trips.
@@ -21,6 +21,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 Beyond the **security-review** skill, this repo is set up for [Strix](https://github.com/usestrix/strix) agentic pentesting: `npm run security:scan`. Scope and rules of engagement live in `.strix/instructions.md` — keep it current when API routes change. See [docs/security-testing.md](docs/security-testing.md). Never point a scan at production without understanding that the order endpoints reach Prodigi and can place real, billable print orders.
 
-# 1911 census import
+# Irish census schema
 
-`census_people` and `census_houses` already carry a `census_year` column and are meant to hold both 1901 and 1911 rows — not separate per-year tables. See [docs/1911-import.md](docs/1911-import.md) for the exact fields the 1911 data needs to provide, the `surname_search` normalisation rule it must match, and what has to happen to the four rollup tables after loading. The app itself (API routes, RPC functions, `app/irish-census-1901` routing) is still hardcoded to 1901 and is separate follow-up work.
+The Irish census schema was rebuilt from scratch (tables renamed with an `irish_`
+prefix, `house_uid`/`ded_id`/`townland_id` are now integers, both 1901 and 1911 are
+loaded — 8.27M `irish_census_people` rows). `supabase/migrations/0005_irish_census_schema_and_rpcs.sql`
+is the source of truth for the schema and the 9 RPC functions; see
+[docs/1911-import.md](docs/1911-import.md) for a summary. Search/browse (surname
+lookup, county/DED lists, choropleths) is still hardcoded to `census_year = 1901` —
+1911 residents are reachable via a household but not yet findable by surname search; a
+year toggle is separate, not-yet-started follow-up work.

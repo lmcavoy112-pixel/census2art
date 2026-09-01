@@ -10,7 +10,9 @@ export type PersonMatch = {
   surname_display?: string;
   surname_search?: string;
   house_uid?: string;
+  census_year?: string;
   house_no?: string;
+  townland_id?: string;
   townland_display?: string;
   age?: string;
   relation_to_head?: string;
@@ -20,6 +22,7 @@ export type PersonMatch = {
 export type HouseGroup = {
   house_uid: string;
   house_no: string;
+  townland_id: string;
   townland_display: string;
   people: PersonMatch[];
 };
@@ -68,6 +71,7 @@ export function groupHouses(personMatches: PersonMatch[]): HouseGroup[] {
       groups.set(key, {
         house_uid: houseUid,
         house_no: houseNo,
+        townland_id: person.townland_id || "",
         townland_display: person.townland_display || "",
         people: [],
       });

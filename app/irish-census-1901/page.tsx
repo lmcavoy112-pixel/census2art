@@ -25,12 +25,14 @@ import {
   fetchHousehold,
   fetchPersonMatches,
   fetchSurnamePolygons,
+  fetchTownlandPolygon,
   fetchTownlands,
   normaliseCountyRows,
   type CountyCount,
   type DedCount,
   type HouseholdPerson,
   type TownlandCount,
+  type TownlandPolygon,
 } from "@/lib/census/queries";
 import {
   pruneDesignSnapshots,
@@ -90,6 +92,7 @@ function CensusLanding() {
   const deepLinkCounty = searchParams.get("county")?.trim() ?? "";
   const deepLinkDedId = searchParams.get("dedId")?.trim() ?? "";
   const deepLinkTownland = searchParams.get("townland")?.trim() ?? "";
+  const deepLinkTownlandId = searchParams.get("townlandId")?.trim() ?? "";
   const deepLinkHouseNo = searchParams.get("houseNo")?.trim() ?? "";
   const deepLinkHouseUid = searchParams.get("houseUid")?.trim() ?? "";
 
@@ -130,6 +133,7 @@ function CensusLanding() {
   const [selectedHouse, setSelectedHouse] = useState<{
     house_uid: string;
     house_no: string;
+    townland_id: string;
     townland_display: string;
   } | null>(null);
 
@@ -198,15 +202,42 @@ function CensusLanding() {
   // "Viewing all" (selectedTownland === null) shows every household in the district;
   // picking a townland narrows this to just its street. personMatches itself always
   // holds the whole district — see handleSelectDed — so this is a pure client-side
-  // filter, no request.
+  // filter, no request. Matched on townland_id rather than the display text: two
+  // distinct townlands in the same DED can share a name, and matching on the id (a
+  // real FK) avoids folding them together.
   const houseGroups = useMemo(() => {
     const visible = selectedTownland
-      ? personMatches.filter(
-          (person) => person.townland_display === selectedTownland.townland_display
-        )
+      ? personMatches.filter((person) => person.townland_id === selectedTownland.townland_id)
       : personMatches;
     return groupHouses(visible);
   }, [personMatches, selectedTownland]);
+
+  // The townland's own boundary, fetched whenever one is selected — falls back to
+  // just the DED polygon (already drawn) both while nothing is selected and when the
+  // selected townland has no geometry on file (get_townland_geojson returns
+  // geojson: null for that case, which is a common ~23.5% of townlands, not an error).
+  const [townlandGeojson, setTownlandGeojson] = useState<TownlandPolygon | null>(null);
+
+  useEffect(() => {
+    const townlandId = selectedTownland?.townland_id;
+    if (!townlandId) {
+      setTownlandGeojson(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchTownlandPolygon(townlandId)
+      .then((polygon) => {
+        if (!cancelled) setTownlandGeojson(polygon);
+      })
+      .catch(() => {
+        if (!cancelled) setTownlandGeojson(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTownland?.townland_id]);
 
   const formAUrls = useMemo(() => {
     const urls = household
@@ -282,6 +313,7 @@ function CensusLanding() {
       county: deepLinkCounty,
       dedId: deepLinkDedId,
       townland: deepLinkTownland,
+      townlandId: deepLinkTownlandId,
       houseNo: deepLinkHouseNo,
       houseUid: deepLinkHouseUid,
       household: saved?.household,
@@ -591,6 +623,7 @@ function CensusLanding() {
     setSelectedHouse({
       house_uid: group.house_uid,
       house_no: group.house_no,
+      townland_id: group.townland_id,
       townland_display: group.townland_display,
     });
 
@@ -651,6 +684,7 @@ function CensusLanding() {
     county: string;
     dedId: string;
     townland: string;
+    townlandId?: string;
     houseNo: string;
     houseUid: string;
     household?: HouseholdPerson[];
@@ -692,8 +726,12 @@ function CensusLanding() {
       const townlandRows = await fetchTownlands(activeSurnameSearch, ded.ded_id);
       setTownlands(townlandRows);
 
-      const townland =
-        townlandRows.find((item) => item.townland_display === target.townland) ?? null;
+      // Prefer matching by townland_id (a newer snapshot/link carries one) — falls
+      // back to the display text for an older snapshot minted before townlandId was
+      // carried on the query string.
+      const townland = target.townlandId
+        ? (townlandRows.find((item) => item.townland_id === target.townlandId) ?? null)
+        : (townlandRows.find((item) => item.townland_display === target.townland) ?? null);
       if (!townland) {
         finishAt("townland");
         return;
@@ -703,7 +741,7 @@ function CensusLanding() {
       const matches = await fetchPersonMatches(
         activeSurnameSearch,
         ded.ded_id,
-        townland.townland_display
+        townland.townland_id
       );
       setPersonMatches(matches);
 
@@ -721,6 +759,7 @@ function CensusLanding() {
       setSelectedHouse({
         house_uid: group.house_uid,
         house_no: group.house_no,
+        townland_id: group.townland_id,
         townland_display: group.townland_display,
       });
 
@@ -786,9 +825,11 @@ function CensusLanding() {
 
     // Scoped to the selected house's own townland rather than the dropdown filter —
     // "Viewing all" mixes many streets into `houseGroups`, and siblings from a
-    // different street would poison the geocoder's neighbour fallback.
+    // different street would poison the geocoder's neighbour fallback. Matched on
+    // townland_id, not the display text — two townlands in the same DED can share a
+    // name.
     const siblingHouseNos = groupHouses(personMatches)
-      .filter((group) => group.townland_display === selectedHouse.townland_display)
+      .filter((group) => group.townland_id === selectedHouse.townland_id)
       .map((group) => group.house_no)
       .filter(Boolean)
       .join(",");
@@ -860,6 +901,7 @@ function CensusLanding() {
       // townland_display is the fallback (same pattern the Review Details step already
       // uses below to display this correctly).
       townland: selectedTownland?.townland_display || selectedHouse?.townland_display || "",
+      townlandId: selectedTownland?.townland_id || selectedHouse?.townland_id || "",
       houseNo: selectedHouse?.house_no || "",
       houseUid: selectedHouse?.house_uid || "",
       household,
@@ -901,6 +943,10 @@ function CensusLanding() {
 
     if (snapshot.townland) {
       params.set("townland", snapshot.townland);
+    }
+
+    if (snapshot.townlandId) {
+      params.set("townlandId", snapshot.townlandId);
     }
 
     if (snapshot.houseNo) {
@@ -1066,15 +1112,14 @@ function CensusLanding() {
     body: houseGroups.length ? (
       <div className="space-y-3">
         <PickSelect
-          value={selectedTownland?.townland_display ?? ""}
+          value={selectedTownland?.townland_id ?? ""}
           allLabel="Viewing all"
           onChange={(value) => {
-            const townland =
-              townlands.find((item) => item.townland_display === value) ?? null;
+            const townland = townlands.find((item) => item.townland_id === value) ?? null;
             handleSelectTownland(townland);
           }}
           options={townlands.map((townland) => ({
-            value: townland.townland_display,
+            value: townland.townland_id,
             label: townland.townland_display,
             count: townland.person_count,
           }))}
@@ -1118,6 +1163,10 @@ function CensusLanding() {
                       >
                         {person.full_name || "Unknown"}
                         {person.age ? `, ${person.age}` : ""}
+                        {/* A house_uid now spans a whole building across both census
+                            years, so this can genuinely mix 1901 and 1911 residents —
+                            called out here so that reads as real data, not a glitch. */}
+                        {person.census_year ? ` (${person.census_year})` : ""}
                       </p>
                     ))}
                   </div>
@@ -1268,7 +1317,7 @@ function CensusLanding() {
               <table className="w-full min-w-[520px] text-[12.5px]">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50 text-left">
-                    {["Name", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
+                    {["Name", "Year", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
                       (heading) => (
                         <th
                           key={heading}
@@ -1300,6 +1349,7 @@ function CensusLanding() {
                         >
                           {person.full_name || ""}
                         </td>
+                        <td className="px-3 py-1.5 text-stone-600">{person.census_year || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">{person.age || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">{person.sex || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">
@@ -1407,6 +1457,7 @@ function CensusLanding() {
               fill
               polygons={mapPolygons}
               selectedDedId={selectedDed?.ded_id || ""}
+              townlandPolygon={townlandGeojson}
               onSelectDed={(ded: any) => {
                 if (ded) void handleMapSelectDed(ded as DedCount);
                 else handleClearDedFromMap();

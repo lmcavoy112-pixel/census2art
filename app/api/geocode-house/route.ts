@@ -6,6 +6,7 @@ import {
   normaliseHouseNumber,
   normalisePlaceName,
 } from "../../../lib/addressMatching";
+import { safeParam, safeIntParam } from "../../../lib/validation";
 
 /**
  * Where a candidate coordinate came from, worst to best:
@@ -69,16 +70,19 @@ function buildStreetCacheKey(polygonId: string, place: string) {
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const polygonId = searchParams.get("polygon_id") || "";
-  const county = searchParams.get("county") || "";
-  const townland = searchParams.get("townland") || "";
-  const houseNo = searchParams.get("house_no") || "";
-  const siblings = (searchParams.get("siblings") || "")
+  // Kept as a string for cache-key building (buildCacheKey/buildStreetCacheKey just
+  // need stable text); the RPC calls below need the numeric form.
+  const polygonId = safeParam(searchParams.get("polygon_id")) || "";
+  const polygonIdNum = safeIntParam(searchParams.get("polygon_id"));
+  const county = safeParam(searchParams.get("county")) || "";
+  const townland = safeParam(searchParams.get("townland")) || "";
+  const houseNo = safeParam(searchParams.get("house_no")) || "";
+  const siblings = (safeParam(searchParams.get("siblings"), 2000) || "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
-  if (!polygonId || !county || !townland) {
+  if (!polygonId || polygonIdNum === null || !county || !townland) {
     return NextResponse.json(null);
   }
 
@@ -96,7 +100,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: bounds, error: boundsError } = await supabase.rpc("get_ded_geocode_bounds", {
-      input_polygon_id: polygonId,
+      input_polygon_id: polygonIdNum,
     });
 
     if (boundsError || !bounds) {
@@ -107,7 +111,15 @@ export async function GET(request: NextRequest) {
     }
 
     const b = bounds as DedBounds;
-    const result = await resolveCoordinate(polygonId, b, county, townland, houseNo, siblings);
+    const result = await resolveCoordinate(
+      polygonId,
+      polygonIdNum,
+      b,
+      county,
+      townland,
+      houseNo,
+      siblings
+    );
 
     // Only the exact address is cached under this household's key. A neighbour or a
     // street is already cached under its own key by the step that found it, and
@@ -142,6 +154,7 @@ async function writeCache(
 
 async function resolveCoordinate(
   polygonId: string,
+  polygonIdNum: number,
   bounds: DedBounds,
   county: string,
   townland: string,
@@ -172,7 +185,7 @@ async function resolveCoordinate(
   if (houseDigits) {
     const exact = await geocodeAndValidate(
       `${houseDigits} ${place}, Co. ${county}, Ireland`,
-      polygonId,
+      polygonIdNum,
       bounds,
       apiKey
     );
@@ -209,7 +222,7 @@ async function resolveCoordinate(
 
       const found = await geocodeAndValidate(
         `${candidate} ${place}, Co. ${county}, Ireland`,
-        polygonId,
+        polygonIdNum,
         bounds,
         apiKey
       );
@@ -244,7 +257,7 @@ async function resolveCoordinate(
 
   const street = await geocodeAndValidate(
     `${place}, Co. ${county}, Ireland`,
-    polygonId,
+    polygonIdNum,
     bounds,
     apiKey
   );
@@ -272,7 +285,7 @@ async function resolveCoordinate(
  */
 async function geocodeAndValidate(
   query: string,
-  polygonId: string,
+  polygonId: number,
   bounds: DedBounds,
   apiKey: string
 ): Promise<{ lng: number; lat: number; houseNumber: string } | null> {

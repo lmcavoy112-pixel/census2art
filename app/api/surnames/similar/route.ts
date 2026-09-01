@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
+import { safeParam } from "../../../../lib/validation";
 
 function smartSurnameDisplay(value: string) {
   return value
@@ -35,7 +36,10 @@ function levenshtein(a: string, b: string): number {
 }
 
 export async function GET(request: NextRequest) {
-  const q = request.nextUrl.searchParams.get("q")?.trim().toLowerCase() ?? "";
+  // Capped well below SHORT_TEXT: q feeds an O(m*n) Levenshtein comparison against up
+  // to 1000 candidate surnames per request, so an oversized value is a cheap CPU-burn
+  // lever even with the route's own rate limit in place.
+  const q = safeParam(request.nextUrl.searchParams.get("q"), 50)?.toLowerCase() ?? "";
 
   if (q.length < 2) {
     return NextResponse.json({ suggestions: [] });
@@ -45,8 +49,9 @@ export async function GET(request: NextRequest) {
   const maxDistance = Math.max(2, Math.floor(q.length * 0.4));
 
   const { data, error } = await supabase
-    .from("surname_county_counts")
+    .from("irish_surname_county_counts")
     .select("surname_search, person_count")
+    .eq("census_year", 1901)
     .ilike("surname_search", `${prefix}%`)
     .limit(1000);
 

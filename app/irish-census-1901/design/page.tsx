@@ -26,6 +26,7 @@ import {
   smartSurnameDisplay,
   type DedRow,
 } from "@/lib/design/fetching";
+import { fetchTownlandPolygon } from "@/lib/census/queries";
 import {
   buildGalleryGroups,
   FORMAT_ORDER,
@@ -359,6 +360,7 @@ function ModernDesignContent() {
   const [surnameSearch, setSurnameSearch] = useState("");
   const [county, setCounty] = useState("");
   const [dedId, setDedId] = useState("");
+  const [townlandId, setTownlandId] = useState("");
   const [houseUid, setHouseUid] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -479,6 +481,7 @@ function ModernDesignContent() {
     const nextDedId = saved?.dedId || getParam(params, "dedId");
     const nextDedDisplay = cleanOptionalValue(saved?.dedDisplay || getParam(params, "dedDisplay"));
     const nextTownland = cleanOptionalValue(saved?.townland || getParam(params, "townland"));
+    const nextTownlandId = saved?.townlandId || getParam(params, "townlandId");
     const nextHouseNo = cleanOptionalValue(saved?.houseNo || getParam(params, "houseNo"));
     const nextHouseUid = saved?.houseUid || getParam(params, "houseUid");
     const nextHousehold = saved?.household || [];
@@ -489,6 +492,7 @@ function ModernDesignContent() {
     setSurnameSearch(nextSurnameSearch);
     setCounty(nextCounty);
     setDedId(nextDedId);
+    setTownlandId(nextTownlandId);
     setHouseUid(nextHouseUid);
     setDedDisplayText(nextDedDisplay);
     setTownlandText(nextTownland);
@@ -659,6 +663,36 @@ function ModernDesignContent() {
     };
   }, [loaded, county]);
 
+  // The townland's own boundary, for a finer border than the DED polygon at street
+  // level. Falls back to nothing both while no townland is known and when the
+  // townland has no geometry on file (a common ~23.5% case, not an error) — both are
+  // just townlandGeojson staying null, same as the outline effect above.
+  const [townlandGeojson, setTownlandGeojson] = useState<unknown | null>(null);
+
+  useEffect(() => {
+    if (!loaded || template !== "modern") return;
+
+    let cancelled = false;
+
+    async function loadTownlandGeojson() {
+      if (!townlandId) {
+        if (!cancelled) setTownlandGeojson(null);
+        return;
+      }
+      try {
+        const polygon = await fetchTownlandPolygon(townlandId);
+        if (!cancelled) setTownlandGeojson(polygon?.geojson ?? null);
+      } catch {
+        if (!cancelled) setTownlandGeojson(null);
+      }
+    }
+
+    void loadTownlandGeojson();
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, template, townlandId]);
+
   const preset = MODERN_PRESETS[level];
 
   // Mobile-only: the drag-resizable split between the poster/map stage and the control
@@ -699,6 +733,7 @@ function ModernDesignContent() {
     if (dedId) params.set("dedId", dedId);
     if (dedDisplayText) params.set("dedDisplay", dedDisplayText);
     if (townlandText) params.set("townland", townlandText);
+    if (townlandId) params.set("townlandId", townlandId);
     if (houseNoText) params.set("houseNo", houseNoText);
     if (houseUid) params.set("houseUid", houseUid);
 
@@ -743,9 +778,12 @@ function ModernDesignContent() {
     [polygons]
   );
 
-  // Only the county view draws a separate boundary line; deeper levels have the
-  // highlight stroke as their only outline.
-  const visibleOutline = level === "county" ? outline : null;
+  // County draws the dissolved county boundary; Street draws the selected townland's
+  // own boundary when one is on file (falls back to nothing — just the DED highlight
+  // stroke — both while no townland is known and when it has no geometry, a common
+  // case). District has only the highlight stroke as its outline.
+  const visibleOutline =
+    level === "county" ? outline : level === "street" ? townlandGeojson : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -816,6 +854,12 @@ function ModernDesignContent() {
   // palette's land colour.
   const outlineHex = mapPalette.label;
   const OUTLINE_WIDTH = 2;
+  // At street level the outline draws over the dark district highlight fill instead of
+  // the plain basemap the county outline was tuned for -- outlineHex (tuned for
+  // contrast against land colour) reads as effectively invisible on top of that fill.
+  // Same blue as the interactive census map's townland border, for both contrast and a
+  // consistent "this marks the townland" visual language across the two pipelines.
+  const effectiveOutlineColour = level === "street" ? "#1d4ed8" : outlineHex;
 
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
@@ -1339,7 +1383,7 @@ function ModernDesignContent() {
           outline: visibleOutline,
           accentColour: polygonHex,
           borderColour: borderHex,
-          outlineColour: outlineHex,
+          outlineColour: effectiveOutlineColour,
           outlineWidth: OUTLINE_WIDTH,
           showFill: showPolygonFill,
           highlightLineWidth: borderWidth,
@@ -2582,7 +2626,7 @@ function ModernDesignContent() {
                     contourDensity={contourDensity}
                     accentColour={polygonHex}
                     borderColour={borderHex}
-                    outlineColour={outlineHex}
+                    outlineColour={effectiveOutlineColour}
                     outlineWidth={OUTLINE_WIDTH}
                     showFill={showPolygonFill}
                     highlights={highlights}

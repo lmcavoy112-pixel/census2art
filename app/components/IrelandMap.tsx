@@ -55,6 +55,14 @@ type IrelandMapProps = {
   flyTo?: { lng: number; lat: number; zoom?: number; token: number } | null;
   /** Reports the map centre as "lng,lat" so searches can be biased to the view. */
   onCentreChange?: (centre: string) => void;
+  /**
+   * A single townland's own boundary, drawn over the DED choropleth once one is
+   * selected. Falls back to nothing (just the DED polygon underneath) both when no
+   * townland is selected and when the selected one has no geometry on file — a
+   * ~23.5% case, not rare — so this prop is simply absent or has a null `geojson`
+   * in both situations; there is no separate "not found" state to handle here.
+   */
+  townlandPolygon?: { geojson: any; townland_display?: string } | null;
 };
 
 const IRELAND_GREEN = "#FF1493";
@@ -209,9 +217,14 @@ function getSinglePolygonBounds(polygon: DedPolygon | undefined) {
 function FitBounds({
   polygons,
   selectedDedId,
+  townlandGeojson,
 }: {
   polygons: DedPolygon[];
   selectedDedId: string;
+  /** When present, frames tighter on the townland than the whole DED — this is a
+   *  live, re-pannable interactive map, not a fixed print frame, so it's safe to let
+   *  the finer selection drive the camera here (unlike the Modern print pipeline). */
+  townlandGeojson?: any;
 }) {
   const map = useMap();
 
@@ -220,6 +233,20 @@ function FitBounds({
 
     function run() {
       map.invalidateSize();
+
+      const townlandBounds = townlandGeojson
+        ? getSinglePolygonBounds({ geojson: townlandGeojson } as DedPolygon)
+        : null;
+
+      if (townlandBounds && townlandBounds.isValid()) {
+        map.fitBounds(townlandBounds, {
+          padding: [70, 70],
+          maxZoom: 15,
+          animate: true,
+          duration: 0.45,
+        });
+        return;
+      }
 
       if (polygons.length === 0) {
         return;
@@ -252,7 +279,7 @@ function FitBounds({
     return () => {
       timeoutIds.forEach((id) => clearTimeout(id));
     };
-  }, [map, polygons, selectedDedId]);
+  }, [map, polygons, selectedDedId, townlandGeojson]);
 
   return null;
 }
@@ -366,6 +393,7 @@ export default function IrelandMap({
   pinFocusZoom = 15,
   flyTo = null,
   onCentreChange,
+  townlandPolygon = null,
 }: IrelandMapProps) {
   const maxCount = useMemo(() => {
     if (polygons.length === 0) {
@@ -486,7 +514,11 @@ export default function IrelandMap({
         />
 
         <MapSizeFix />
-        <FitBounds polygons={polygons} selectedDedId={selectedDedId} />
+        <FitBounds
+          polygons={polygons}
+          selectedDedId={selectedDedId}
+          townlandGeojson={townlandPolygon?.geojson}
+        />
         <FlyToTarget target={flyTo} />
         <CentreReporter onChange={onCentreChange} />
         <ZoomFade
@@ -579,6 +611,33 @@ export default function IrelandMap({
             </GeoJSON>
           );
         })}
+
+        {/* Drawn after the DED layer above, so Leaflet's SVG renderer (paints in DOM
+            order) puts it on top. Outline only — no fill — so it reads as a finer
+            boundary on top of the choropleth rather than competing with it, and
+            stays at full opacity regardless of ZoomFade: the zoom range where the DED
+            fill fades out (13-15.5) is exactly where this becomes most useful against
+            the street map it reveals. */}
+        {townlandPolygon?.geojson &&
+          (() => {
+            const data = wrapAsFeature(townlandPolygon.geojson);
+            if (!data) return null;
+
+            return (
+              <GeoJSON
+                key={`townland-${townlandPolygon.townland_display || "polygon"}`}
+                data={data}
+                interactive={false}
+                pathOptions={{
+                  stroke: true,
+                  color: "#1d4ed8",
+                  weight: 3,
+                  opacity: 1,
+                  fill: false,
+                }}
+              />
+            );
+          })()}
       </MapContainer>
     </div>
   );

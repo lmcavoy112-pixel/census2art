@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { safeParam } from "../../../lib/validation";
 
 function normaliseSurnameSearch(value: string) {
   return value.trim().toLowerCase();
@@ -9,13 +10,13 @@ function getSurnameFromRequest(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   return (
-    searchParams.get("surname_search") ||
-    searchParams.get("surnameSearch") ||
-    searchParams.get("surname") ||
-    searchParams.get("q") ||
-    searchParams.get("query") ||
-    searchParams.get("search") ||
-    searchParams.get("name") ||
+    safeParam(searchParams.get("surname_search")) ||
+    safeParam(searchParams.get("surnameSearch")) ||
+    safeParam(searchParams.get("surname")) ||
+    safeParam(searchParams.get("q")) ||
+    safeParam(searchParams.get("query")) ||
+    safeParam(searchParams.get("search")) ||
+    safeParam(searchParams.get("name")) ||
     ""
   );
 }
@@ -33,10 +34,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // census_year filter is required, not optional: irish_surname_lookup's PK is now
+    // (surname_search, census_year), so a bare surname_search filter matches both
+    // 1901 and 1911 rows and .maybeSingle() throws on the second one.
     const { data: lookupData, error: lookupError } = await supabase
-      .from("surname_lookup")
+      .from("irish_surname_lookup")
       .select("surname_display, surname_search, count")
       .eq("surname_search", surnameSearch)
+      .eq("census_year", 1901)
       .maybeSingle();
 
     if (lookupError) {
@@ -44,9 +49,10 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: countyData, error: countyError } = await supabase
-      .from("surname_county_counts")
+      .from("irish_surname_county_counts")
       .select("county_display, person_count")
       .eq("surname_search", surnameSearch)
+      .eq("census_year", 1901)
       .order("person_count", { ascending: false });
 
     if (countyError) {
