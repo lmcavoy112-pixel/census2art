@@ -18,6 +18,7 @@ import {
   type HouseGroup,
   type PersonMatch,
 } from "@/lib/census/houseGroups";
+import { buildHouseholdSummaryLines } from "@/lib/census/householdSummary";
 import {
   fetchCounties,
   fetchCountyPolygons,
@@ -159,9 +160,6 @@ function CensusLanding() {
   const [pinSource, setPinSource] = useState<
     "geocoder" | "neighbour" | "street" | "centroid" | "manual" | null
   >(null);
-  // What was actually located when it wasn't the house asked for — the neighbouring
-  // house number, or the street name.
-  const [pinMatchedLabel, setPinMatchedLabel] = useState("");
   const [geocodeState, setGeocodeState] = useState<
     "" | "searching" | "found" | "approximate" | "not-found"
   >("");
@@ -632,7 +630,6 @@ function CensusLanding() {
     // it were this one's.
     setPin(null);
     setPinSource(null);
-    setPinMatchedLabel("");
     setGeocodeState("");
 
     setHousehold([]);
@@ -794,7 +791,6 @@ function CensusLanding() {
     if (!centre) return;
     setPin(centre);
     setPinSource("manual");
-    setPinMatchedLabel("");
     setGeocodeState("");
     setPinFocusToken((token) => token + 1);
   }
@@ -803,14 +799,15 @@ function CensusLanding() {
     pinRequestRef.current += 1;
     setPin(null);
     setPinSource(null);
-    setPinMatchedLabel("");
     setGeocodeState("");
   }
 
   /**
    * Looks the 1901 address up against the district and drops the marker on the
-   * result. A centroid result is reported as a miss rather than a hit — it is the
-   * middle of the district, which we can work out without asking.
+   * result. A centroid result means nothing was actually found — it's just the
+   * middle of the district, which we can work out ourselves — so it's reported as
+   * a miss and no marker is placed at all rather than planting one somewhere the
+   * customer never asked for.
    */
   function findProperty() {
     const requestId = ++pinRequestRef.current;
@@ -861,19 +858,11 @@ function CensusLanding() {
 
           if (!result || result.source === "centroid") {
             setGeocodeState("not-found");
-            setPinMatchedLabel("");
-            const centre = selectedDistrictCentre();
-            if (centre) {
-              setPin(centre);
-              setPinSource("centroid");
-              setPinFocusToken((token) => token + 1);
-            }
             return;
           }
 
           setPin({ lng: result.lng, lat: result.lat });
           setPinSource(result.source);
-          setPinMatchedLabel(result.matchedHouseNo || result.matchedPlace || "");
           // A neighbour or a street is a real location but not this house, so it is
           // reported as approximate rather than found.
           setGeocodeState(result.source === "geocoder" ? "found" : "approximate");
@@ -1154,19 +1143,17 @@ function CensusLanding() {
                     House No. {group.house_no || "Unknown"}
                   </p>
                   <div className="mt-1 space-y-0.5">
-                    {group.people.map((person, idx) => (
+                    {/* One line per surname ("McAvoys: Robert (48), John (40)…")
+                        rather than one line per person — saves real space on a
+                        phone, and reads just as well on desktop. */}
+                    {buildHouseholdSummaryLines(group.people, surnameTitle).map((line, idx) => (
                       <p
-                        key={`${person.full_name}-${idx}`}
+                        key={idx}
                         className={`text-[12.5px] ${
                           isSelected ? "text-white/75" : "text-stone-500"
                         }`}
                       >
-                        {person.full_name || "Unknown"}
-                        {person.age ? `, ${person.age}` : ""}
-                        {/* A house_uid now spans a whole building across both census
-                            years, so this can genuinely mix 1901 and 1911 residents —
-                            called out here so that reads as real data, not a glitch. */}
-                        {person.census_year ? ` (${person.census_year})` : ""}
+                        {line}
                       </p>
                     ))}
                   </div>
@@ -1201,44 +1188,40 @@ function CensusLanding() {
                       </button>
                     </div>
 
-                    {/* One box, not two — pinSource and geocodeState are set together by
-                        findProperty and were almost always saying the same thing twice
-                        (a bright amber/emerald verdict box plus this translucent one).
-                        A short match-status label replaces the verdict box; the body
-                        keeps only the drag-to-adjust instruction that's actually specific
-                        to each case. */}
+                    {/* Plain text, no box — a bordered/translucent verdict panel was
+                        more chrome than a one-line status needs. No marker means
+                        nothing was confirmed, so there's nothing here to drag; a
+                        failed search only gets the status line, not the drag hint. */}
                     {pin && (
-                      <div className="rounded-md border border-white/20 bg-white/10 p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[13px] font-medium">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[13px] font-medium text-white">
                             {pinSource === "geocoder" && "House match found"}
                             {pinSource === "neighbour" && "Nearby house found"}
                             {pinSource === "street" && "Street match found"}
-                            {pinSource === "centroid" && "No match found"}
                             {pinSource === "manual" && "Placed by hand"}
-                            {!pinSource && "Marker placed"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={removeMarker}
-                            className="text-[13px] underline decoration-white/50 hover:decoration-white"
-                          >
-                            Remove
-                          </button>
+                            {/* "centroid" can only arrive from an old saved snapshot —
+                                findProperty no longer produces it — so it folds into
+                                the same generic label as no pinSource at all rather
+                                than leaving the line blank. */}
+                            {(!pinSource || pinSource === "centroid") && "Marker placed"}
+                          </p>
+                          <p className="text-[12px] text-white/75">
+                            Confirm location — drag marker if needed.
+                          </p>
                         </div>
-                        <p className="mt-1 text-[12px] text-white/75">
-                          {pinSource === "geocoder" &&
-                            "Please confirm the location — drag it on the map to adjust."}
-                          {pinSource === "neighbour" &&
-                            `No. ${selectedHouse?.house_no || "?"} couldn't be found, but No. ${pinMatchedLabel} on the same street was — drag it along to the right door.`}
-                          {pinSource === "street" &&
-                            `No house number found, but ${pinMatchedLabel} itself was — drag it to the right house.`}
-                          {pinSource === "centroid" &&
-                            "Placed at the middle of the district — drag it to the right place."}
-                          {pinSource === "manual" && "Drag it on the map to adjust."}
-                          {!pinSource && "Drag it on the map to place it."}
-                        </p>
+                        <button
+                          type="button"
+                          onClick={removeMarker}
+                          className="flex-none text-[13px] underline decoration-white/50 hover:decoration-white"
+                        >
+                          Remove
+                        </button>
                       </div>
+                    )}
+
+                    {!pin && geocodeState === "not-found" && (
+                      <p className="text-[13px] font-medium text-white">No match found</p>
                     )}
 
                     {!pin && (
@@ -1317,7 +1300,7 @@ function CensusLanding() {
               <table className="w-full min-w-[520px] text-[12.5px]">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50 text-left">
-                    {["Name", "Year", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
+                    {["Name", "Age", "Sex", "Relation", "Occupation", "Birthplace"].map(
                       (heading) => (
                         <th
                           key={heading}
@@ -1349,7 +1332,6 @@ function CensusLanding() {
                         >
                           {person.full_name || ""}
                         </td>
-                        <td className="px-3 py-1.5 text-stone-600">{person.census_year || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">{person.age || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">{person.sex || ""}</td>
                         <td className="px-3 py-1.5 text-stone-600">
@@ -1469,7 +1451,6 @@ function CensusLanding() {
                 // claiming to be a found address the moment it is moved.
                 setPin(position);
                 setPinSource("manual");
-                setPinMatchedLabel("");
                 setGeocodeState("");
               }}
               pinFocusToken={pinFocusToken}

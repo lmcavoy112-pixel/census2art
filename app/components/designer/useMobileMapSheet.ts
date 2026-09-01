@@ -38,7 +38,7 @@ export type MobileMapSheetOptions = {
 };
 
 export function useMobileMapSheet({
-  minPct = 18,
+  minPct = 32,
   maxPct = 85,
   defaultPct = 42,
   enlargedPct = 82,

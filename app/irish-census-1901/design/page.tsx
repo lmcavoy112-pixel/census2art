@@ -27,6 +27,7 @@ import {
   type DedRow,
 } from "@/lib/design/fetching";
 import { fetchTownlandPolygon } from "@/lib/census/queries";
+import { buildHouseholdSummaryLines } from "@/lib/census/householdSummary";
 import {
   buildGalleryGroups,
   FORMAT_ORDER,
@@ -1034,43 +1035,6 @@ function ModernDesignContent() {
 
   // ── Poster blocks ──────────────────────────────────────────────────
 
-  function pluralSurname(value: string) {
-    const cleaned = value.trim();
-    if (!cleaned) return "Household";
-    return /s$/i.test(cleaned) ? `${cleaned}es` : `${cleaned}s`;
-  }
-
-  function buildHouseholdSummaryLines(rows: HouseholdPerson[]) {
-    const groups = new Map<string, HouseholdPerson[]>();
-    for (const person of rows) {
-      const key = (person.surname_display || person.surname_search || "").trim() || "Household";
-      const list = groups.get(key);
-      if (list) list.push(person);
-      else groups.set(key, [person]);
-    }
-
-    const primaryKey = headingText.trim().toLowerCase();
-    const entries = Array.from(groups.entries());
-    entries.sort(([aKey, aPeople], [bKey, bPeople]) => {
-      const aPrimary = aKey.toLowerCase() === primaryKey;
-      const bPrimary = bKey.toLowerCase() === primaryKey;
-      if (aPrimary !== bPrimary) return aPrimary ? -1 : 1;
-      return bPeople.length - aPeople.length;
-    });
-
-    return entries.map(([surname, people]) => {
-      const names = people
-        .map((person) => {
-          const name = (person.forename_display || person.full_name || "").trim();
-          const age = person.age;
-          const hasAge = age !== null && age !== undefined && String(age).trim() !== "";
-          return hasAge ? `${name} (${age})` : name;
-        })
-        .filter(Boolean)
-        .join(", ");
-      return `${pluralSurname(surname)}: ${names}`;
-    });
-  }
 
   // Surname + divider + a record count + a level-specific caption, below the map —
   // shared by Country, County and District (Street has its own block, since it shows
@@ -1106,7 +1070,7 @@ function ModernDesignContent() {
     if (householdDisplayMode === "list") {
       return (
         <div className="space-y-1 text-center" style={{ fontSize: fontPx }}>
-          {buildHouseholdSummaryLines(rows).map((line, index) => (
+          {buildHouseholdSummaryLines(rows, headingText).map((line, index) => (
             <p key={index} style={{ color: inkHex, opacity: 0.85 }}>
               {line}
             </p>
@@ -2536,7 +2500,7 @@ function ModernDesignContent() {
         {/* ── Poster stage ──
             Height is drag-resizable below lg via useMobileMapSheet; from lg it's back
             to a fixed-width rail beside a full-height stage. */}
-        <section className="relative flex h-[var(--mobile-map-pct)] min-h-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28">
+        <section className="relative flex h-[var(--mobile-map-pct)] min-h-0 shrink-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28">
           {/* Sized by whichever runs out first — the stage's width or its height — so a
               tall portrait and a square both sit fully in view without the stage
               scrolling.
