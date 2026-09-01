@@ -234,6 +234,15 @@ export function SaveIcon(props: IconProps) {
   );
 }
 
+/** A rightward arrow — moving on to the next stage. */
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h16M13 6l6 6-6 6" />
+    </Svg>
+  );
+}
+
 export function HelpIcon(props: IconProps) {
   return (
     <Svg {...props}>

@@ -22,6 +22,7 @@ import { buildHouseholdSummaryLines } from "@/lib/census/householdSummary";
 import {
   fetchCounties,
   fetchCountyPolygons,
+  fetchDedTownlandPolygons,
   fetchDeds,
   fetchHousehold,
   fetchPersonMatches,
@@ -50,6 +51,7 @@ import {
   type DesignerSection,
 } from "../components/designer/Accordion";
 import {
+  ArrowRightIcon,
   CountyIcon,
   DistrictIcon,
   HouseholdIcon,
@@ -58,6 +60,7 @@ import {
 } from "../components/designer/icons";
 import { useMobileMapSheet } from "../components/designer/useMobileMapSheet";
 import { MapSheetHandle, MapSheetToggleButton } from "../components/designer/MapSheetControls";
+import { ScrollableRailBody } from "../components/designer/ScrollableRailBody";
 
 const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
   ssr: false,
@@ -237,6 +240,43 @@ function CensusLanding() {
     };
   }, [selectedTownland?.townland_id]);
 
+  // Every townland boundary in the selected district, for the map's hover-to-preview
+  // overlay — independent of which one (if any) is actually selected above.
+  const [townlandBoundaries, setTownlandBoundaries] = useState<TownlandPolygon[]>([]);
+
+  useEffect(() => {
+    const dedId = selectedDed?.ded_id;
+    if (!dedId) {
+      setTownlandBoundaries([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchDedTownlandPolygons(dedId)
+      .then((rows) => {
+        if (!cancelled) setTownlandBoundaries(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTownlandBoundaries([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDed?.ded_id]);
+
+  // Boundaries carry no surname-specific count of their own (get_ded_townland_polygons
+  // is surname-agnostic, like get_townland_geojson) — merged here with the counts
+  // already loaded per townland (see handleSelectDed) rather than fetching both from
+  // one endpoint, so the geometry stays cacheable independent of who's searching.
+  const townlandPolygons = useMemo(() => {
+    const countByTownland = new Map(townlands.map((t) => [t.townland_id, t.person_count]));
+    return townlandBoundaries.map((boundary) => ({
+      ...boundary,
+      person_count: countByTownland.get(boundary.townland_id) ?? 0,
+    }));
+  }, [townlandBoundaries, townlands]);
+
   const formAUrls = useMemo(() => {
     const urls = household
       .map((person) => person.form_a_url)
@@ -343,6 +383,15 @@ function CensusLanding() {
     };
   }, [dropdownOpen, surnameOptions.length]);
 
+  // A marker belongs to whichever house/townland/district it was found for — carrying
+  // it forward across a narrower or wider selection would show it as if it were still
+  // confirmed for a place it was never placed against.
+  function clearMarker() {
+    setPin(null);
+    setPinSource(null);
+    setGeocodeState("");
+  }
+
   function resetBelowSurname() {
     setCounties([]);
     setSelectedCounty("");
@@ -354,6 +403,7 @@ function CensusLanding() {
     setSelectedHouse(null);
     setHousehold([]);
     setMapPolygons([]);
+    clearMarker();
   }
 
   function resetBelowCounty() {
@@ -364,6 +414,7 @@ function CensusLanding() {
     setPersonMatches([]);
     setSelectedHouse(null);
     setHousehold([]);
+    clearMarker();
   }
 
   function resetBelowDed() {
@@ -372,6 +423,7 @@ function CensusLanding() {
     setPersonMatches([]);
     setSelectedHouse(null);
     setHousehold([]);
+    clearMarker();
   }
 
   async function loadSurnamePolygons(searchValue: string) {
@@ -523,6 +575,14 @@ function CensusLanding() {
   }
 
   async function handleSelectDed(ded: DedCount) {
+    // A stray re-click of the already-selected district — panning the map with a
+    // finger, or nudging the marker into place — must not undo the townland/house
+    // already chosen underneath it. Only a genuine change of district resets below.
+    if (selectedDed?.ded_id === ded.ded_id) {
+      setOpenSection("townland");
+      return;
+    }
+
     const selectionToken = ++selectionRef.current;
 
     setSelectedDed(ded);
@@ -544,6 +604,12 @@ function CensusLanding() {
 
       setTownlands(townlandRows);
       setPersonMatches(matches);
+
+      // One townland in the district is no real choice either — select it so its
+      // polygon draws immediately instead of waiting for the dropdown.
+      if (townlandRows.length === 1) {
+        setSelectedTownland(townlandRows[0]);
+      }
 
       const displayFromRows = matches.find((person) => person.surname_display);
       if (displayFromRows?.surname_display) {
@@ -597,6 +663,7 @@ function CensusLanding() {
     setPersonMatches([]);
     setSelectedHouse(null);
     setHousehold([]);
+    clearMarker();
   }
 
   /**
@@ -609,7 +676,15 @@ function CensusLanding() {
     setSelectedTownland(townland);
     setSelectedHouse(null);
     setHousehold([]);
+    clearMarker();
     setError("");
+  }
+
+  /** Clicking a townland's own boundary on the map — same effect as picking it from
+   *  the dropdown, matched back to its counted row by id. */
+  function handleSelectTownlandFromMap(townlandId: string) {
+    const match = townlands.find((item) => item.townland_id === townlandId);
+    if (match) handleSelectTownland(match);
   }
 
   async function handleSelectHouse(group: HouseGroup) {
@@ -628,9 +703,7 @@ function CensusLanding() {
     // A pin/geocode result belongs to whichever house it was found for — switching to a
     // different tile without clearing it would show the previous house's marker as if
     // it were this one's.
-    setPin(null);
-    setPinSource(null);
-    setGeocodeState("");
+    clearMarker();
 
     setHousehold([]);
     setError("");
@@ -1388,13 +1461,14 @@ function CensusLanding() {
         )}
 
         <div className="border-t border-stone-200 pt-4">
-          <button
-            type="button"
-            onClick={handleContinueToDesign}
-            className="w-full rounded-md bg-stone-900 py-2.5 text-[14px] font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Create the Artwork
-          </button>
+          {/* Desktop keeps the enlarged CTA inline, at the foot of the panel it
+              belongs to. Mobile relies on the fixed bar rendered below instead — this
+              spacer just reserves the room it would otherwise cover, so the table/
+              Form A preview above never sits underneath it. */}
+          <div className="hidden lg:block">
+            <CreateArtworkButton variant="pane" onClick={handleContinueToDesign} />
+          </div>
+          <div aria-hidden="true" className="h-24 lg:hidden" />
         </div>
       </div>
     ) : (
@@ -1440,6 +1514,9 @@ function CensusLanding() {
               polygons={mapPolygons}
               selectedDedId={selectedDed?.ded_id || ""}
               townlandPolygon={townlandGeojson}
+              townlandPolygons={townlandPolygons}
+              selectedTownlandId={selectedTownland?.townland_id || ""}
+              onSelectTownland={handleSelectTownlandFromMap}
               onSelectDed={(ded: any) => {
                 if (ded) void handleMapSelectDed(ded as DedCount);
                 else handleClearDedFromMap();
@@ -1518,12 +1595,22 @@ function CensusLanding() {
           />
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <ScrollableRailBody className="min-h-0 flex-1 overflow-y-auto">
               <SectionAccordion sections={sections} openId={openSection} />
-            </div>
+            </ScrollableRailBody>
           </div>
         </aside>
       </div>
+
+      {/* Mobile-only: pinned to the viewport bottom for as long as Review Details is
+          the open tab, so the hand-off to the designer is reachable without scrolling
+          back down through whatever's in the panel above it. Desktop never shows
+          this — it gets the enlarged inline CTA inside the panel itself instead. */}
+      {openSection === "review" && surnameTitle && (
+        <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
+          <CreateArtworkButton variant="bar" onClick={handleContinueToDesign} />
+        </div>
+      )}
 
       {/* Form A, full screen. The rail preview is too small to read a hand-written
           return, so enlarging is the point rather than a nicety. */}
@@ -1604,6 +1691,60 @@ function CensusLanding() {
         )
       }
     </div>
+  );
+}
+
+/**
+ * The hand-off from picking to designing — the one moment on this page meant to feel
+ * like a decision rather than a form field, so it earns the page's one splash of the
+ * wordmark's own ink and gold rather than the flat stone-900 every other button here
+ * uses. Two builds sharing the same voice: `pane` sits inline at the foot of Review
+ * Details (desktop, and mobile before that tab is open); `bar` is the fixed
+ * full-width footer shown only while mobile has Review Details open, so the action
+ * is reachable without hunting back down through the accordion.
+ */
+function CreateArtworkButton({
+  onClick,
+  variant,
+}: {
+  onClick: () => void;
+  variant: "pane" | "bar";
+}) {
+  if (variant === "bar") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center justify-between gap-3 bg-[#1e2b18] py-3.5 pl-5 pr-4 text-left text-white transition-colors active:bg-[#141d10]"
+        style={{ paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))" }}
+      >
+        <span className="text-[14.5px] font-semibold">Create the Artwork</span>
+        <ArrowRightIcon size={18} />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center justify-between gap-4 rounded-lg bg-[#1e2b18] px-6 py-5 text-left shadow-[0_10px_28px_-10px_rgba(30,43,24,0.55)] transition-all hover:shadow-[0_14px_32px_-8px_rgba(30,43,24,0.6)] hover:brightness-[1.08]"
+    >
+      <span>
+        <span className="block text-[16px] font-semibold text-white">
+          Create the Artwork
+        </span>
+        <span className="mt-0.5 block text-[12.5px] text-white/70">
+          Continue to colours, size &amp; framing
+        </span>
+      </span>
+      <span
+        className="flex h-9 w-9 flex-none items-center justify-center rounded-full transition-transform group-hover:translate-x-1"
+        style={{ backgroundColor: "#b8902a" }}
+      >
+        <ArrowRightIcon size={18} />
+      </span>
+    </button>
   );
 }
 

@@ -63,6 +63,23 @@ type IrelandMapProps = {
    * in both situations; there is no separate "not found" state to handle here.
    */
   townlandPolygon?: { geojson: any; townland_display?: string } | null;
+  /**
+   * Every townland boundary in the selected district — drawn as a light hoverable
+   * layer once a DED is selected, so a customer can see how the district splits up
+   * before narrowing to a specific one. Absent/empty renders nothing (also gated on
+   * `selectedDedId` below, so this never shows without a district picked).
+   */
+  townlandPolygons?: {
+    townland_id: string;
+    townland_display: string;
+    person_count: number;
+    geojson: any;
+  }[];
+  /** Excluded from the hover layer — its own boundary is already drawn via
+   *  `townlandPolygon` above, so it isn't drawn twice. */
+  selectedTownlandId?: string;
+  /** Fired when one of `townlandPolygons` is clicked. */
+  onSelectTownland?: (townlandId: string) => void;
 };
 
 const IRELAND_GREEN = "#FF1493";
@@ -394,7 +411,14 @@ export default function IrelandMap({
   flyTo = null,
   onCentreChange,
   townlandPolygon = null,
+  townlandPolygons = [],
+  selectedTownlandId = "",
+  onSelectTownland,
 }: IrelandMapProps) {
+  const selectedDedDisplay = useMemo(
+    () => polygons.find((polygon) => polygon.ded_id === selectedDedId)?.ded_display,
+    [polygons, selectedDedId]
+  );
   const maxCount = useMemo(() => {
     if (polygons.length === 0) {
       return 1;
@@ -489,6 +513,19 @@ export default function IrelandMap({
 
         .ancestry-map svg:focus {
           outline: none !important;
+        }
+
+        /* The OSM credit is the only thing Leaflet ever docks bottom-right here — on
+           mobile/tablet that corner is also where the "N locations" badge sits (drawn
+           by the parent page, outside this component), so the two compete for the same
+           space. Top-right is otherwise empty at these widths (zoom controls are
+           top-left), so the credit moves there instead of overlapping. Desktop is
+           unaffected — the badge has room to sit beside it there. */
+        @media (max-width: 1023px) {
+          .ancestry-map .leaflet-bottom.leaflet-right {
+            top: 0;
+            bottom: auto;
+          }
         }
       `}</style>
 
@@ -611,6 +648,71 @@ export default function IrelandMap({
             </GeoJSON>
           );
         })}
+
+        {/* Every townland in the selected district, once one is selected — a light,
+            hoverable layer on top of the DED choropleth (same paint-order reasoning as
+            the singular outline below). Each stops its own click from bubbling down to
+            the DED polygon underneath or up to MapBackgroundClick, whether or not the
+            caller wired onSelectTownland — otherwise clicking anywhere inside a
+            townland's boundary would silently re-fire the district select (harmless
+            now that re-selecting the same DED is a no-op) or, worse, clear it outright
+            via the background handler. The currently-selected townland is left out —
+            its own boundary already renders via townlandPolygon below. */}
+        {interactive &&
+          selectedDedId &&
+          townlandPolygons
+            .filter((t) => t.geojson && t.townland_id !== selectedTownlandId)
+            .map((t) => {
+              const data = wrapAsFeature(t.geojson);
+              if (!data) return null;
+
+              return (
+                <GeoJSON
+                  key={`townland-hover-${t.townland_id}`}
+                  data={data}
+                  interactive
+                  pathOptions={{
+                    // Light against dark rather than the DED's own amber/near-black —
+                    // the district it sits on top of is opaque at this zoom, so a
+                    // stroke in the DED's own colour family would vanish into it. Needs
+                    // to read at rest, not just on hover, or the sub-division is
+                    // undiscoverable without accidentally finding it by mouse.
+                    stroke: true,
+                    color: "#93c5fd",
+                    weight: 1.5,
+                    opacity: 0.85,
+                    fillColor: "#60a5fa",
+                    fillOpacity: 0.1,
+                  }}
+                  eventHandlers={{
+                    mouseover: (event: any) => {
+                      event.target.setStyle({ weight: 2.5, opacity: 1, fillOpacity: 0.32 });
+                    },
+                    mouseout: (event: any) => {
+                      event.target.setStyle({ weight: 1.5, opacity: 0.85, fillOpacity: 0.1 });
+                    },
+                    mousedown: (event: any) => {
+                      L.DomEvent.stopPropagation(event);
+                    },
+                    click: (event: any) => {
+                      L.DomEvent.stopPropagation(event);
+                      L.DomEvent.preventDefault(event);
+                      onSelectTownland?.(t.townland_id);
+                    },
+                  }}
+                >
+                  <Tooltip sticky={true}>
+                    <div>
+                      {selectedDedDisplay && (
+                        <div className="font-semibold">{selectedDedDisplay}</div>
+                      )}
+                      <div>{t.townland_display}</div>
+                      <div>{t.person_count} matches</div>
+                    </div>
+                  </Tooltip>
+                </GeoJSON>
+              );
+            })}
 
         {/* Drawn after the DED layer above, so Leaflet's SVG renderer (paints in DOM
             order) puts it on top. Outline only — no fill — so it reads as a finer

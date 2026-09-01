@@ -97,6 +97,7 @@ import { applyMarkerLayer, applyModernOverlays } from "@/lib/modern/overlays";
 import {
   DEFAULT_MARKER_COLOUR,
   DEFAULT_MARKER_SIZE,
+  MARKER_COLOUR_BY_LEVEL,
   MARKER_COLOUR_PRESETS,
   MARKER_SHAPES,
   MARKER_SIZE_MAX,
@@ -111,7 +112,8 @@ import {
   type DesignerSection,
 } from "@/app/components/designer/Accordion";
 import { useMobileMapSheet } from "@/app/components/designer/useMobileMapSheet";
-import { MapSheetHandle, MapSheetToggleButton } from "@/app/components/designer/MapSheetControls";
+import { MapSheetHandle } from "@/app/components/designer/MapSheetControls";
+import { ScrollableRailBody } from "@/app/components/designer/ScrollableRailBody";
 import {
   ChoiceCards,
   ColourDot,
@@ -446,6 +448,44 @@ function ModernDesignContent() {
   const posterRef = useRef<HTMLDivElement | null>(null);
   const posterBodyRef = useRef<HTMLDivElement | null>(null);
   const mapAreaRef = useRef<HTMLDivElement | null>(null);
+
+  // The poster stage's own content-box size, measured directly rather than left to
+  // CSS. A flex item sized only by aspect-ratio + max-width/max-height (both width and
+  // height "auto") does not grow to meet those maxima on its own — with no flex-grow
+  // pushing it, it settles at a small intrinsic size and the maxima are never actually
+  // reached, which is what silently shrank the poster to a fraction of the available
+  // stage before this. Measuring the stage and computing the frame's exact pixel size
+  // (whichever axis is the binding one) is the reliable "contain, never overflow, never
+  // starve" fit — the same guarantee `object-fit: contain` gives a replaced element,
+  // reimplemented for a plain div because the poster's content isn't one.
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+
+    function update() {
+      const rect = el!.getBoundingClientRect();
+      const style = getComputedStyle(el!);
+      const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const paddingY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      setStageSize({
+        width: Math.max(0, rect.width - paddingX),
+        height: Math.max(0, rect.height - paddingY),
+      });
+    }
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+    // `loaded` (not just []): the stage <section> this ref attaches to doesn't exist
+    // yet on the very first render (see the `if (!loaded) return <.../>` early return
+    // below) — an effect that only ever ran once on mount would have captured
+    // stageRef.current as still null then and never retried once the real section
+    // mounted a render later.
+  }, [loaded]);
   const [captureUrl, setCaptureUrl] = useState<string | null>(null);
   const mapInstanceRef = useRef<MapLibreMap | null>(null);
 
@@ -522,6 +562,11 @@ function ModernDesignContent() {
     setDeepestLevel(deepest);
     setLevel(deepest);
     setBasemap(MODERN_PRESETS[deepest].basemaps[0]);
+    // A starting colour that stands out at whichever extent the search actually landed
+    // on — see MARKER_COLOUR_BY_LEVEL. Marker colour isn't part of the saved snapshot
+    // (only the pin's position/source is, in patchPinBeforeLeaving), so there's never a
+    // customer choice here to overwrite.
+    setMarkerColour(MARKER_COLOUR_BY_LEVEL[deepest]);
     setMapLayers({
       ...DEFAULT_LAYER_TOGGLES,
       placeNames: MODERN_PRESETS[deepest].defaultPlaceLabels,
@@ -664,10 +709,11 @@ function ModernDesignContent() {
     };
   }, [loaded, county]);
 
-  // The townland's own boundary, for a finer border than the DED polygon at street
-  // level. Falls back to nothing both while no townland is known and when the
-  // townland has no geometry on file (a common ~23.5% case, not an error) — both are
-  // just townlandGeojson staying null, same as the outline effect above.
+  // The townland's own boundary — the Townland preset's own extent, and a finer border
+  // drawn over the DED polygon at Street level too. Falls back to nothing both while no
+  // townland is known and when the townland has no geometry on file (a common ~23.5%
+  // case, not an error) — both are just townlandGeojson staying null, same as the
+  // outline effect above.
   const [townlandGeojson, setTownlandGeojson] = useState<unknown | null>(null);
 
   useEffect(() => {
@@ -779,12 +825,17 @@ function ModernDesignContent() {
     [polygons]
   );
 
-  // County draws the dissolved county boundary; Street draws the selected townland's
-  // own boundary when one is on file (falls back to nothing — just the DED highlight
-  // stroke — both while no townland is known and when it has no geometry, a common
-  // case). District has only the highlight stroke as its outline.
+  // County draws the dissolved county boundary; Townland and Street both draw the
+  // selected townland's own boundary when one is on file (falls back to nothing — just
+  // the DED highlight stroke — both while no townland is known and when it has no
+  // geometry, a common ~23.5% case). District has only the highlight stroke as its
+  // outline.
   const visibleOutline =
-    level === "county" ? outline : level === "street" ? townlandGeojson : null;
+    level === "county"
+      ? outline
+      : level === "street" || level === "townland"
+        ? townlandGeojson
+        : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -813,14 +864,22 @@ function ModernDesignContent() {
       return box ? padBox(box, 0.04) : null;
     }
 
+    if (level === "townland" && townlandGeojson) {
+      const box = boundsOf([townlandGeojson]);
+      if (box) return padBox(box, 0.12);
+      // No geometry on file for this townland — falls through to the same DED framing
+      // as District/Street below. The townland's name/count still print as normal;
+      // only the map's own extent falls back.
+    }
+
     const box = boundsOf(selectedPolygon ? [selectedPolygon.geojson] : []);
     if (!box) return null;
-    // Street frames identically to District — the whole DED polygon. Street's only
-    // difference is that it knows which house is the customer's, so the household
-    // record prints below the map; there are no townland or house coordinates in the
-    // census data to zoom in on more tightly than the district itself.
+    // District/Street/Townland-without-geometry all frame identically — the whole DED
+    // polygon. Street's only difference is that it knows which house is the customer's,
+    // so the household record prints below the map; there are no house coordinates in
+    // the census data to zoom in on more tightly than the district itself.
     return padBox(box, 0.12);
-  }, [level, polygons, countryPolygons, selectedPolygon, outline]);
+  }, [level, polygons, countryPolygons, selectedPolygon, outline, townlandGeojson]);
 
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
   // shape of the map's own container, and without this the camera stays put and just
@@ -855,12 +914,13 @@ function ModernDesignContent() {
   // palette's land colour.
   const outlineHex = mapPalette.label;
   const OUTLINE_WIDTH = 2;
-  // At street level the outline draws over the dark district highlight fill instead of
-  // the plain basemap the county outline was tuned for -- outlineHex (tuned for
+  // At Street/Townland the outline draws over the dark district highlight fill instead
+  // of the plain basemap the county outline was tuned for -- outlineHex (tuned for
   // contrast against land colour) reads as effectively invisible on top of that fill.
   // Same blue as the interactive census map's townland border, for both contrast and a
   // consistent "this marks the townland" visual language across the two pipelines.
-  const effectiveOutlineColour = level === "street" ? "#1d4ed8" : outlineHex;
+  const effectiveOutlineColour =
+    level === "street" || level === "townland" ? "#1d4ed8" : outlineHex;
 
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
@@ -932,6 +992,20 @@ function ModernDesignContent() {
   // 8.3×11.7", which aren't quite the same ratio), so use the canonical ratio or the
   // preview visibly stretches by a percent or two when switching sizes within a format.
   const aspect = formatAspect(format);
+
+  // The frame's exact on-screen pixel size — whichever of the stage's width/height is
+  // the binding constraint for this aspect ratio, capped at 640px so the on-screen
+  // preview never renders larger than a desktop monitor needs it to. Recomputed
+  // whenever the stage resizes (stageSize) or the shape changes (aspect).
+  const frameSize = useMemo(() => {
+    if (!stageSize || stageSize.width <= 0 || stageSize.height <= 0) return null;
+    const ratio = aspect.w / aspect.h;
+    const byHeight = { width: stageSize.height * ratio, height: stageSize.height };
+    const byWidth = { width: stageSize.width, height: stageSize.width / ratio };
+    const fitted = byHeight.width <= stageSize.width ? byHeight : byWidth;
+    const width = Math.min(fitted.width, 640);
+    return { width, height: width / ratio };
+  }, [stageSize, aspect.w, aspect.h]);
 
   const householdVisibleFieldOptions = HOUSEHOLD_FIELD_OPTIONS.filter((f) =>
     visibleHouseholdFields.has(f.id)
@@ -1557,14 +1631,20 @@ function ModernDesignContent() {
 
   // ── Panel sections ─────────────────────────────────────────────────
 
-  // Deepest map preset each detail field needs before it means anything — a County
+  // Deepest map extent each detail field needs before it means anything — a County
   // typed in at "country" level, or a Townland typed in at "county" level, describes
-  // somewhere the current map preset doesn't actually show.
-  const LEVEL_ORDER: Record<ModernLevel, number> = { country: 0, county: 1, ded: 2, street: 3 };
+  // somewhere the current map extent doesn't actually show.
+  const LEVEL_ORDER: Record<ModernLevel, number> = {
+    country: 0,
+    county: 1,
+    ded: 2,
+    townland: 3,
+    street: 4,
+  };
   const FIELD_MIN_LEVEL: Record<string, ModernLevel> = {
     County: "county",
     District: "ded",
-    Townland: "street",
+    Townland: "townland",
     House: "street",
   };
 
@@ -1592,13 +1672,6 @@ function ModernDesignContent() {
             { id: "historic", label: "Historic", detail: "Country wide only" },
           ]}
         />
-        {template === "historic" && (
-          <HelpText>
-            The county drawn as line art inside a Celtic border, with your surname and a
-            chosen symbol.
-          </HelpText>
-        )}
-
         {formatOptions.length > 1 && (
           <div className="border-t border-stone-200 pt-4">
             <FieldLabel>Shape</FieldLabel>
@@ -1618,12 +1691,12 @@ function ModernDesignContent() {
         )}
 
         <div className="border-t border-stone-200 pt-4">
-          <FieldLabel>Map preset</FieldLabel>
+          <FieldLabel>Map extent</FieldLabel>
           {template === "historic" ? (
             <>
               <ChoiceCards
                 columns={2}
-                ariaLabel="Map preset"
+                ariaLabel="Map extent"
                 value="county"
                 onChange={() => {}}
                 options={[{ id: "county", label: "County" }]}
@@ -1633,8 +1706,8 @@ function ModernDesignContent() {
           ) : (
             <>
               <ChoiceCards
-                columns={2}
-                ariaLabel="Map preset"
+                columns={3}
+                ariaLabel="Map extent"
                 value={level}
                 onChange={changeLevel}
                 options={availableLevels(deepestLevel).map((l) => ({
@@ -1642,10 +1715,13 @@ function ModernDesignContent() {
                   label: MODERN_PRESETS[l].label,
                 }))}
               />
-              {/* Only House needs explaining — it's the one preset that behaves
-                  differently (household record + marker); Country/County/District are
+              {/* Townland and House are the two presets that behave differently
+                  (Townland frames tighter with no household record; House adds the
+                  household record and marker) — Country/County/District are
                   self-explanatory from their names alone. */}
-              {level === "street" && <HelpText>{preset.description}</HelpText>}
+              {(level === "street" || level === "townland") && (
+                <HelpText>{preset.description}</HelpText>
+              )}
             </>
           )}
           {template === "modern" && !preset.allowsPin && pin && (
@@ -1688,7 +1764,7 @@ function ModernDesignContent() {
         <HelpText>
           {template === "historic"
             ? "Historic prints use the county only — these aren't editable for this template."
-            : "Greyed-out fields weren't part of your search, or aren't shown at the current map preset."}
+            : "Greyed-out fields weren't part of your search, or aren't shown at the current map extent."}
         </HelpText>
 
         {template === "modern" && level === "street" && household.length > 0 && (
@@ -1968,14 +2044,21 @@ function ModernDesignContent() {
           )}
 
           <div>
-            <button
-              type="button"
-              onClick={findProperty}
-              disabled={geocodeState === "searching" || !selectedPolygon}
-              className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
-            </button>
+            {/* Redundant once a marker exists — most often because one was already
+                confirmed back in Step 1 and carried straight through, but equally true
+                of one just found here. The "Marker placed" card above already covers
+                confirming/removing it; re-clicking find would just search for the same
+                district again. */}
+            {!pin && (
+              <button
+                type="button"
+                onClick={findProperty}
+                disabled={geocodeState === "searching" || !selectedPolygon}
+                className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
+              </button>
+            )}
             {geocodeState === "not-found" && (
               <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
                 Couldn&apos;t find the property from the 1901 address — place it manually by
@@ -1988,7 +2071,7 @@ function ModernDesignContent() {
                 addresses are approximate.
               </p>
             )}
-            {!selectedPolygon && (
+            {!pin && !selectedPolygon && (
               <HelpText>
                 Searching needs a district. Pick one back in search to use this.
               </HelpText>
@@ -2006,7 +2089,7 @@ function ModernDesignContent() {
 
           <div className="mt-4">
             <FieldLabel>Shape</FieldLabel>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {MARKER_SHAPES.map((shape) => (
                 <button
                   key={shape.id}
@@ -2067,6 +2150,90 @@ function ModernDesignContent() {
       </div>
     ),
   };
+
+  /**
+   * The moment this whole flow has been building to — price, what's being printed and
+   * how, and the button that actually buys it. Deliberately not styled like the rest of
+   * the rail's quiet stone-900 controls: gold (the wordmark's own accent) marks this one
+   * button as the different kind of action it is, not just the next step. `pane` sits at
+   * the foot of the Size & Frame panel, pinned to the bottom of the scrolling rail on
+   * desktop (`lg:sticky`) so it survives scrolling past a tall list of sizes; `bar` is
+   * the mobile equivalent, fixed to the viewport while that tab is open (see the render
+   * call near the bottom of the page), matching the Step 1 "Create the Artwork" bar.
+   */
+  function renderCartSummaryBar(variant: "pane" | "bar") {
+    const priceText = selectedSku ? formatMoney(selectedSku.sellingPrice, currency) : "—";
+    const detailText = selectedSku
+      ? `${selectedSku.size_label} ${selectedSku.product}${
+          selectedSku.product === "Classic Frame" ? ` · ${frameColour} frame` : ""
+        }`
+      : "Choose a size to see the price";
+    const deliveryText =
+      fulfilment === "digital"
+        ? "Delivered by email within minutes — nothing shipped"
+        : "Made to order — typically 5–8 working days";
+
+    const button = (
+      <button
+        type="button"
+        onClick={() => void orderPrint()}
+        disabled={!selectedSku || busy !== ""}
+        style={{ backgroundColor: "#b8902a" }}
+        className={`flex-none rounded-full font-semibold text-[#1e2b18] transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${
+          variant === "bar"
+            ? "px-5 py-2.5 text-[14px]"
+            : "px-6 py-3 text-[14.5px] shadow-[0_6px_16px_-6px_rgba(184,144,42,0.6)] hover:brightness-105"
+        }`}
+      >
+        {busy === "order" ? orderStage || "Preparing…" : "Add to cart"}
+      </button>
+    );
+
+    if (variant === "bar") {
+      return (
+        <div
+          className="border-t border-stone-200 bg-white px-4 py-3"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
+          {orderError && (
+            <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800">
+              {orderError}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[17px] font-semibold leading-none tracking-tight text-stone-900">
+                {priceText}
+              </p>
+              <p className="mt-0.5 truncate text-[11.5px] text-stone-600">{detailText}</p>
+            </div>
+            {button}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="border-t border-stone-200 bg-white pt-4 lg:sticky lg:bottom-0 lg:z-10 lg:-mx-5 lg:border-t lg:bg-white/95 lg:px-5 lg:pb-5 lg:pt-4 lg:shadow-[0_-12px_24px_-16px_rgba(0,0,0,0.18)] lg:backdrop-blur-sm">
+        {exportNote && <p className="mb-1.5 text-[11px] text-stone-500">{exportNote}</p>}
+        {orderError && (
+          <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800">
+            {orderError}
+          </p>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[20px] font-semibold leading-none tracking-tight text-stone-900">
+              {priceText}
+            </p>
+            <p className="mt-1 truncate text-[13px] text-stone-700">{detailText}</p>
+            <p className="mt-0.5 text-[12px] text-stone-500">{deliveryText}</p>
+          </div>
+          {button}
+        </div>
+      </div>
+    );
+  }
 
   const sizeSection: DesignerSection = {
     id: "size",
@@ -2166,43 +2333,11 @@ function ModernDesignContent() {
           )}
         </div>
 
-        {/* Price + Add to cart lives here, not as a bar pinned under every section —
-            it's only relevant once a size is actually being chosen. */}
-        <div className="border-t border-stone-200 pt-4">
-          {exportNote && <p className="mb-1.5 text-[11px] text-stone-500">{exportNote}</p>}
-          {orderError && (
-            <p className="mb-1.5 rounded-md bg-red-50 px-3 py-2 text-[12px] text-red-800">
-              {orderError}
-            </p>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[19px] font-semibold leading-none tracking-tight">
-                {selectedSku ? formatMoney(selectedSku.sellingPrice, currency) : "—"}
-              </p>
-              <p className="mt-0.5 truncate text-[12px] text-stone-700">
-                {selectedSku
-                  ? `${selectedSku.size_label} ${selectedSku.product}${
-                      selectedSku.product === "Classic Frame" ? ` · ${frameColour} frame` : ""
-                    }`
-                  : "Choose a size to see the price"}
-              </p>
-              <p className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
-                {fulfilment === "digital"
-                  ? "Delivered by email within minutes — nothing shipped"
-                  : "Made to order — typically 5–8 working days"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void orderPrint()}
-              disabled={!selectedSku || busy !== ""}
-              className="flex-none rounded-full bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy === "order" ? orderStage || "Preparing…" : "Add to cart"}
-            </button>
-          </div>
-        </div>
+        {/* Desktop: sticky pane at the foot of this panel. Mobile: a spacer reserving
+            the room the fixed bar (rendered near the bottom of the page, only while
+            this tab is open) would otherwise cover. */}
+        <div className="hidden lg:block">{renderCartSummaryBar("pane")}</div>
+        <div aria-hidden="true" className="h-28 lg:hidden" />
       </div>
     ),
   };
@@ -2500,10 +2635,16 @@ function ModernDesignContent() {
         {/* ── Poster stage ──
             Height is drag-resizable below lg via useMobileMapSheet; from lg it's back
             to a fixed-width rail beside a full-height stage. */}
-        <section className="relative flex h-[var(--mobile-map-pct)] min-h-0 shrink-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28">
-          {/* Sized by whichever runs out first — the stage's width or its height — so a
-              tall portrait and a square both sit fully in view without the stage
-              scrolling.
+        <section
+          ref={stageRef}
+          className="relative flex h-[var(--mobile-map-pct)] min-h-0 shrink-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28"
+        >
+          {/* Sized in JS (frameSize, from the measured stage box) rather than pure CSS —
+              a flex item sized only by aspect-ratio + max-width/max-height (both axes
+              "auto") never grows to meet those maxima without something pushing it, so
+              it settled at a small intrinsic size instead of filling the stage. Until
+              the first measurement lands, aspectRatio + a 100% width fallback keeps
+              something reasonable on screen for that one frame.
               The frame is a wrapper *outside* posterRef on purpose: posterRef is the node
               rasterised for print, and the frame is a physical object Prodigi puts around
               the paper, not something printed onto it. */}
@@ -2513,23 +2654,16 @@ function ModernDesignContent() {
               background: framed ? frameHex : "transparent",
               padding: framed ? "3.5%" : 0,
               // content-box, overriding Tailwind Preflight's global border-box reset:
-              // width/maxWidth below must size the paper itself (posterRef, "w-full"
+              // width/height below must size the paper itself (posterRef, "w-full"
               // inside this box), with the frame's padding added on top of that rather
               // than carved out of it. Prodigi's physical frame sits around the paper,
               // not on it, so the frame must not change the paper's own size — border-box
               // would shrink posterRef by the padding amount every time a frame is picked,
               // which also threw off the household table's fit-to-width measurement below.
               boxSizing: "content-box",
-              // Was "100vh - 13rem", hand-tuned to the old masthead this page carried
-              // itself. That masthead is gone (folded into the shared SiteHeader, which
-              // is shorter), so the deduction is now the header's own height plus the
-              // stage's own vertical padding, rather than a number that only matched
-              // one specific masthead. 100dvh rather than 100vh — matches the rest of
-              // the app, and avoids mobile browser chrome making the stage overshoot.
-              width:
-                "min(100%, calc((100dvh - var(--site-header-h) - 8rem) * var(--poster-aspect)))",
-              maxWidth: 640,
-              ["--poster-aspect" as string]: `${aspect.w / aspect.h}`,
+              ...(frameSize
+                ? { width: frameSize.width, height: frameSize.height }
+                : { width: "100%", aspectRatio: `${aspect.w} / ${aspect.h}` }),
             }}
           >
             {template === "historic" ? (
@@ -2622,6 +2756,17 @@ function ModernDesignContent() {
                     selectedPolygon?.person_count ?? null,
                     dedDisplayText || county
                       ? `Recorded in ${[dedDisplayText, county].filter(Boolean).join(", ")} in 1901`
+                      : ""
+                  )}
+                {/* Townland has no per-townland count of its own on file (the DED-level
+                    surname count is what's loaded) — reuses it, same as District, just
+                    named down to the townland. No household record at this preset (see
+                    below), so this caption is the only thing under the map. */}
+                {level === "townland" &&
+                  renderSurnameCountBlock(
+                    selectedPolygon?.person_count ?? null,
+                    townlandText || dedDisplayText || county
+                      ? `Recorded in ${[townlandText, dedDisplayText, county].filter(Boolean).join(", ")} in 1901`
                       : ""
                   )}
 
@@ -2723,19 +2868,6 @@ function ModernDesignContent() {
           )}
         </section>
 
-        {/* Mounted on `main`, not inside the poster stage — that section is
-            overflow-auto (the poster/map can exceed it), which would clip this if it
-            lived there. Positioned via the same --mobile-map-pct var the stage's own
-            height comes from, so it tracks the boundary exactly as it's dragged. */}
-        <MapSheetToggleButton
-          isEnlarged={mobileMapSheet.isEnlarged}
-          onClick={mobileMapSheet.toggle}
-          enlargeLabel="Enlarge map"
-          collapseLabel="Expand menu"
-          className="lg:hidden"
-          style={{ top: `var(${mobileMapSheet.cssVar})` }}
-        />
-
         {/* ── Control rail ── */}
         <aside className="flex min-h-0 w-full flex-1 flex-col border-t border-stone-200 bg-white lg:w-[560px] lg:flex-none lg:flex-row lg:border-t-0 lg:border-l">
           <MapSheetHandle {...mobileMapSheet.handleProps} className="lg:hidden" />
@@ -2753,17 +2885,26 @@ function ModernDesignContent() {
           />
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <ScrollableRailBody className="min-h-0 flex-1 overflow-y-auto">
               {mapError && (
                 <p className="m-5 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
                   {mapError}
                 </p>
               )}
               <SectionAccordion sections={sections} openId={activeSection} />
-            </div>
+            </ScrollableRailBody>
           </div>
         </aside>
       </main>
+
+      {/* Mobile-only: pinned to the viewport bottom for as long as Size & Frame is the
+          open tab — mirrors Step 1's "Create the Artwork" bar. Desktop gets the sticky
+          pane inside the panel itself instead (renderCartSummaryBar("pane"), above). */}
+      {activeSection === "size" && (
+        <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
+          {renderCartSummaryBar("bar")}
+        </div>
+      )}
     </div>
   );
 }

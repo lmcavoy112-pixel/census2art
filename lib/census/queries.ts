@@ -264,6 +264,27 @@ export async function fetchHousehold(houseUid: string): Promise<HouseholdPerson[
  *  one is available. Returns null if the townland_id itself wasn't found; returns a
  *  row with geojson: null if the townland exists but has no boundary on file (a
  *  common case — see get_townland_geojson) — both are "fall back to the DED shape". */
+/** Every townland boundary in one district at once — for the "hover a townland to
+ *  see its name/count" overlay drawn once a district is selected. Rows with no
+ *  boundary on file (the same ~23.5% gap as get_townland_geojson) are dropped here
+ *  rather than passed through with geojson: null, since this list only exists to be
+ *  drawn on the map. */
+export async function fetchDedTownlandPolygons(dedId: string): Promise<TownlandPolygon[]> {
+  if (!dedId) return [];
+
+  const payload = await fetchJson(buildUrl("/api/ded-townland-polygons", { ded_id: dedId }));
+  const rows = Array.isArray(payload) ? payload : [];
+
+  return rows
+    .map((item) => ({
+      townland_id: pickString(item, ["townland_id", "townlandId"]),
+      townland_display: pickString(item, ["townland_display", "townlandDisplay"]),
+      polygon_id: pickString(item, ["polygon_id", "polygonId"]) || undefined,
+      geojson: item?.geojson ?? null,
+    }))
+    .filter((item) => item.townland_id && item.geojson);
+}
+
 export async function fetchTownlandPolygon(townlandId: string): Promise<TownlandPolygon | null> {
   if (!townlandId) return null;
 

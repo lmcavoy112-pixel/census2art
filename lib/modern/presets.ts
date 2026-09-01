@@ -3,7 +3,7 @@
 // machine-readable level rather than a display string, because here the level drives
 // framing, basemap choice and which info fields are shown.
 
-export type ModernLevel = "country" | "county" | "ded" | "street";
+export type ModernLevel = "country" | "county" | "ded" | "townland" | "street";
 
 import type { ModernBasemap, PlaceLabelLevel } from "./mapStyle";
 
@@ -68,6 +68,19 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     allowsPin: false,
     districtBorders: true,
   },
+  townland: {
+    level: "townland",
+    label: "Townland",
+    description:
+      "Framed to the townland boundary when one is on file, the district otherwise — no household record or marker at this preset, just the finer place.",
+    basemaps: ["streets", "contours"],
+    fallbackZoom: 13,
+    fitPadding: 56,
+    defaultPlaceLabels: "all",
+    // A townland is a place, not a building — same reasoning as District above.
+    allowsPin: false,
+    districtBorders: true,
+  },
   street: {
     level: "street",
     label: "House",
@@ -85,9 +98,10 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
 /**
  * Deepest level the selection supports.
  *
- * Note the census data cannot geocode below a DED — census_houses carries no
- * coordinates and there are no townland geometries — so "street" only means
- * "open zoomed in near the DED centroid and let the user place the pin".
+ * The census data cannot geocode below a DED — census_houses carries no coordinates —
+ * so "street" only means "open zoomed in near the DED centroid and let the user place
+ * the pin". Townland boundaries *are* on file for most (not all — ~23.5% have none)
+ * townlands, which is what the "townland" level itself frames to.
  */
 export function detectModernLevel({
   county,
@@ -100,7 +114,8 @@ export function detectModernLevel({
   townland?: string;
   houseNo?: string;
 }): ModernLevel {
-  if (houseNo || townland) return "street";
+  if (houseNo) return "street";
+  if (townland) return "townland";
   if (dedId) return "ded";
   if (county) return "county";
   // No county was ever chosen (e.g. the user left /create at the surname step) —
@@ -113,7 +128,8 @@ export function detectModernLevel({
  * drilled all the way to street level can zoom back out to see every district nationwide.
  */
 export function availableLevels(deepest: ModernLevel): ModernLevel[] {
-  if (deepest === "street") return ["country", "county", "ded", "street"];
+  if (deepest === "street") return ["country", "county", "ded", "townland", "street"];
+  if (deepest === "townland") return ["country", "county", "ded", "townland"];
   if (deepest === "ded") return ["country", "county", "ded"];
   if (deepest === "county") return ["country", "county"];
   return ["country"];

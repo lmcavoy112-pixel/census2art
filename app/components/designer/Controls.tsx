@@ -312,11 +312,19 @@ export function ChoiceCards<T extends string>({
                 : "border-stone-300 bg-white hover:bg-stone-50"
             } ${option.disabled ? "cursor-not-allowed opacity-40" : ""}`}
           >
+            {/* Mobile keeps this to one line — the detail folds into the title as a
+                grey " - " suffix instead of its own row, to save vertical space on a
+                phone. From lg there's room, so it reverts to the original two lines. */}
             <span className="block text-[14px] font-semibold text-stone-900">
               {option.label}
+              {option.detail && (
+                <span className="font-normal text-stone-500 lg:hidden"> - {option.detail}</span>
+              )}
             </span>
             {option.detail && (
-              <span className="mt-0.5 block text-[12px] text-stone-500">{option.detail}</span>
+              <span className="mt-0.5 hidden text-[12px] text-stone-500 lg:block">
+                {option.detail}
+              </span>
             )}
           </button>
         );
