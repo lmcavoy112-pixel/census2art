@@ -128,7 +128,7 @@ export function SymbolIcon(props: IconProps) {
 }
 
 /* ── Census search rail ─────────────────────────────────────────────────
-   The narrowing steps on /irish-census-1901. Each one names its unit of place, so
+   The narrowing steps on /irish-census. Each one names its unit of place, so
    the rail reads as a zoom from a whole country down to one front door. */
 
 /** A magnifier over a name — the surname the search starts from. */

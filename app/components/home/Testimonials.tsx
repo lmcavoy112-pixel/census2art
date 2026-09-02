@@ -4,7 +4,6 @@ const RAISED = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
-const RULE = "#ddd6c4";
 
 type Testimonial = {
   quote: string;
@@ -46,7 +45,7 @@ export default function Testimonials() {
   return (
     <section
       className="px-6 py-14 sm:py-16"
-      style={{ background: RAISED, borderTop: `1px solid ${RULE}`, borderBottom: `1px solid ${RULE}` }}
+      style={{ background: RAISED }}
     >
       <div className="mx-auto max-w-6xl">
         <h2
@@ -78,7 +77,7 @@ export default function Testimonials() {
                 className="mt-3"
                 style={{
                   fontFamily: "var(--font-plex-mono)",
-                  fontSize: "0.68rem",
+                  fontSize: "0.7rem",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   color: MUTED,

@@ -7,7 +7,7 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
  * This stays public on purpose: it is the first half of the *paid* Shopify flow. The
  * designer renders a PNG, posts it here, and uses the returned public URL as the cart
  * line's `_imageUrl` so Shopify has something to show and to carry into fulfilment
- * (lib/design/order.ts -> app/irish-census-1901/design/page.tsx).
+ * (lib/design/order.ts -> app/irish-census/design/page.tsx).
  *
  * Nothing here costs money or ships anything — it writes a file and a row. The step that
  * actually instructs Prodigi to manufacture is POST /api/orders/[id], and that one is

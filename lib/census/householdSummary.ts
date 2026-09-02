@@ -1,5 +1,5 @@
-// Shared by the census workspace's house tiles (app/irish-census-1901/page.tsx) and
-// the Modern designer's household record (app/irish-census-1901/design/page.tsx),
+// Shared by the census workspace's house tiles (app/irish-census/page.tsx) and
+// the Modern designer's household record (app/irish-census/design/page.tsx),
 // which each carried a byte-identical copy before this was extracted.
 
 export type SummarizablePerson = {

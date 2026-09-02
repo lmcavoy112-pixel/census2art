@@ -138,18 +138,27 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // The census-scoped routes (/irish-census-1901, /irish-census-1901/design) replaced
-  // the old flat /create and /design/modern pair so that each census edition gets its
-  // own addressable landing page — /irish-census-1911, /scottish-census-1901 and so on
-  // slot in beside it. Query strings are carried through a redirect automatically,
-  // which matters here: the designer keeps its entire state in the URL, so previously
-  // shared /design/modern?... links still resolve to the right artwork.
+  // The census-scoped routes (/irish-census, /irish-census/design) replaced the old
+  // flat /create and /design/modern pair so that each country's census gets its own
+  // addressable landing page — /scottish-census and so on slot in beside it. A single
+  // /irish-census route now covers both loaded editions (1901 and 1911) via the year
+  // toggle in its Surname step, rather than a separate route per year. Query strings
+  // are carried through a redirect automatically, which matters here: the designer
+  // keeps its entire state in the URL, so previously shared /design/modern?... links
+  // still resolve to the right artwork, and old /irish-census-1901 links (from before
+  // the year toggle existed) still land on the right page.
   async redirects() {
     return [
-      { source: "/create", destination: "/irish-census-1901", permanent: true },
+      { source: "/create", destination: "/irish-census", permanent: true },
       {
         source: "/design/modern",
-        destination: "/irish-census-1901/design",
+        destination: "/irish-census/design",
+        permanent: true,
+      },
+      { source: "/irish-census-1901", destination: "/irish-census", permanent: true },
+      {
+        source: "/irish-census-1901/design",
+        destination: "/irish-census/design",
         permanent: true,
       },
     ];

@@ -1,5 +1,5 @@
 // Shared Prodigi print-attribute logic. Both the cart-add path
-// (app/irish-census-1901/design/page.tsx) and the fulfilment webhook
+// (app/irish-census/design/page.tsx) and the fulfilment webhook
 // (app/api/shopify/webhook/orders-create/route.ts) used to derive this
 // independently, gated on `frame_colour` being set — which silently produced
 // `{}` for Stretched Canvas, since it's unframed and never has a frame

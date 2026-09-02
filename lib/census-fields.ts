@@ -10,7 +10,7 @@
  * known to need, and anything new stays server-side until someone decides otherwise.
  */
 
-/** Fields app/irish-census-1901/page.tsx reads from a `PersonMatch`. */
+/** Fields app/irish-census/page.tsx reads from a `PersonMatch`. */
 const PERSON_MATCH_FIELDS = [
   "full_name",
   "forename_display",
@@ -26,7 +26,7 @@ const PERSON_MATCH_FIELDS = [
   "occupation",
 ] as const;
 
-/** Fields app/irish-census-1901/page.tsx reads from a `HouseholdPerson`. */
+/** Fields app/irish-census/page.tsx reads from a `HouseholdPerson`. */
 const HOUSEHOLD_PERSON_FIELDS = [
   "full_name",
   "forename_display",

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "Privacy, terms of sale, and shipping and returns for Census to Art.",
 };
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";

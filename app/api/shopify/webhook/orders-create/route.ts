@@ -403,7 +403,7 @@ export async function POST(request: NextRequest) {
 
     // Shopify's line item attributes carry customer-facing info (Surname, County,
     // Style, ...) alongside fulfilment data — everything the cart put there, per
-    // app/irish-census-1901/design/page.tsx. Prodigi's own `attributes` field is
+    // app/irish-census/design/page.tsx. Prodigi's own `attributes` field is
     // narrower: it validates against a fixed, per-product set of print options and
     // rejects the whole order on an unrecognised key.
     //

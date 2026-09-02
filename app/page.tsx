@@ -1,17 +1,22 @@
+import Link from "next/link";
+
 import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
 import CensusBlock from "./components/home/CensusBlock";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import HowItWorks from "./components/home/HowItWorks";
-import DiscoverHistory from "./components/home/DiscoverHistory";
 import RecentPurchases from "./components/home/RecentPurchases";
 import Testimonials from "./components/home/Testimonials";
 import NeedHelp from "./components/home/NeedHelp";
+import HeroLedgerMap from "./components/home/HeroLedgerMap";
+import FeaturedQuote from "./components/home/FeaturedQuote";
 import { siteFontVars } from "./fonts";
 import { IRISH_CENSUS } from "@/lib/censusEditions";
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
+const RAISED = "#fdfaf5";
 const INK = "#1e2b18";
+const RULE = "#ddd6c4";
 const GOLD = "#b8902a";
 
 export default function Home() {
@@ -34,33 +39,66 @@ export default function Home() {
             Just the headline — the search box in the block below is the thing people
             come for, so nothing here should push it under the fold. */}
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-10 sm:pt-12 sm:pb-12">
-          <div className="home-rise max-w-2xl">
-            <h1
-              style={{
-                fontFamily: "var(--font-cormorant)",
-                fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
-                lineHeight: 1.1,
-                fontWeight: 500,
-              }}
-            >
-              Your family was written down.
-              <span className="block">
-                We figured out{" "}
-                <em style={{ color: GOLD, fontStyle: "italic" }}>where</em>.
-              </span>
-            </h1>
+          <div className="home-rise grid items-center gap-10 lg:grid-cols-[1.05fr_1fr] lg:gap-12">
+            <div>
+              <h1
+                style={{
+                  fontFamily: "var(--font-cormorant)",
+                  fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
+                  lineHeight: 1.1,
+                  fontWeight: 500,
+                }}
+              >
+                Your family was written down.
+                <span className="block">
+                  We figured out{" "}
+                  <em
+                    style={{
+                      color: GOLD,
+                      fontStyle: "italic",
+                      textDecorationLine: "underline",
+                      textDecorationColor: GOLD,
+                      textDecorationThickness: "2px",
+                      textUnderlineOffset: "4px",
+                    }}
+                  >
+                    where
+                  </em>
+                  .
+                </span>
+              </h1>
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Link
+                  href="/irish-census"
+                  className="rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
+                >
+                  Find your family
+                </Link>
+                <Link
+                  href="/examples"
+                  className="rounded-xl px-7 py-4 text-sm font-semibold transition-colors hover:bg-black/[0.03]"
+                  style={{ border: `1px solid ${RULE}`, color: INK, letterSpacing: "0.03em" }}
+                >
+                  See examples
+                </Link>
+              </div>
+            </div>
+
+            <HeroLedgerMap />
           </div>
         </section>
 
         {/* ── BLOCK 2 · IRISH CENSUS ───────────────────────────────────────────
             One block per country. England and the rest follow this same shape, which
             is why it is a component fed by lib/censusEditions.ts rather than markup. */}
+        <FeaturedQuote />
         <CensusBlock collection={IRISH_CENSUS} />
 
         <WhatWillYouMap />
         <HowItWorks />
-        <DiscoverHistory />
-        <RecentPurchases collection={IRISH_CENSUS} />
+        <RecentPurchases />
         <Testimonials />
         <NeedHelp />
       </main>

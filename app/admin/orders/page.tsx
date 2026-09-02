@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 
 const INK = "#1e2b18";
 const RAISED = "#fdfaf5";
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";

@@ -34,9 +34,17 @@ drift from that file; if it does, the migration wins.
 
 ## App scope
 
-Search/browse (surname lookup, county/DED lists, choropleths) is hardcoded to
-`census_year = 1901` in the RPCs and the plain-listing API routes — there's no year
-toggle anywhere in the UI. 1911 residents are reachable once a specific `house_uid` is
-opened (`get_household` returns both years, tagged per row, since a building
-inherently spans both) but are not yet *findable* by surname search. Adding a year
-toggle across search/browse is separate, not-yet-started follow-up work.
+`/irish-census` covers both loaded editions through a year toggle in its Surname
+step (default 1901; `?year=1911` deep-links straight into the other one) — there is
+no separate `/irish-census-1911` route, and old `/irish-census-1901` links redirect
+to the toggle-bearing route (see `next.config.ts`). Every search/browse RPC and
+plain-listing API route (surname lookup, county/DED lists, choropleths, the
+household step) takes the selected year and scopes to it; `get_household` is the one
+exception that can still return both years unfiltered (pass no `census_year`) since a
+building genuinely spans both censuses — the workspace always passes its selected
+year anyway, to keep what it shows consistent with the surname search that found it.
+The homepage's `CensusBlock` year selector drives the same toggle via a `year` query
+param. `lib/censusEditions.ts` has no 1911 sample artwork yet (the 1901 samples have
+"1901" drawn into the image itself), so the homepage's static sample print and the
+`/examples` gallery both fall back to a placeholder for 1911 rather than reusing a
+mislabelled 1901 image.

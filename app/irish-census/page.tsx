@@ -30,6 +30,7 @@ import {
   fetchTownlandPolygon,
   fetchTownlands,
   normaliseCountyRows,
+  type CensusYear,
   type CountyCount,
   type DedCount,
   type HouseholdPerson,
@@ -83,7 +84,7 @@ function CensusLanding() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Deep link: /irish-census-1901?surname=Murphy opens straight on the results and
+  // Deep link: /irish-census?surname=Murphy opens straight on the results and
   // skips the search hero, so an ad or a shared link can drop someone onto their own
   // name. Seeding the state at first render rather than in an effect means the hero
   // never flashes before the results replace it.
@@ -99,6 +100,14 @@ function CensusLanding() {
   const deepLinkTownlandId = searchParams.get("townlandId")?.trim() ?? "";
   const deepLinkHouseNo = searchParams.get("houseNo")?.trim() ?? "";
   const deepLinkHouseUid = searchParams.get("houseUid")?.trim() ?? "";
+  const deepLinkYear: CensusYear = searchParams.get("year")?.trim() === "1911" ? "1911" : "1901";
+
+  // Which census edition the whole cascade below is scoped to — both loaded years
+  // share this one workspace rather than a separate route each (see the Surname
+  // section's year toggle). Everything below the surname (county/DED/townland/house)
+  // is specific to one year, so switching it acts like picking a new surname: see
+  // handleYearChange.
+  const [censusYear, setCensusYear] = useState<CensusYear>(deepLinkYear);
 
   const [surname, setSurname] = useState(
     deepLinkSurname ? smartSurnameDisplay(deepLinkSurname) : ""
@@ -291,14 +300,15 @@ function CensusLanding() {
     ? `/api/form-a?url=${encodeURIComponent(formAUrls[0])}`
     : "";
 
-  // Load top-10 surnames on mount
+  // Top-10 surnames for the year currently selected — re-fetched whenever the year
+  // toggle changes, same as the debounced list in handleSurnameInputChange.
   useEffect(() => {
-    fetchJson("/api/surnames/list")
+    fetchJson(buildUrl("/api/surnames/list", { census_year: censusYear }))
       .then((res) => {
         setSurnameOptions(Array.isArray(res?.surnames) ? res.surnames : []);
       })
       .catch(() => {});
-  }, []);
+  }, [censusYear]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -426,23 +436,33 @@ function CensusLanding() {
     clearMarker();
   }
 
-  async function loadSurnamePolygons(searchValue: string) {
-    const rows = await fetchSurnamePolygons(searchValue);
+  async function loadSurnamePolygons(searchValue: string, year: CensusYear) {
+    const rows = await fetchSurnamePolygons(searchValue, year);
     setMapPolygons(rows);
   }
 
-  async function loadCountyPolygons(searchValue: string, countyName: string) {
-    const rows = await fetchCountyPolygons(searchValue, countyName);
+  async function loadCountyPolygons(searchValue: string, countyName: string, year: CensusYear) {
+    const rows = await fetchCountyPolygons(searchValue, countyName, year);
     setMapPolygons(rows);
   }
 
-  async function loadDedsForCounty(searchValue: string, countyName: string) {
-    const rows = await fetchDeds(searchValue, countyName);
+  async function loadDedsForCounty(searchValue: string, countyName: string, year: CensusYear) {
+    const rows = await fetchDeds(searchValue, countyName, year);
     setDeds(rows);
     return rows;
   }
 
-  async function runSurnameSearch(rawSurname: string) {
+  /**
+   * `yearOverride` exists only for the year-toggle handler below: it fires this
+   * straight after `setCensusYear`, whose new value isn't visible via the `censusYear`
+   * closure until the next render, so the toggle passes the year explicitly rather
+   * than searching under the year that's about to be replaced. Every other caller
+   * (typing, the top-10 dropdown, "similar surnames", the deep-link mount effect)
+   * omits it and rides the current, already-settled `censusYear` state.
+   */
+  async function runSurnameSearch(rawSurname: string, yearOverride?: CensusYear) {
+    const year = yearOverride ?? censusYear;
+
     if (!rawSurname) {
       resetBelowSurname();
       setSurnameDisplay("");
@@ -471,6 +491,7 @@ function CensusLanding() {
           query: searchValue,
           search: searchValue,
           name: searchValue,
+          census_year: year,
         })
       );
 
@@ -495,14 +516,16 @@ function CensusLanding() {
       }
 
       // Fetch similar surnames in parallel with map load (non-blocking)
-      fetchJson(`/api/surnames/similar?q=${encodeURIComponent(searchValue)}`)
+      fetchJson(
+        buildUrl("/api/surnames/similar", { q: searchValue, census_year: year })
+      )
         .then((res) => {
           const suggestions = Array.isArray(res?.suggestions) ? res.suggestions : [];
           setSimilarSurnames(suggestions);
         })
         .catch(() => {});
 
-      await loadSurnamePolygons(searchValue);
+      await loadSurnamePolygons(searchValue, year);
 
       if (rows.length === 0) {
         setError("No matching counties found for that surname.");
@@ -515,11 +538,29 @@ function CensusLanding() {
     }
   }
 
+  /**
+   * Switching the census year acts like starting a new search under a different
+   * edition: everything below the surname belongs to one year's rollup tables, so it
+   * resets the same way picking a new surname would, then re-runs the current surname
+   * (if any) against the new year. Passes `year` straight to runSurnameSearch rather
+   * than relying on the `censusYear` state, which won't reflect this change until the
+   * next render.
+   */
+  function handleYearChange(year: CensusYear) {
+    if (year === censusYear) return;
+    setCensusYear(year);
+    if (surname.trim()) {
+      void runSurnameSearch(surname, year);
+    } else {
+      resetBelowSurname();
+    }
+  }
+
   function handleSurnameInputChange(value: string) {
     setSurname(value);
     setDropdownOpen(true);
     const q = normaliseSurnameSearch(value);
-    fetchJson(`/api/surnames/list?q=${encodeURIComponent(q)}`)
+    fetchJson(buildUrl("/api/surnames/list", { q, census_year: censusYear }))
       .then((res) => setSurnameOptions(Array.isArray(res?.surnames) ? res.surnames : []))
       .catch(() => {});
   }
@@ -547,7 +588,7 @@ function CensusLanding() {
         setLoadingMessage("Loading surname map...");
 
         try {
-          await loadSurnamePolygons(activeSurnameSearch);
+          await loadSurnamePolygons(activeSurnameSearch, censusYear);
         } catch (err) {
           console.error(err);
           setError("Could not reload surname map.");
@@ -563,8 +604,8 @@ function CensusLanding() {
 
     try {
       await Promise.all([
-        loadDedsForCounty(activeSurnameSearch, countyName),
-        loadCountyPolygons(activeSurnameSearch, countyName),
+        loadDedsForCounty(activeSurnameSearch, countyName, censusYear),
+        loadCountyPolygons(activeSurnameSearch, countyName, censusYear),
       ]);
     } catch (err) {
       console.error(err);
@@ -596,8 +637,8 @@ function CensusLanding() {
       // dropdown that follows just filters this client-side ("Viewing all" is the
       // unfiltered list), rather than firing a new request per townland.
       const [townlandRows, matches] = await Promise.all([
-        fetchTownlands(activeSurnameSearch, ded.ded_id),
-        fetchPersonMatches(activeSurnameSearch, ded.ded_id),
+        fetchTownlands(activeSurnameSearch, ded.ded_id, censusYear),
+        fetchPersonMatches(activeSurnameSearch, ded.ded_id, censusYear),
       ]);
 
       if (selectionToken !== selectionRef.current) return;
@@ -641,7 +682,7 @@ function CensusLanding() {
       setSelectedCounty(countyName);
 
       try {
-        await loadDedsForCounty(activeSurnameSearch, countyName);
+        await loadDedsForCounty(activeSurnameSearch, countyName, censusYear);
       } catch (err) {
         console.error(err);
       }
@@ -710,7 +751,7 @@ function CensusLanding() {
     setLoadingMessage("Loading household...");
 
     try {
-      const rows = await fetchHousehold(group.house_uid);
+      const rows = await fetchHousehold(group.house_uid, censusYear);
 
       setHousehold(rows);
 
@@ -768,7 +809,7 @@ function CensusLanding() {
     }
 
     try {
-      const countyRows = await fetchCounties(activeSurnameSearch);
+      const countyRows = await fetchCounties(activeSurnameSearch, censusYear);
       setCounties(countyRows);
 
       if (!target.county) {
@@ -779,8 +820,8 @@ function CensusLanding() {
       // Deliberately fetchCountyPolygons rather than fetchSurnamePolygons — the map
       // should land on the county being restored to, not fly nationwide first.
       const [dedRows, polyRows] = await Promise.all([
-        fetchDeds(activeSurnameSearch, target.county),
-        fetchCountyPolygons(activeSurnameSearch, target.county),
+        fetchDeds(activeSurnameSearch, target.county, censusYear),
+        fetchCountyPolygons(activeSurnameSearch, target.county, censusYear),
       ]);
       setSelectedCounty(target.county);
       setDeds(dedRows);
@@ -793,7 +834,7 @@ function CensusLanding() {
       }
       setSelectedDed(ded);
 
-      const townlandRows = await fetchTownlands(activeSurnameSearch, ded.ded_id);
+      const townlandRows = await fetchTownlands(activeSurnameSearch, ded.ded_id, censusYear);
       setTownlands(townlandRows);
 
       // Prefer matching by townland_id (a newer snapshot/link carries one) — falls
@@ -811,6 +852,7 @@ function CensusLanding() {
       const matches = await fetchPersonMatches(
         activeSurnameSearch,
         ded.ded_id,
+        censusYear,
         townland.townland_id
       );
       setPersonMatches(matches);
@@ -839,7 +881,7 @@ function CensusLanding() {
         target.household && target.household.length > 0
           ? target.household
           : group.house_uid
-            ? await fetchHousehold(group.house_uid)
+            ? await fetchHousehold(group.house_uid, censusYear)
             : [];
       setHousehold(householdRows);
 
@@ -955,6 +997,7 @@ function CensusLanding() {
     const snapshot: DesignSnapshot = {
       surnameDisplay: surnameTitle,
       surnameSearch: activeSurnameSearch,
+      censusYear,
       county: selectedCounty,
       dedId: selectedDed?.ded_id || "",
       dedDisplay: selectedDed?.ded_display || "",
@@ -983,6 +1026,7 @@ function CensusLanding() {
     const params = new URLSearchParams();
 
     params.set("designKey", nextDesignKey);
+    params.set("year", censusYear);
 
     if (snapshot.surnameDisplay) {
       params.set("surnameDisplay", snapshot.surnameDisplay);
@@ -1026,7 +1070,7 @@ function CensusLanding() {
 
     // Straight into the designer — the old /design step only existed to pick Historic
     // vs Modern, and that is now the first section of the designer itself.
-    router.push(`/irish-census-1901/design?${params.toString()}`);
+    router.push(`/irish-census/design?${params.toString()}`);
   }
 
   /* ── Rail sections ───────────────────────────────────────────────────
@@ -1040,10 +1084,36 @@ function CensusLanding() {
     title: "Surname",
     summary: surnameTitle
       ? `${surnameTitle}${counties.length ? ` · ${counties.length} counties` : ""}`
-      : "Search the 1901 returns",
+      : "Select a census year",
     icon: <SurnameIcon />,
     body: (
       <div className="space-y-4">
+        <div>
+          <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-[0.08em] text-stone-500">
+            Census year
+          </p>
+          <div className="flex gap-2" role="group" aria-label="Census year">
+            {(["1901", "1911"] as const).map((year) => {
+              const active = year === censusYear;
+              return (
+                <button
+                  key={year}
+                  type="button"
+                  onClick={() => handleYearChange(year)}
+                  aria-pressed={active}
+                  className={`flex-1 rounded-md border px-3 py-2 text-[13.5px] font-medium transition-colors ${
+                    active
+                      ? "border-stone-900 bg-stone-900 text-white"
+                      : "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                  }`}
+                >
+                  {year}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <form onSubmit={handleSurnameSearch} className="flex gap-2">
           <div ref={comboboxRef} className="relative flex-1">
             <input

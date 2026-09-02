@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
 import FramedPrint from "../components/home/FramedPrint";
+import DiscoverHistory from "../components/home/DiscoverHistory";
 import { siteFontVars } from "../fonts";
 import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
 
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
   description: "Prints made from real census records, across every collection we carry.",
 };
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const RAISED = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
@@ -104,6 +105,11 @@ export default function ExamplesPage() {
                     </li>
                   ))}
                 </ul>
+
+                {/* The homepage's old "lifestyle banner" — moved here, under the
+                    Irish Census group specifically, rather than shown once at the
+                    top for every collection. */}
+                {group.heading.startsWith("Irish Census") && <DiscoverHistory />}
               </section>
             ))}
           </div>

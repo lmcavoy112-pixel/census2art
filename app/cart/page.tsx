@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "The prints you've designed, ready to order.",
 };
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 
 export default function CartPage() {

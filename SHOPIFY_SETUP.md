@@ -51,7 +51,7 @@ matches SKU …"*.
 
 **Do not add "Frame colour" as a Shopify option/variant dimension.** Colour is chosen in
 the designer from a fixed list (`FRAME_COLOURS` in
-`app/irish-census-1901/design/page.tsx`) and travels to Prodigi as a line item
+`app/irish-census/design/page.tsx`) and travels to Prodigi as a line item
 attribute (`Frame colour`, mapped to Prodigi's `color`), the same mechanism as Surname
 or County — never as part of the SKU. Giving colour its own variants would force
 several variants to share one SKU (since Prodigi's SKU doesn't distinguish colour

@@ -2,7 +2,7 @@
 // -> townland -> house). No setState here — each function just builds the URL, fetches,
 // normalises, and returns the rows. This lets the census workspace's interactive click
 // handlers and its "restore a previous selection" replay (see CensusLanding's mount
-// effect in app/irish-census-1901/page.tsx) share one code path instead of maintaining
+// effect in app/irish-census/page.tsx) share one code path instead of maintaining
 // two copies of the same seven-alias query-param blob that could silently drift apart.
 
 import {
@@ -178,18 +178,34 @@ export function normaliseHouseholdRows(rows: any[]): HouseholdPerson[] {
     .sort((a, b) => ageNumber(b.age) - ageNumber(a.age));
 }
 
-export async function fetchCounties(surnameSearch: string): Promise<CountyCount[]> {
-  const payload = await fetchJson(buildUrl("/api/surnames", surnameAliases(surnameSearch)));
+/** The two census editions actually loaded (see docs/1911-import.md) — every fetcher
+ *  below that touches a per-year rollup (counts, DEDs, townlands, matches, geometry
+ *  overlays) takes this and forwards it as `census_year`, so the whole cascade stays
+ *  scoped to one edition at a time rather than silently mixing both years' counts. */
+export type CensusYear = "1901" | "1911";
+
+export async function fetchCounties(
+  surnameSearch: string,
+  censusYear: CensusYear
+): Promise<CountyCount[]> {
+  const payload = await fetchJson(
+    buildUrl("/api/surnames", { ...surnameAliases(surnameSearch), census_year: censusYear })
+  );
   return normaliseCountyRows(readArray(payload, ["counties", "results", "data"]));
 }
 
-export async function fetchDeds(surnameSearch: string, county: string): Promise<DedCount[]> {
+export async function fetchDeds(
+  surnameSearch: string,
+  county: string,
+  censusYear: CensusYear
+): Promise<DedCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/deds", {
       ...surnameAliases(surnameSearch),
       county,
       county_display: county,
       countyDisplay: county,
+      census_year: censusYear,
     })
   );
   return normaliseDedRows(readArray(payload, ["deds", "results", "data"]));
@@ -197,7 +213,8 @@ export async function fetchDeds(surnameSearch: string, county: string): Promise<
 
 export async function fetchCountyPolygons(
   surnameSearch: string,
-  county: string
+  county: string,
+  censusYear: CensusYear
 ): Promise<DedCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/county-polygons", {
@@ -205,6 +222,7 @@ export async function fetchCountyPolygons(
       county,
       county_display: county,
       countyDisplay: county,
+      census_year: censusYear,
     })
   );
   return normaliseDedRows(readArray(payload, ["polygons", "deds", "results", "data"])).filter(
@@ -212,9 +230,15 @@ export async function fetchCountyPolygons(
   );
 }
 
-export async function fetchSurnamePolygons(surnameSearch: string): Promise<DedCount[]> {
+export async function fetchSurnamePolygons(
+  surnameSearch: string,
+  censusYear: CensusYear
+): Promise<DedCount[]> {
   const payload = await fetchJson(
-    buildUrl("/api/surname-polygons", surnameAliases(surnameSearch))
+    buildUrl("/api/surname-polygons", {
+      ...surnameAliases(surnameSearch),
+      census_year: censusYear,
+    })
   );
   return normaliseDedRows(readArray(payload, ["polygons", "deds", "results", "data"])).filter(
     (item) => item.geojson
@@ -223,13 +247,15 @@ export async function fetchSurnamePolygons(surnameSearch: string): Promise<DedCo
 
 export async function fetchTownlands(
   surnameSearch: string,
-  dedId: string
+  dedId: string,
+  censusYear: CensusYear
 ): Promise<TownlandCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/townlands", {
       ...surnameAliases(surnameSearch),
       ded_id: dedId,
       dedId,
+      census_year: censusYear,
     })
   );
   return normaliseTownlandRows(readArray(payload, ["townlands", "results", "data"]));
@@ -239,6 +265,7 @@ export async function fetchTownlands(
 export async function fetchPersonMatches(
   surnameSearch: string,
   dedId: string,
+  censusYear: CensusYear,
   townlandId?: string
 ): Promise<PersonMatch[]> {
   const payload = await fetchJson(
@@ -248,14 +275,22 @@ export async function fetchPersonMatches(
       dedId,
       townland_id: townlandId,
       townlandId,
+      census_year: censusYear,
     })
   );
   return normalisePersonRows(readArray(payload, ["people", "matches", "results", "data"]));
 }
 
-export async function fetchHousehold(houseUid: string): Promise<HouseholdPerson[]> {
+/** Omit censusYear to get every resident across both loaded years, tagged per row
+ *  (get_household's own default) — the census workspace always passes its selected
+ *  year instead, so the household it shows stays consistent with the surname search
+ *  that found it. */
+export async function fetchHousehold(
+  houseUid: string,
+  censusYear?: CensusYear
+): Promise<HouseholdPerson[]> {
   const payload = await fetchJson(
-    buildUrl("/api/household", { house_uid: houseUid, houseUid })
+    buildUrl("/api/household", { house_uid: houseUid, houseUid, census_year: censusYear })
   );
   return normaliseHouseholdRows(readArray(payload, ["household", "people", "results", "data"]));
 }

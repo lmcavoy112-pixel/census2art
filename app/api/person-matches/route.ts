@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
 import { projectPersonMatches } from "../../../lib/census-fields";
-import { safeParam, safeIntParam } from "../../../lib/validation";
+import { safeParam, safeIntParam, safeCensusYear } from "../../../lib/validation";
 
 function cleanSurname(value: string) {
   return value
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
   // Omitted townland_id means "every townland in this DED" — the merged
   // townland/house step's "Viewing all" mode.
   const townlandId = safeIntParam(searchParams.get("townland_id"));
+  const censusYear = safeCensusYear(searchParams.get("census_year"));
 
   if (!surname || dedId === null) {
     return NextResponse.json([]);
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
     input_surname_search: cleaned,
     input_ded_id: dedId,
     input_townland_id: townlandId,
+    input_census_year: censusYear,
   });
 
   if (error) {

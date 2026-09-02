@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
-import { safeParam } from "../../../lib/validation";
+import { safeParam, safeCensusYear } from "../../../lib/validation";
 
 function normaliseSurnameSearch(value: string) {
   return value.trim().toLowerCase();
@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     const rawSurname = getSurnameFromRequest(request);
     const surnameSearch = normaliseSurnameSearch(rawSurname);
+    const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
     if (!surnameSearch) {
       return NextResponse.json({
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       .from("irish_surname_lookup")
       .select("surname_display, surname_search, count")
       .eq("surname_search", surnameSearch)
-      .eq("census_year", 1901)
+      .eq("census_year", censusYear)
       .maybeSingle();
 
     if (lookupError) {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       .from("irish_surname_county_counts")
       .select("county_display, person_count")
       .eq("surname_search", surnameSearch)
-      .eq("census_year", 1901)
+      .eq("census_year", censusYear)
       .order("person_count", { ascending: false });
 
     if (countyError) {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";

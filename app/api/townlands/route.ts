@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
-import { safeParam, safeIntParam } from "../../../lib/validation";
+import { safeParam, safeIntParam, safeCensusYear } from "../../../lib/validation";
 
 function cleanSurname(value: string) {
   return value
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
 
   const surname = safeParam(searchParams.get("surname"));
   const dedId = safeIntParam(searchParams.get("ded_id"));
+  const censusYear = safeCensusYear(searchParams.get("census_year"));
 
   if (!surname || dedId === null) {
     return NextResponse.json([]);
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     .select("townland_id, person_count, irish_townlands(townland_display)")
     .eq("surname_search", cleaned)
     .eq("ded_id", dedId)
-    .eq("census_year", 1901)
+    .eq("census_year", censusYear)
     .order("person_count", { ascending: false });
 
   if (error) {

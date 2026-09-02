@@ -7,8 +7,9 @@ import { createPortal } from "react-dom";
 import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currency";
 import { useCurrency } from "../CurrencyProvider";
+import AnnouncementBar from "./AnnouncementBar";
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
@@ -83,7 +84,12 @@ function ExamplesCollections({
                   edition.available && edition.href ? (
                     <li key={edition.year}>
                       <Link
-                        href={edition.href}
+                        // Every loaded edition of a collection shares one workspace route
+                        // today (see /irish-census's year toggle) rather than a route per
+                        // year, so the year itself only survives as a `?year=` query param
+                        // — dropping it here would always land on the route's own default
+                        // (1901) no matter which year was actually clicked.
+                        href={edition.year === "1901" ? edition.href! : `${edition.href}?year=${edition.year}`}
                         onClick={onNavigate}
                         className="text-sm transition-colors hover:text-[#1e2b18]"
                         style={{ color: MUTED }}
@@ -470,13 +476,15 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
   }, [examplesOpen]);
 
   return (
-    // Opaque on purpose. A translucent, blurred header let whatever scrolled beneath
-    // it — the search rail, a table — show through as a smear of unreadable text,
-    // which read as a rendering fault rather than an effect.
-    <header
-      style={{ borderBottom: `1px solid ${RULE}`, background: GROUND, height: "var(--site-header-h)" }}
-      className="sticky top-0 z-50"
-    >
+    <>
+      <AnnouncementBar />
+      {/* Opaque on purpose. A translucent, blurred header let whatever scrolled beneath
+          it — the search rail, a table — show through as a smear of unreadable text,
+          which read as a rendering fault rather than an effect. */}
+      <header
+        style={{ background: GROUND, height: "var(--site-header-h)" }}
+        className="sticky top-0 z-50"
+      >
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 shrink items-center gap-1">
           {back && (
@@ -798,7 +806,8 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
           </div>
         </div>
       </div>
-    </header>
+      </header>
+    </>
   );
 }
 

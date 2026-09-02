@@ -379,6 +379,10 @@ function ModernDesignContent() {
   // which is not always unique within a townland).
   const [designKey, setDesignKey] = useState("");
   const [surnameSearch, setSurnameSearch] = useState("");
+  // Which census edition this print's records came from — drives every "1901"/"1911"
+  // shown on the poster itself (see the Historic template's stat labels below) and is
+  // carried back onto "Back to search" so that page reopens under the same year.
+  const [censusYear, setCensusYear] = useState<"1901" | "1911">("1901");
   const [county, setCounty] = useState("");
   // Editable "preferential spelling" shown in the Information tab and printed on the
   // poster/cart line — kept separate from canonical `county` (used for every
@@ -457,7 +461,6 @@ function ModernDesignContent() {
   const [countryPolygons, setCountryPolygons] = useState<DedRow[]>([]);
   const [countryLoaded, setCountryLoaded] = useState(false);
   const [outline, setOutline] = useState<unknown | null>(null);
-  const [countryOutline, setCountryOutline] = useState<unknown | null>(null);
   const [mapError, setMapError] = useState("");
   const [view, setView] = useState<ViewState | null>(null);
 
@@ -555,9 +558,11 @@ function ModernDesignContent() {
     const nextHousehold = saved?.household || [];
     const nextSurnameSearch =
       saved?.surnameSearch || getParam(params, "surnameSearch") || nextSurname.toLowerCase();
+    const nextCensusYear = (saved?.censusYear || getParam(params, "year")) === "1911" ? "1911" : "1901";
 
     setDesignKey(incomingDesignKey);
     setSurnameSearch(nextSurnameSearch);
+    setCensusYear(nextCensusYear);
     setCounty(nextCounty);
     setCountyDisplayText(nextCounty);
     setDedId(nextDedId);
@@ -658,7 +663,7 @@ function ModernDesignContent() {
       setMapError("");
       try {
         const payload = await fetchJson(
-          buildUrl("/api/county-polygons", { surname: surnameSearch, county })
+          buildUrl("/api/county-polygons", { surname: surnameSearch, county, census_year: censusYear })
         );
         const rows = normaliseDedRows(
           readArray(payload, ["polygons", "deds", "results", "data"]),
@@ -672,7 +677,7 @@ function ModernDesignContent() {
     }
 
     void loadPolygons();
-  }, [loaded, surnameSearch, county, template]);
+  }, [loaded, surnameSearch, county, template, censusYear]);
 
   // Nationwide DEDs, fetched lazily the first time something actually needs them —
   // the Country level, or the Historic template, which is nationwide by definition.
@@ -685,7 +690,9 @@ function ModernDesignContent() {
     async function loadCountryPolygons() {
       setMapError("");
       try {
-        const payload = await fetchJson(buildUrl("/api/surname-polygons", { surname: surnameSearch }));
+        const payload = await fetchJson(
+          buildUrl("/api/surname-polygons", { surname: surnameSearch, census_year: censusYear })
+        );
         const rows = normaliseDedRows(
           readArray(payload, ["polygons", "deds", "results", "data"]),
           { requireGeojson: true }
@@ -703,7 +710,7 @@ function ModernDesignContent() {
     return () => {
       cancelled = true;
     };
-  }, [loaded, surnameSearch, level, template, countryLoaded]);
+  }, [loaded, surnameSearch, level, template, countryLoaded, censusYear]);
 
   // The true county boundary, dissolved from its DEDs server-side. Without it the county
   // view frames only the districts the surname appears in, which crops the county badly
@@ -732,29 +739,15 @@ function ModernDesignContent() {
     };
   }, [loaded, county]);
 
-  // The national outline — dissolved from every county, so Country extent has
-  // something to draw a border from at all. Fetched once, lazily, the first time
-  // Country level is actually reached (Modern only, same as the townland/county
-  // outlines above — Historic's Country-equivalent view is the poster itself).
-  useEffect(() => {
-    if (!loaded || template !== "modern" || level !== "country" || countryOutline) return;
-
-    let cancelled = false;
-
-    async function loadCountryOutline() {
-      try {
-        const geometry = await fetchJson("/api/country-outline");
-        if (!cancelled) setCountryOutline(geometry ?? null);
-      } catch {
-        if (!cancelled) setCountryOutline(null);
-      }
-    }
-
-    void loadCountryOutline();
-    return () => {
-      cancelled = true;
-    };
-  }, [loaded, template, level, countryOutline]);
+  // Country extent draws no outline at all. get_country_outline() dissolves the 32
+  // county_geometries rows with ST_Union, but those were simplified independently, so
+  // adjacent counties' shared borders don't coincide — the union leaves ~275 sliver
+  // gaps as stray internal rings, which paint as squiggly lines and blobs across the
+  // whole landmass (some of the larger gaps are real lakes, so closing them with a
+  // snap/buffer tolerance isn't safe either — see conversation history). Until a clean
+  // national boundary source exists, Country prints show Ireland via the basemap's own
+  // land/water fill only, with no accent-coloured stroke — same principle as District,
+  // which also has no outline of its own.
 
   // The townland's own boundary — the Townland preset's own extent, and a finer border
   // drawn over the DED polygon at Street level too. Falls back to nothing both while no
@@ -812,7 +805,7 @@ function ModernDesignContent() {
   /**
    * The destination for "Back to search" — a real href (handed to SiteHeader's `back`
    * as a plain Link, not a router.push behind a button) that carries the whole
-   * selection back to the census workspace, rather than a bare "/irish-census-1901"
+   * selection back to the census workspace, rather than a bare "/irish-census"
    * that reset the search to empty and made the customer retype the surname and
    * re-pick county/district/townland/house from scratch. The county/district/etc are
    * mirrored onto the URL (not just the snapshot) so first paint on the census page is
@@ -822,6 +815,7 @@ function ModernDesignContent() {
   function backToSearchHref() {
     const params = new URLSearchParams();
     if (designKey) params.set("designKey", designKey);
+    params.set("year", censusYear);
     if (surnameSearch) params.set("surname", surnameSearch);
     if (county) params.set("county", county);
     if (dedId) params.set("dedId", dedId);
@@ -832,7 +826,7 @@ function ModernDesignContent() {
     if (houseUid) params.set("houseUid", houseUid);
 
     const query = params.toString();
-    return query ? `/irish-census-1901?${query}` : "/irish-census-1901";
+    return query ? `/irish-census?${query}` : "/irish-census";
   }
 
   // The only thing the designer itself can have changed since arriving is the pin (a
@@ -879,19 +873,17 @@ function ModernDesignContent() {
   // polygon_id check is needed on top of it.
   const hasTownlandPolygon = Boolean(townlandGeojson);
 
-  // Country draws the dissolved national outline; County draws the dissolved county
-  // boundary; Townland and Street both draw the selected townland's own boundary when
-  // one is on file (falls back to nothing — just the DED highlight stroke — both while
-  // no townland is known and when it has no geometry). District has only the
-  // highlight stroke as its outline.
+  // County draws the dissolved county boundary; Townland and Street both draw the
+  // selected townland's own boundary when one is on file (falls back to nothing — just
+  // the DED highlight stroke — both while no townland is known and when it has no
+  // geometry). Country and District have no outline of their own, just the highlight
+  // stroke — see the Country-extent comment above for why.
   const visibleOutline =
-    level === "country"
-      ? countryOutline
-      : level === "county"
-        ? outline
-        : level === "street" || level === "townland"
-          ? townlandGeojson
-          : null;
+    level === "county"
+      ? outline
+      : level === "street" || level === "townland"
+        ? townlandGeojson
+        : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -2169,7 +2161,7 @@ function ModernDesignContent() {
                 }
               />
               <p className="mt-1 text-[12px] text-stone-600">
-                {pinSource === "geocoder" && "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
+                {pinSource === "geocoder" && `Found from the ${censusYear} address. Please confirm the location — drag it on the map to adjust.`}
                 {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
                 {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
                 {!pinSource && "Drag it on the map to place it."}
@@ -2195,13 +2187,13 @@ function ModernDesignContent() {
             )}
             {geocodeState === "not-found" && (
               <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                Couldn&apos;t find the property from the 1901 address — place it manually by
+                Couldn&apos;t find the property from the {censusYear} address — place it manually by
                 dragging the marker on the map.
               </p>
             )}
             {geocodeState === "found" && (
               <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
-                Found a likely match. Please confirm the location before ordering — 1901
+                Found a likely match. Please confirm the location before ordering — {censusYear}
                 addresses are approximate.
               </p>
             )}
@@ -2729,7 +2721,7 @@ function ModernDesignContent() {
     // min-h-dvh, not min-h-screen: <main> below is sized off 100dvh, which shrinks on
     // mobile Safari while the address bar is showing. Pairing a 100vh outer shell with a
     // 100dvh inner one leaves a gap the size of that bar as blank space beneath the pinned
-    // price bar until the page scrolls — see the same fix on /irish-census-1901.
+    // price bar until the page scrolls — see the same fix on /irish-census.
     <div className={`${posterFont.className} flex min-h-dvh flex-col bg-[#F5F4F1] text-stone-900`}>
       {/* Replaces this page's old bespoke masthead — its only interactive element was
           "Back to search", which is now SiteHeader's `back` slot; the eyebrow/heading it
@@ -2789,6 +2781,7 @@ function ModernDesignContent() {
                 format={format}
                 polygons={countryPolygons}
                 surnameDisplay={headingText}
+                censusYear={censusYear}
                 pageColour={historicAccent.page}
                 inkColour={historicAccent.accent}
                 basemapId={historicBasemap}
@@ -2835,7 +2828,7 @@ function ModernDesignContent() {
                       fontSize: MODERN_CAPTION_FONT_PX,
                     }}
                   >
-                    1901 Irish Census
+                    {censusYear} Irish Census
                   </p>
                 </div>
 
@@ -2882,17 +2875,17 @@ function ModernDesignContent() {
                 </div>
 
                 {level === "country" &&
-                  renderSurnameCountBlock(totalCountryCount, "Recorded in Ireland in 1901")}
+                  renderSurnameCountBlock(totalCountryCount, `Recorded in Ireland in ${censusYear}`)}
                 {level === "county" &&
                   renderSurnameCountBlock(
                     totalCountyCount,
-                    countyDisplayText ? `Recorded in ${countyDisplayText} in 1901` : ""
+                    countyDisplayText ? `Recorded in ${countyDisplayText} in ${censusYear}` : ""
                   )}
                 {level === "ded" &&
                   renderSurnameCountBlock(
                     selectedPolygon?.person_count ?? null,
                     dedDisplayText || countyDisplayText
-                      ? `Recorded in ${[dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in 1901`
+                      ? `Recorded in ${[dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in ${censusYear}`
                       : ""
                   )}
                 {/* Townland has no per-townland count of its own on file (the DED-level
@@ -2903,7 +2896,7 @@ function ModernDesignContent() {
                   renderSurnameCountBlock(
                     selectedPolygon?.person_count ?? null,
                     townlandText || dedDisplayText || countyDisplayText
-                      ? `Recorded in ${[townlandText, dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in 1901`
+                      ? `Recorded in ${[townlandText, dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in ${censusYear}`
                       : ""
                   )}
 

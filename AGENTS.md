@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Recommended skills for this project
 
-- **frontend-design** — use for `app/irish-census-1901/page.tsx` and its `design/` subroute. The Celtic-art print calibration UI (borders, symbols, layout presets) is the product itself; avoid generic Tailwind-default styling here.
+- **frontend-design** — use for `app/irish-census/page.tsx` and its `design/` subroute. The Celtic-art print calibration UI (borders, symbols, layout presets) is the product itself; avoid generic Tailwind-default styling here.
 - **dataviz** — use for `IrelandMap` / `IrelandArtworkMap` choropleth work (coloring by `person_count`, legends, tooltips).
 - **simplify** — run after non-trivial changes. The helpers once duplicated verbatim across the census page and the designer (`buildUrl`, `fetchJson`, `readArray`, `pickString`, `pickNumber`, `normaliseDedRows`, `smartSurnameDisplay`) already live in `lib/design/fetching.ts`; `normaliseCountyRows` lives in `lib/census/queries.ts`. Check both files still import from there before adding a new copy.
 - **security-review** — run before shipping checkout/payment code. The API routes surface real genealogy PII (names, ages, religion, occupation, birthplace) from Supabase, and the product integrates with Prodigi for real print orders.
@@ -28,6 +28,8 @@ prefix, `house_uid`/`ded_id`/`townland_id` are now integers, both 1901 and 1911 
 loaded — 8.27M `irish_census_people` rows). `supabase/migrations/0005_irish_census_schema_and_rpcs.sql`
 is the source of truth for the schema and the 9 RPC functions; see
 [docs/1911-import.md](docs/1911-import.md) for a summary. Search/browse (surname
-lookup, county/DED lists, choropleths) is still hardcoded to `census_year = 1901` —
-1911 residents are reachable via a household but not yet findable by surname search; a
-year toggle is separate, not-yet-started follow-up work.
+lookup, county/DED lists, choropleths, the household step) all take a `census_year`
+now — one workspace at `/irish-census` covers both years via the year toggle in its
+Surname step, rather than a route per year. `lib/validation.ts`'s `safeCensusYear()`
+is the one place that clamps an incoming year to 1901/1911; every census API route
+reads it from there rather than re-validating inline.

@@ -10,7 +10,11 @@ const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 const RAISED = "#fdfaf5";
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
+/** GROUND is now nearly indistinguishable from RAISED (both whitened), so the two
+ *  spots below that need to show up *against* a RAISED surface — the disabled-state
+ *  box and the dropdown's hovered row — use this slightly deeper neutral instead. */
+const TINT = "#f1efe6";
 
 type SurnameOption = {
   surname_display: string;
@@ -28,10 +32,14 @@ export default function SurnameSearch({
   targetHref,
   disabled = false,
   disabledNote,
+  censusYear = "1901",
 }: {
   targetHref: string;
   disabled?: boolean;
   disabledNote?: string;
+  /** Which census edition the autocomplete list and the target page's search should
+   *  scope to — CensusBlock passes its selected year's tab through here. */
+  censusYear?: "1901" | "1911";
 }) {
   const router = useRouter();
 
@@ -60,7 +68,7 @@ export default function SurnameSearch({
     let cancelled = false;
 
     const id = setTimeout(() => {
-      fetchJson(buildUrl("/api/surnames/list", { q: query }))
+      fetchJson(buildUrl("/api/surnames/list", { q: query, census_year: censusYear }))
         .then((res) => {
           if (cancelled) return;
           setOptions(Array.isArray(res?.surnames) ? res.surnames : []);
@@ -73,14 +81,17 @@ export default function SurnameSearch({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [surname, disabled]);
+  }, [surname, disabled, censusYear]);
 
   function go(value: string) {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
     setOpen(false);
     setSubmitting(true);
-    router.push(`${targetHref}?surname=${encodeURIComponent(trimmed)}`);
+    // buildUrl, not string interpolation — targetHref is a bare path today, but
+    // appending "?surname=..." directly would double up the "?" the moment a caller
+    // passes one that already carries its own query string.
+    router.push(buildUrl(targetHref, { surname: trimmed, year: censusYear }));
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -105,7 +116,7 @@ export default function SurnameSearch({
     return (
       <div
         className="rounded-xl px-5 py-4 text-sm"
-        style={{ border: `1px dashed ${RULE}`, color: MUTED, background: GROUND }}
+        style={{ border: `1px dashed ${RULE}`, color: MUTED, background: TINT }}
       >
         {disabledNote ?? "These records are not available to search yet."}
       </div>
@@ -175,7 +186,7 @@ export default function SurnameSearch({
                 className="flex w-full items-center justify-between px-5 py-3 text-left text-sm"
                 style={{
                   color: INK,
-                  background: index === highlighted ? GROUND : "transparent",
+                  background: index === highlighted ? TINT : "transparent",
                 }}
               >
                 <span className="font-medium">{opt.surname_display}</span>

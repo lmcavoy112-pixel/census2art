@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: "How census records get mapped to a real-world location, and where that estimate can be wrong.",
 };
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";

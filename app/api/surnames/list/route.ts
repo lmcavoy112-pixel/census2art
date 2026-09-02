@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
-import { safeParam } from "../../../../lib/validation";
+import { safeParam, safeCensusYear } from "../../../../lib/validation";
 
 /**
  * Reads pre-aggregated per-surname totals from irish_surname_lookup (same table
@@ -12,11 +12,12 @@ import { safeParam } from "../../../../lib/validation";
  */
 export async function GET(request: NextRequest) {
   const q = safeParam(request.nextUrl.searchParams.get("q"))?.toLowerCase() ?? "";
+  const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
   let query = supabase
     .from("irish_surname_lookup")
     .select("surname_display, surname_search, count")
-    .eq("census_year", 1901)
+    .eq("census_year", censusYear)
     .order("count", { ascending: false })
     .limit(10);
 

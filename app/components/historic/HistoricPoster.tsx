@@ -497,6 +497,11 @@ export type HistoricPosterProps = {
   format: Format;
   polygons: DedRow[];
   surnameDisplay: string;
+  /** Which census edition the records shown are from — printed as the "1901 Irish
+   *  Census" / "1911 Irish Census" label below the map. Defaults to 1901 so every
+   *  existing caller (standalone Historic designer, older saved snapshots) keeps
+   *  printing what it always has without passing anything new. */
+  censusYear?: "1901" | "1911";
   pageColour: string;
   inkColour: string;
   basemapId: string;
@@ -515,6 +520,7 @@ export default function HistoricPoster({
   format,
   polygons,
   surnameDisplay,
+  censusYear = "1901",
   pageColour,
   inkColour,
   basemapId,
@@ -670,7 +676,7 @@ export default function HistoricPoster({
       >
         {/* Square is short on vertical room, so it sets the label on one line; the
             portrait shapes stack it over two. */}
-        {(isSquare ? ["Irish Census 1901"] : ["1901", "Irish Census"]).map((line) => (
+        {(isSquare ? [`Irish Census ${censusYear}`] : [censusYear, "Irish Census"]).map((line) => (
           <p
             key={line}
             className={`${titleFont.className} uppercase`}

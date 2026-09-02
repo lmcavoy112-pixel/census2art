@@ -119,6 +119,16 @@ export function safeIntParam(value: string | null, maxLength = SHORT_TEXT): numb
 }
 
 /**
+ * The census edition a search/browse request scopes to. Restricted to the two years
+ * actually loaded (see irish_census_people.census_year) rather than accepting any
+ * integer — an unrecognised value falls back to 1901 rather than reaching a table
+ * filter that would just return zero rows.
+ */
+export function safeCensusYear(value: string | null): 1901 | 1911 {
+  return value?.trim() === "1911" ? 1911 : 1901;
+}
+
+/**
  * True for a same-site relative path an OAuth `returnTo`-style redirect can safely target.
  *
  * Rejects anything starting `//` (protocol-relative) *and* anything starting `/\` or

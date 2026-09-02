@@ -4,7 +4,7 @@
 // passes that key (plus a redundant copy of the scalar fields) on the query string —
 // the query string alone can't carry the household array, and localStorage alone
 // doesn't survive a shared/reopened link. Designers read both and prefer the snapshot.
-// See handleContinueToDesign in app/irish-census-1901/page.tsx.
+// See handleContinueToDesign in app/irish-census/page.tsx.
 //
 // The key is reused (not re-minted) across a round trip to a designer and back — the
 // designer's "Back to search" carries the same designKey it arrived with, patched with
@@ -34,6 +34,9 @@ export type HouseholdPerson = {
 export type DesignSnapshot = {
   surnameDisplay?: string;
   surnameSearch?: string;
+  /** Which census edition this selection was made under — 1901 or 1911. Drives the
+   *  poster's year text (see HistoricPoster.tsx) so a 1911 print never says 1901. */
+  censusYear?: string;
   county?: string;
   dedId?: string;
   dedDisplay?: string;

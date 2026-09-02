@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
-import { safeParam } from "../../../../lib/validation";
+import { safeParam, safeCensusYear } from "../../../../lib/validation";
 
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
   // distinct surname sharing its 2-char prefix, so an oversized value is a cheap
   // CPU-burn lever even with the route's own rate limit in place.
   const q = safeParam(request.nextUrl.searchParams.get("q"), 50)?.toLowerCase() ?? "";
+  const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
   if (q.length < 2) {
     return NextResponse.json({ suggestions: [] });
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("irish_surname_lookup")
     .select("surname_search, surname_display, count")
-    .eq("census_year", 1901)
+    .eq("census_year", censusYear)
     .ilike("surname_search", `${prefix}%`);
 
   if (error || !data) {

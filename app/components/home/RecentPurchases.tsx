@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 import FramedPrint from "./FramedPrint";
-import type { CensusCollection } from "@/lib/censusEditions";
 
 const MAX_RECENT_PURCHASES = 3;
 
@@ -18,9 +17,7 @@ type DisplayPurchase = { img: string; surname: string; county?: string };
 
 /**
  * Real, paid orders (GET /api/recent-orders — see that route for why it's safe to show
- * publicly). Fetched once; the caller mixes these into an edition whose records are
- * actually `available`, since the route isn't scoped per census edition and there's
- * nothing to attribute them to otherwise.
+ * publicly). Fetched once; shown first, ahead of the sample pool below.
  */
 function useLiveRecentPurchases(): DisplayPurchase[] {
   const [live, setLive] = useState<DisplayPurchase[]>([]);
@@ -55,23 +52,52 @@ function useLiveRecentPurchases(): DisplayPurchase[] {
   return live;
 }
 
+/**
+ * Sample prints (GET /api/recent-purchase-samples) that pad out the slots real orders
+ * don't fill yet — a shuffled pool read from public/examples/Recent Purchases/ rather
+ * than a fixed array, so growing the pool is "drop a file in", not a code change.
+ */
+function useSampleRecentPurchases(): DisplayPurchase[] {
+  const [samples, setSamples] = useState<DisplayPurchase[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/recent-purchase-samples")
+      .then((res) => (res.ok ? res.json() : { samples: [] }))
+      .then((body: { samples?: DisplayPurchase[] }) => {
+        if (!cancelled) setSamples(Array.isArray(body.samples) ? body.samples : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSamples([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return samples;
+}
+
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
 
 /**
- * Real customer orders, shown as social proof. Always keyed off the collection's first
- * `available` edition rather than any interactive year toggle — today only 1901 has any
- * static placeholders to pad out with, and live orders aren't attributed to a year at all.
+ * Real customer orders, shown as social proof, padded out with a shuffled sample pool
+ * when there aren't enough real ones yet — see the two hooks above. No census-year
+ * claim is made on any of these: a live order isn't attributed to a year at all, and
+ * neither is a sample (the pool isn't scoped to one edition), so the caption below
+ * just says "family print" rather than guessing a year.
  */
-export default function RecentPurchases({ collection }: { collection: CensusCollection }) {
-  const edition =
-    collection.editions.find((e) => e.available) ?? collection.editions[0];
-
+export default function RecentPurchases() {
   const liveRecentPurchases = useLiveRecentPurchases();
-  const recentPurchases = (
-    edition.available ? [...liveRecentPurchases, ...edition.recentPurchases] : edition.recentPurchases
-  ).slice(0, MAX_RECENT_PURCHASES);
+  const sampleRecentPurchases = useSampleRecentPurchases();
+  const recentPurchases = [...liveRecentPurchases, ...sampleRecentPurchases].slice(
+    0,
+    MAX_RECENT_PURCHASES
+  );
 
   if (recentPurchases.length === 0) return null;
 
@@ -80,7 +106,7 @@ export default function RecentPurchases({ collection }: { collection: CensusColl
       <p
         style={{
           fontFamily: "var(--font-plex-mono)",
-          fontSize: "0.66rem",
+          fontSize: "0.7rem",
           letterSpacing: "0.18em",
           textTransform: "uppercase",
           color: GOLD,
@@ -94,7 +120,7 @@ export default function RecentPurchases({ collection }: { collection: CensusColl
           <li key={purchase.img}>
             <FramedPrint
               src={purchase.img}
-              alt={`${purchase.surname} family print from the ${edition.year} census`}
+              alt={`${purchase.surname} family print`}
               matPadding="8px"
               frameWidth="6px"
             />
@@ -112,7 +138,7 @@ export default function RecentPurchases({ collection }: { collection: CensusColl
                   className="block"
                   style={{
                     fontFamily: "var(--font-plex-mono)",
-                    fontSize: "0.62rem",
+                    fontSize: "0.7rem",
                     letterSpacing: "0.1em",
                     textTransform: "uppercase",
                     color: MUTED,

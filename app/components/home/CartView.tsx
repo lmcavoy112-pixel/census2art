@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Cart } from "@/lib/shopify";
 import { formatMoney, isCurrencyCode } from "@/lib/currency";
 
-const GROUND = "#f2ece0";
+const GROUND = "#fdfaf5";
 const RAISED = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
@@ -146,7 +146,7 @@ export default function CartView() {
             "Add your Shopify store details to switch the cart on. Until then prints can be designed but not bought."}
         </p>
         <Link
-          href="/irish-census-1901"
+          href="/irish-census"
           className="mt-5 inline-block rounded-full px-6 py-3 text-sm"
           style={{ background: INK, color: GROUND }}
         >
@@ -398,7 +398,7 @@ export default function CartView() {
         </p>
 
         <Link
-          href="/irish-census-1901"
+          href="/irish-census"
           className="mt-4 block text-center text-[13px] underline underline-offset-4 sm:mt-5"
           style={{ color: MUTED }}
         >

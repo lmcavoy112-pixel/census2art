@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
-import { safeParam } from "../../../lib/validation";
+import { safeParam, safeCensusYear } from "../../../lib/validation";
 
 function cleanSurname(value: string) {
   return value
@@ -14,6 +14,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   const surname = safeParam(searchParams.get("surname"));
+  const censusYear = safeCensusYear(searchParams.get("census_year"));
 
   if (!surname) {
     return NextResponse.json([]);
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase.rpc("get_surname_ded_geojson", {
     input_surname_search: cleaned,
+    input_census_year: censusYear,
   });
 
   if (error) {
