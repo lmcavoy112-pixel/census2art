@@ -1,6 +1,6 @@
 # Surname title auto-fit — calibration handover
 
-Covers the "SURNAME Family" title on the surname-only artwork (`app/design/page.tsx`).
+Covers the "SURNAME Family" title on the surname-only artwork (`app/components/historic/HistoricPoster.tsx`).
 Long surnames (Fitzpatrick, O'Shaughnessy, Blennerhassett, ...) no longer overflow
 the border at any print format — the title now shrinks to fit, within limits set
 per layout.
@@ -9,7 +9,7 @@ per layout.
 
 | Name | What it controls | Default | Where |
 |---|---|---|---|
-| Max size (ceiling) | Font size used for short names, unchanged from before this change | Per layout preset — see table below | `LayoutPreset.surnameTitleSizePx` in `app/design/page.tsx` |
+| Max size (ceiling) | Font size used for short names, unchanged from before this change | Per layout preset — see table below | `LayoutPreset.surnameTitleSizePx` in `app/components/historic/HistoricPoster.tsx` |
 | Shrink at % | Once the surname's natural width exceeds this % of the available inner width (page width minus side borders), the title scales down proportionally to fit | **75%** (global, applies to all layouts) | `surnameFitWidthPct` state |
 | Min px (floor) | The title never shrinks below this size, even for extreme names | **24px** (global) | `surnameMinFontPx` state |
 
@@ -27,7 +27,7 @@ compared against the available width to compute a single proportional scale-down
 
 One real surname per character length, chosen as the highest-record-count example at
 that length in `surname_lookup` (`count >= 100`) — see `SURNAME_LENGTH_SAMPLES` in
-`app/design/page.tsx`. Cycle through them live via the **"Test length →"** button.
+`app/components/historic/HistoricPoster.tsx`. Cycle through them live via the **"Test length →"** button.
 
 Past 14 characters, `surname_lookup` has no genuine high-count surnames left — only
 transcription noise (compound aristocratic names, OCR artifacts) — so 14 chars is the

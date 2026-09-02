@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeParam } from "../../../lib/validation";
 
 /**
  * Place search for the census map's "find a place" box.
@@ -32,9 +33,9 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export async function GET(request: NextRequest) {
-  const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+  const query = safeParam(request.nextUrl.searchParams.get("q")) ?? "";
   // Optional map centre, so results near what the customer is looking at rank first.
-  const proximity = request.nextUrl.searchParams.get("proximity") ?? "";
+  const proximity = safeParam(request.nextUrl.searchParams.get("proximity"), 100) ?? "";
 
   if (query.length < 2) {
     return NextResponse.json({ places: [] });

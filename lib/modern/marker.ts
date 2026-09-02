@@ -5,8 +5,6 @@
 // customer choose a shape and a size as well as a colour, and it is also what makes the
 // marker survive the print export, since html2canvas rasterises a real DOM node.
 
-import type { ModernLevel } from "./presets";
-
 export type MarkerShape = "pin" | "heart" | "house";
 
 export const MARKER_SHAPES: { id: MarkerShape; label: string }[] = [
@@ -14,36 +12,6 @@ export const MARKER_SHAPES: { id: MarkerShape; label: string }[] = [
   { id: "heart", label: "Heart" },
   { id: "house", label: "House" },
 ];
-
-/** Preset marker colours. Custom colours are picked with the hex wheel beside these. */
-export const MARKER_COLOUR_PRESETS: { id: string; label: string; hex: string }[] = [
-  { id: "rose", label: "Rose", hex: "#C08497" },
-  { id: "ink", label: "Ink", hex: "#2B2B2B" },
-  { id: "chalk", label: "Chalk", hex: "#FFFFFF" },
-  { id: "navy", label: "Navy", hex: "#1D4B72" },
-  { id: "coral", label: "Coral", hex: "#E2674F" },
-  { id: "sand", label: "Sand", hex: "#E8D3B4" },
-  { id: "sage", label: "Sage", hex: "#94A48D" },
-];
-
-export const DEFAULT_MARKER_COLOUR = "#C08497";
-
-/**
- * A starting marker colour per map extent preset, drawn from MARKER_COLOUR_PRESETS
- * above rather than new hexes — the customer's own colour picker already teaches these
- * as "the marker colours", so the default at each extent stays recognisable as one of
- * them rather than introducing a colour that appears nowhere else in the picker. House
- * keeps the original rose default (it's the one preset a marker has always rendered at,
- * so existing designs don't change colour under them); the rest are picked to read
- * clearly against a streets/contours basemap.
- */
-export const MARKER_COLOUR_BY_LEVEL: Record<ModernLevel, string> = {
-  country: "#1D4B72", // navy — broadest extent, deepest colour
-  county: "#94A48D", // sage
-  ded: "#E2674F", // coral
-  townland: "#2B2B2B", // ink — the finest-grained extent before a specific house
-  street: DEFAULT_MARKER_COLOUR, // rose — unchanged, this is the only extent a marker has ever shown at
-};
 
 /** Rendered marker height in poster pixels at each end of the size slider. */
 export const MARKER_SIZE_MIN = 18;

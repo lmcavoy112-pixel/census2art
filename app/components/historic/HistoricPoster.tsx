@@ -531,23 +531,35 @@ export default function HistoricPoster({
   const isSquare = sizeGroup === "Square";
   const { w: canvasAW, h: canvasAH } = formatAspect(format);
 
-  // Every calibrated percentage is against the poster's own rendered size, so the
-  // layout holds at any preview width and again at print resolution.
+  // Every calibrated percentage/font size below is computed against this fixed logical
+  // canvas — never against the outer box's actual measured screen size — so the
+  // poster's own proportions hold regardless of browser zoom or the container being
+  // resized (e.g. the mobile map sheet being dragged). 560 matches the width every
+  // existing calibrated constant below was originally tuned against, so none of them
+  // needed re-calibrating for this.
+  const LOGICAL_WIDTH = 560;
+  const logicalHeight = Math.round((LOGICAL_WIDTH * canvasAH) / canvasAW);
+
+  // The outer box's real on-screen size is still measured, but only to compute how much
+  // to visually scale the fixed-size layout below via a CSS transform — it never feeds
+  // back into any font size, inset or icon size calculation.
   const sizeRef = useRef<HTMLDivElement | null>(null);
-  const [previewSize, setPreviewSize] = useState({ width: 560, height: 792 });
+  const [measuredWidth, setMeasuredWidth] = useState(LOGICAL_WIDTH);
 
   useEffect(() => {
     const element = sizeRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      if (rect) setPreviewSize({ width: rect.width, height: rect.height });
+      if (rect && rect.width > 0) setMeasuredWidth(rect.width);
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
-  const shortestSide = Math.min(previewSize.width, previewSize.height);
+  const scaleFactor = measuredWidth / LOGICAL_WIDTH;
+
+  const shortestSide = Math.min(LOGICAL_WIDTH, logicalHeight);
   const scalePx = (pct: number) => Math.round(shortestSide * (pct / 100));
 
   const topInsetPx = scalePx(layout.borderTopPct);
@@ -562,10 +574,10 @@ export default function HistoricPoster({
   const symbolSizePx = scalePx(layout.symbolSizePct);
   const symbolBottomPx = scalePx(layout.symbolBottomPct);
 
-  // Font sizes are calibrated against a 560px-wide preview, so they scale with it —
-  // otherwise the title would be the same physical size on a small preview and a large
-  // one, and the calibration would only hold at one width.
-  const fontScale = previewSize.width > 0 ? previewSize.width / 560 : 1;
+  // Font sizes are calibrated against LOGICAL_WIDTH, so this is always 1 — kept as a
+  // named multiplier rather than removed outright since every font size below still
+  // reads clearly as "the calibrated value, scaled" rather than a bare magic number.
+  const fontScale = 1;
   const censusLabelSizePx = layout.censusLabelSizePx * fontScale;
   const surnameCountNumberSizePx = layout.surnameCountNumberSizePx * fontScale;
   const surnameCountSizePx = layout.surnameCountSizePx * fontScale;
@@ -589,7 +601,7 @@ export default function HistoricPoster({
   }, [surnameDisplay, surnameCeilingPx]);
 
   const surnameAvailableWidthPx =
-    Math.max(0, previewSize.width - 2 * effectiveSideInset) * (layout.surnameFitWidthPct / 100);
+    Math.max(0, LOGICAL_WIDTH - 2 * effectiveSideInset) * (layout.surnameFitWidthPct / 100);
   const surnameFitScale =
     surnameMeasuredWidthPx > 0
       ? Math.min(1, surnameAvailableWidthPx / surnameMeasuredWidthPx)
@@ -617,6 +629,21 @@ export default function HistoricPoster({
       className="relative w-full overflow-hidden"
       style={{ aspectRatio: `${canvasAW} / ${canvasAH}`, backgroundColor: pageColour }}
     >
+      {/* Fixed-size logical canvas, visually fit to the outer box's real size with a
+          single CSS transform rather than by recomputing any of the layout above —
+          this is what keeps the poster's own proportions from reflowing when the outer
+          box's measured size changes (browser zoom, the mobile map sheet being
+          dragged). Everything below is positioned/sized against LOGICAL_WIDTH and
+          logicalHeight, never against the outer box directly. */}
+      <div
+        className="absolute left-0 top-0"
+        style={{
+          width: LOGICAL_WIDTH,
+          height: logicalHeight,
+          transform: `scale(${scaleFactor})`,
+          transformOrigin: "top left",
+        }}
+      >
       <BorderOverlay
         borderStyle={borderStyle}
         inkColour={inkColour}
@@ -775,6 +802,7 @@ export default function HistoricPoster({
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

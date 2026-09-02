@@ -124,7 +124,7 @@ export default function SurnameSearch({
             }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
-            placeholder="Try 'Murphy', 'O'Brien', 'Walsh'…"
+            placeholder="Try 'Obrien' (for O'Brien)…"
             aria-label="Search a surname"
             aria-expanded={open && options.length > 0}
             aria-controls="surname-options"

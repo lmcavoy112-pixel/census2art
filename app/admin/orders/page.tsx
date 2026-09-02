@@ -1,8 +1,9 @@
 "use client";
 
 // Internal orders dashboard. Gated by the same shared admin token as the other internal
-// order routes (lib/admin-auth.ts) — there is no user auth system on this site, so the
-// token is entered once and kept in localStorage rather than a session/cookie.
+// order routes (lib/admin-auth.ts) — there is no user auth system on this site. The token
+// is exchanged once, via POST /api/admin/login, for an httpOnly session cookie; the page
+// never holds the token itself in JS-reachable storage.
 //
 // Palette: reuses the site's own INK/GOLD/RAISED/MUTED tones (see app/page.tsx,
 // app/components/home/CensusBlock.tsx) rather than a generic dashboard palette. Bars are
@@ -33,8 +34,6 @@ const STATUS_COLOUR: Record<string, string> = {
   failed: STATUS_CRITICAL,
 };
 
-const TOKEN_KEY = "census2art_admin_token";
-
 type Bucket = { name: string; count: number };
 
 type Stats = {
@@ -62,31 +61,23 @@ const money = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP
 const pct = new Intl.NumberFormat("en-GB", { style: "percent", maximumFractionDigits: 1 });
 
 export default function AdminOrdersPage() {
-  const [token, setToken] = useState<string | null>(null);
   const [tokenInput, setTokenInput] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
-  const [state, setState] = useState<"gate" | "loading" | "error" | "ready">("gate");
+  const [state, setState] = useState<"gate" | "loading" | "error" | "ready">("loading");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const load = useCallback(async (candidateToken: string) => {
+  // Cookie-based: no token to pass here, the browser sends the session cookie (if any)
+  // automatically. This doubles as the "am I already signed in" check on mount.
+  const loadStats = useCallback(async () => {
     setState("loading");
     try {
-      const res = await fetch("/api/admin/orders/stats", {
-        headers: { "x-admin-token": candidateToken },
-      });
+      const res = await fetch("/api/admin/orders/stats");
       if (!res.ok) {
-        window.localStorage.removeItem(TOKEN_KEY);
-        setToken(null);
-        setErrorMsg(
-          res.status === 404 ? "That token wasn't recognised." : "Could not load the dashboard."
-        );
         setState("gate");
         return;
       }
       const body = (await res.json()) as Stats;
       setStats(body);
-      setToken(candidateToken);
-      window.localStorage.setItem(TOKEN_KEY, candidateToken);
       setState("ready");
     } catch {
       setErrorMsg("Could not reach the server.");
@@ -95,18 +86,37 @@ export default function AdminOrdersPage() {
   }, []);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(TOKEN_KEY);
-    if (saved) load(saved);
-  }, [load]);
+    loadStats();
+  }, [loadStats]);
 
-  function handleUnlock(e: React.FormEvent) {
+  async function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
-    if (tokenInput.trim()) load(tokenInput.trim());
+    const candidateToken = tokenInput.trim();
+    if (!candidateToken) return;
+
+    setState("loading");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: candidateToken }),
+      });
+      if (!res.ok) {
+        setErrorMsg(res.status === 404 ? "That token wasn't recognised." : "Could not sign in.");
+        setState("gate");
+        return;
+      }
+      setTokenInput("");
+      await loadStats();
+    } catch {
+      setErrorMsg("Could not reach the server.");
+      setState("gate");
+    }
   }
 
   function signOut() {
-    window.localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
+    fetch("/api/admin/login", { method: "DELETE" }).catch(() => {});
     setStats(null);
     setTokenInput("");
     setState("gate");
@@ -187,7 +197,7 @@ export default function AdminOrdersPage() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => token && load(token)}
+              onClick={() => loadStats()}
               className="rounded-md px-4 py-2 text-sm"
               style={{ border: `1px solid ${RULE}`, color: INK }}
             >

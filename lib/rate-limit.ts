@@ -91,6 +91,9 @@ const BUDGETS: Budget[] = [
   // Public form, no account behind it — tight budget on top of the honeypot/timing
   // checks in the route itself, since either alone is easy for a script to miss.
   { prefix: "/api/contact", windows: [{ limit: 5, windowMs: 10 * 60_000 }] },
+  // Guards a single static shared secret (see lib/admin-auth.ts) — the constant-time
+  // compare stops timing attacks, not guessing, so brute force has to be stopped here.
+  { prefix: "/api/admin/login", windows: [{ limit: 8, windowMs: 15 * 60_000 }] },
 ];
 
 const DEFAULT_BUDGET: Budget = { prefix: "/api", windows: [{ limit: 120, windowMs: 60_000 }] };

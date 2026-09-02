@@ -29,7 +29,7 @@ export default function CartPage() {
     >
       <SiteHeader />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12 sm:py-16">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-16">
         <h1
           style={{
             fontFamily: "var(--font-cormorant)",
@@ -40,11 +40,11 @@ export default function CartPage() {
           Cart
         </h1>
 
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           <CartView />
         </div>
 
-        <p className="mt-10 text-xs" style={{ color: "#8a8070" }}>
+        <p className="mt-8 text-xs sm:mt-10" style={{ color: "#8a8070" }}>
           Map data © OpenStreetMap contributors, elevation from Terrain Tiles — see{" "}
           <Link href="/legal#map-data" className="underline underline-offset-2">
             full attribution

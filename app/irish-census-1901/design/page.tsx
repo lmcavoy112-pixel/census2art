@@ -95,10 +95,7 @@ import {
 } from "@/lib/modern/mapRuntime";
 import { applyMarkerLayer, applyModernOverlays } from "@/lib/modern/overlays";
 import {
-  DEFAULT_MARKER_COLOUR,
   DEFAULT_MARKER_SIZE,
-  MARKER_COLOUR_BY_LEVEL,
-  MARKER_COLOUR_PRESETS,
   MARKER_SHAPES,
   MARKER_SIZE_MAX,
   MARKER_SIZE_MIN,
@@ -251,6 +248,27 @@ const MAP_MIN_HEIGHT_RATIO = 0.55;
 const HOUSEHOLD_TABLE_CEILING_FONT_PX = 10;
 const HOUSEHOLD_TABLE_MIN_FONT_PX = 6;
 
+// The Modern poster's own fixed logical canvas width — matches HistoricPoster's own
+// LOGICAL_WIDTH constant. Every poster font size below is computed against this fixed
+// number rather than the real on-screen size or (worse) the raw browser viewport, so
+// the poster's own proportions hold regardless of browser zoom or the container being
+// resized (e.g. the mobile map sheet being dragged); the poster's actual on-screen size
+// is handled entirely by a single CSS transform, applied once where it's rendered.
+const MODERN_LOGICAL_WIDTH = 560;
+
+// These four sizes used to be `clamp(minPx, Xvw, maxPx)` — relative to the raw browser
+// viewport, not the poster's own rendered size (the poster occupies only part of the
+// viewport next to the rail). On every normal desktop window that clamp was wide enough
+// to sit permanently at its own ceiling (Xvw resolves well past maxPx once the browser
+// window is much past ~850-1100px wide), so maxPx is what was actually on screen almost
+// all the time — these are that same ceiling, now as fixed px against the poster's own
+// fixed logical canvas (MODERN_LOGICAL_WIDTH) instead of the browser window, so it holds
+// at every screen size and zoom level rather than only "normal desktop."
+const MODERN_HEADING_FONT_PX = 30;
+const MODERN_COUNT_NUMBER_FONT_PX = 32;
+const MODERN_CAPTION_FONT_PX = 11;
+const MODERN_PLACE_INFO_FONT_PX = 10;
+
 // Sentinel border colour id — not a real palette entry, just a marker for "draw no
 // border at all", picked from the same swatch row as the real colours.
 const NO_BORDER_COLOUR_ID = "none";
@@ -362,6 +380,12 @@ function ModernDesignContent() {
   const [designKey, setDesignKey] = useState("");
   const [surnameSearch, setSurnameSearch] = useState("");
   const [county, setCounty] = useState("");
+  // Editable "preferential spelling" shown in the Information tab and printed on the
+  // poster/cart line — kept separate from canonical `county` (used for every
+  // /api/county-* fetch and the back-to-search round trip) so typing a variant
+  // spelling there can't break the map/search, mirroring dedId/dedDisplayText and
+  // townlandId/townlandText below.
+  const [countyDisplayText, setCountyDisplayText] = useState("");
   const [dedId, setDedId] = useState("");
   const [townlandId, setTownlandId] = useState("");
   const [houseUid, setHouseUid] = useState("");
@@ -386,8 +410,10 @@ function ModernDesignContent() {
 
   // ── House marker ───────────────────────────────────────────────────
   const [markerShape, setMarkerShape] = useState<MarkerShape>("pin");
-  const [markerColour, setMarkerColour] = useState(DEFAULT_MARKER_COLOUR);
   const [markerSizeIndex, setMarkerSizeIndex] = useState(2);
+  // Collapsed by default — Shape/Size are secondary to just confirming the marker's
+  // location, so they stay tucked away until the customer actually wants them.
+  const [showMarkerDesign, setShowMarkerDesign] = useState(false);
   const [pin, setPin] = useState<{ lng: number; lat: number } | null>(null);
   // Where the current pin came from — drives the confirmation line under the marker
   // controls. "manual" once dragged, regardless of how it started.
@@ -431,6 +457,7 @@ function ModernDesignContent() {
   const [countryPolygons, setCountryPolygons] = useState<DedRow[]>([]);
   const [countryLoaded, setCountryLoaded] = useState(false);
   const [outline, setOutline] = useState<unknown | null>(null);
+  const [countryOutline, setCountryOutline] = useState<unknown | null>(null);
   const [mapError, setMapError] = useState("");
   const [view, setView] = useState<ViewState | null>(null);
 
@@ -532,6 +559,7 @@ function ModernDesignContent() {
     setDesignKey(incomingDesignKey);
     setSurnameSearch(nextSurnameSearch);
     setCounty(nextCounty);
+    setCountyDisplayText(nextCounty);
     setDedId(nextDedId);
     setTownlandId(nextTownlandId);
     setHouseUid(nextHouseUid);
@@ -562,11 +590,6 @@ function ModernDesignContent() {
     setDeepestLevel(deepest);
     setLevel(deepest);
     setBasemap(MODERN_PRESETS[deepest].basemaps[0]);
-    // A starting colour that stands out at whichever extent the search actually landed
-    // on — see MARKER_COLOUR_BY_LEVEL. Marker colour isn't part of the saved snapshot
-    // (only the pin's position/source is, in patchPinBeforeLeaving), so there's never a
-    // customer choice here to overwrite.
-    setMarkerColour(MARKER_COLOUR_BY_LEVEL[deepest]);
     setMapLayers({
       ...DEFAULT_LAYER_TOGGLES,
       placeNames: MODERN_PRESETS[deepest].defaultPlaceLabels,
@@ -709,6 +732,30 @@ function ModernDesignContent() {
     };
   }, [loaded, county]);
 
+  // The national outline — dissolved from every county, so Country extent has
+  // something to draw a border from at all. Fetched once, lazily, the first time
+  // Country level is actually reached (Modern only, same as the townland/county
+  // outlines above — Historic's Country-equivalent view is the poster itself).
+  useEffect(() => {
+    if (!loaded || template !== "modern" || level !== "country" || countryOutline) return;
+
+    let cancelled = false;
+
+    async function loadCountryOutline() {
+      try {
+        const geometry = await fetchJson("/api/country-outline");
+        if (!cancelled) setCountryOutline(geometry ?? null);
+      } catch {
+        if (!cancelled) setCountryOutline(null);
+      }
+    }
+
+    void loadCountryOutline();
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, template, level, countryOutline]);
+
   // The townland's own boundary — the Townland preset's own extent, and a finer border
   // drawn over the DED polygon at Street level too. Falls back to nothing both while no
   // townland is known and when the townland has no geometry on file (a common ~23.5%
@@ -825,17 +872,26 @@ function ModernDesignContent() {
     [polygons]
   );
 
-  // County draws the dissolved county boundary; Townland and Street both draw the
-  // selected townland's own boundary when one is on file (falls back to nothing — just
-  // the DED highlight stroke — both while no townland is known and when it has no
-  // geometry, a common ~23.5% case). District has only the highlight stroke as its
-  // outline.
+  // One shared signal for "is there a real boundary on file for the selected
+  // townland" — get_townland_geojson returns geojson: null exactly when the townland
+  // has no polygon_id/geometry on record (a common ~23.5% case, not an error), and a
+  // real GeoJSON object otherwise, so this is already an accurate gate — no separate
+  // polygon_id check is needed on top of it.
+  const hasTownlandPolygon = Boolean(townlandGeojson);
+
+  // Country draws the dissolved national outline; County draws the dissolved county
+  // boundary; Townland and Street both draw the selected townland's own boundary when
+  // one is on file (falls back to nothing — just the DED highlight stroke — both while
+  // no townland is known and when it has no geometry). District has only the
+  // highlight stroke as its outline.
   const visibleOutline =
-    level === "county"
-      ? outline
-      : level === "street" || level === "townland"
-        ? townlandGeojson
-        : null;
+    level === "country"
+      ? countryOutline
+      : level === "county"
+        ? outline
+        : level === "street" || level === "townland"
+          ? townlandGeojson
+          : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -850,8 +906,16 @@ function ModernDesignContent() {
         weight: (p.person_count || 0) / maxCount,
       }));
     }
+    // Townland/Street with a real townland polygon: the DED fill would sit underneath
+    // and behind the townland's own outline for no reason, since visibleOutline above
+    // already draws the townland boundary — suppressed here so it's the only shape on
+    // screen. Falls back to the whole DED (District's own behaviour) whenever there's
+    // no townland geometry to show instead.
+    if ((level === "townland" || level === "street") && hasTownlandPolygon) {
+      return [];
+    }
     return selectedPolygon ? [{ geometry: selectedPolygon.geojson, weight: 1 }] : [];
-  }, [level, polygons, countryPolygons, selectedPolygon, maxCount, countryMaxCount]);
+  }, [level, polygons, countryPolygons, selectedPolygon, maxCount, countryMaxCount, hasTownlandPolygon]);
 
   const fitBounds = useMemo<LngLatBox | null>(() => {
     if (level === "country") {
@@ -864,7 +928,7 @@ function ModernDesignContent() {
       return box ? padBox(box, 0.04) : null;
     }
 
-    if (level === "townland" && townlandGeojson) {
+    if ((level === "townland" || level === "street") && hasTownlandPolygon) {
       const box = boundsOf([townlandGeojson]);
       if (box) return padBox(box, 0.12);
       // No geometry on file for this townland — falls through to the same DED framing
@@ -879,7 +943,7 @@ function ModernDesignContent() {
     // so the household record prints below the map; there are no house coordinates in
     // the census data to zoom in on more tightly than the district itself.
     return padBox(box, 0.12);
-  }, [level, polygons, countryPolygons, selectedPolygon, outline, townlandGeojson]);
+  }, [level, polygons, countryPolygons, selectedPolygon, outline, townlandGeojson, hasTownlandPolygon]);
 
   // Also re-fit when the paper format changes — the poster's aspect ratio changes the
   // shape of the map's own container, and without this the camera stays put and just
@@ -889,7 +953,7 @@ function ModernDesignContent() {
   // is selected without changing the container's aspect ratio, and re-fitting on every
   // such pick was wiping out a customer's manually panned/zoomed view each time.
   const [refitNonce, setRefitNonce] = useState(0);
-  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${format}-${refitNonce}`;
+  const fitKey = `${level}-${dedId}-${polygons.length}-${countryPolygons.length}-${outline ? "outline" : "no-outline"}-${hasTownlandPolygon ? "t" : "no-t"}-${format}-${refitNonce}`;
 
   const centre = useMemo(() => {
     if (view) return view.center;
@@ -906,6 +970,10 @@ function ModernDesignContent() {
   const mapPalette = useMemo(() => mapPaletteFor(palette), [palette]);
   const pageHex = palette.paper;
   const inkHex = palette.ink;
+  // The marker always matches the chosen palette rather than being independently
+  // picked — palette.ink is already tuned as a readable foreground against every
+  // palette's own paper/land colours, so it reads clearly wherever the marker sits.
+  const markerColour = palette.ink;
 
   // The county boundary is basemap furniture, not a district the customer coloured, so
   // it takes its colour from the palette rather than from the district border swatch —
@@ -914,17 +982,17 @@ function ModernDesignContent() {
   // palette's land colour.
   const outlineHex = mapPalette.label;
   const OUTLINE_WIDTH = 2;
-  // At Street/Townland the outline draws over the dark district highlight fill instead
-  // of the plain basemap the county outline was tuned for -- outlineHex (tuned for
-  // contrast against land colour) reads as effectively invisible on top of that fill.
-  // Same blue as the interactive census map's townland border, for both contrast and a
-  // consistent "this marks the townland" visual language across the two pipelines.
-  const effectiveOutlineColour =
-    level === "street" || level === "townland" ? "#1d4ed8" : outlineHex;
 
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
   const borderHex = getPolygonColourById(borderColourId)?.hex ?? polygonHex;
+  // At Street/Townland the outline draws over the dark district highlight fill instead
+  // of the plain basemap the county outline was tuned for -- outlineHex (tuned for
+  // contrast against land colour) reads as effectively invisible on top of that fill.
+  // Uses the customer's own DED boundary colour preset instead, so the townland
+  // boundary always matches whatever they picked for District borders.
+  const effectiveOutlineColour =
+    level === "street" || level === "townland" ? borderHex : outlineHex;
   // Country/County show dozens to hundreds of districts at once, where individual
   // borders read as noise rather than information — forced to 0 there regardless of the
   // customer's chosen thickness. Deliberately never writes back to borderWidthIndex, so
@@ -934,6 +1002,12 @@ function ModernDesignContent() {
     !bordersConfigurable || borderColourId === NO_BORDER_COLOUR_ID
       ? 0
       : BORDER_WIDTHS[borderWidthIndex];
+  // Same reasoning as effectiveOutlineColour just above: at Street/Townland this stroke
+  // *is* the district/townland boundary the customer is styling, so it takes their
+  // chosen thickness too, not just their chosen colour — matching "the exact design
+  // settings as DEDs" rather than a flat, fixed line weight.
+  const effectiveOutlineWidth =
+    level === "street" || level === "townland" ? borderWidth : OUTLINE_WIDTH;
 
   // Shape is decided up front, in the Template section, because it gates what the rest
   // of the designer can offer — square has no symbol divider and only one border.
@@ -1007,6 +1081,14 @@ function ModernDesignContent() {
     return { width, height: width / ratio };
   }, [stageSize, aspect.w, aspect.h]);
 
+  // The Modern poster body is laid out once against this fixed logical size (see
+  // MODERN_LOGICAL_WIDTH above) and then visually fit to frameSize with a single CSS
+  // transform below — frameSize itself keeps changing with the stage (that's expected,
+  // it's how the on-screen preview responds to real layout changes), but nothing inside
+  // the poster ever recomputes a font size, inset or row count from it directly anymore.
+  const modernLogicalHeight = Math.round((MODERN_LOGICAL_WIDTH * aspect.h) / aspect.w);
+  const modernScaleFactor = frameSize ? frameSize.width / MODERN_LOGICAL_WIDTH : 1;
+
   const householdVisibleFieldOptions = HOUSEHOLD_FIELD_OPTIONS.filter((f) =>
     visibleHouseholdFields.has(f.id)
   );
@@ -1053,6 +1135,7 @@ function ModernDesignContent() {
         polygon_id: polygonId,
         county,
         townland: townlandText,
+        townland_id: townlandId,
         house_no: houseNoText,
       })
     )
@@ -1117,21 +1200,29 @@ function ModernDesignContent() {
     return (
       <div className="flex-none pt-[4%] text-center">
         <p
-          className="truncate text-[clamp(14px,3.2vw,30px)] font-light uppercase"
-          style={{ letterSpacing: "0.18em", color: inkHex }}
+          className="truncate font-light uppercase"
+          style={{ letterSpacing: "0.18em", color: inkHex, fontSize: MODERN_HEADING_FONT_PX }}
         >
           {headingText}
         </p>
         <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: inkHex }} />
         {count !== null && count > 0 && (
-          <p className="text-[clamp(16px,3vw,32px)] font-semibold" style={{ color: inkHex }}>
+          <p
+            className="font-semibold"
+            style={{ color: inkHex, fontSize: MODERN_COUNT_NUMBER_FONT_PX }}
+          >
             {count.toLocaleString()}
           </p>
         )}
         {caption && (
           <p
-            className="mt-[1%] text-[clamp(6px,1.3vw,11px)] uppercase"
-            style={{ letterSpacing: "0.22em", color: inkHex, opacity: 0.6 }}
+            className="mt-[1%] uppercase"
+            style={{
+              letterSpacing: "0.22em",
+              color: inkHex,
+              opacity: 0.6,
+              fontSize: MODERN_CAPTION_FONT_PX,
+            }}
           >
             {caption}
           </p>
@@ -1198,7 +1289,7 @@ function ModernDesignContent() {
   // number below that, then the table — together, shared by the real block and both
   // hidden measuring clones, so what gets measured is exactly what renders.
   const countyDedTownlandLine = [
-    [county && `Co. ${county}`, dedDisplayText].filter(Boolean).join(", "),
+    [countyDisplayText && `Co. ${countyDisplayText}`, dedDisplayText].filter(Boolean).join(", "),
     townlandText,
   ]
     .filter(Boolean)
@@ -1209,24 +1300,34 @@ function ModernDesignContent() {
     return (
       <>
         <p
-          className="truncate text-center text-[clamp(14px,3.2vw,30px)] font-light uppercase"
-          style={{ letterSpacing: "0.18em", color: inkHex }}
+          className="truncate text-center font-light uppercase"
+          style={{ letterSpacing: "0.18em", color: inkHex, fontSize: MODERN_HEADING_FONT_PX }}
         >
           {headingText}
         </p>
         <div className="mx-auto my-[3%] h-px w-[22%]" style={{ background: inkHex }} />
         {countyDedTownlandLine && (
           <p
-            className="text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase"
-            style={{ letterSpacing: "0.2em", color: inkHex, opacity: 0.6 }}
+            className="text-center font-medium uppercase"
+            style={{
+              letterSpacing: "0.2em",
+              color: inkHex,
+              opacity: 0.6,
+              fontSize: MODERN_PLACE_INFO_FONT_PX,
+            }}
           >
             {countyDedTownlandLine}
           </p>
         )}
         {houseNoLine && (
           <p
-            className="mb-[2%] text-center text-[clamp(6px,1.2vw,10px)] font-medium uppercase"
-            style={{ letterSpacing: "0.2em", color: inkHex, opacity: 0.6 }}
+            className="mb-[2%] text-center font-medium uppercase"
+            style={{
+              letterSpacing: "0.2em",
+              color: inkHex,
+              opacity: 0.6,
+              fontSize: MODERN_PLACE_INFO_FONT_PX,
+            }}
           >
             {houseNoLine}
           </p>
@@ -1254,28 +1355,37 @@ function ModernDesignContent() {
     }
 
     function measure() {
-      const bodyEl = posterBodyRef.current;
       const headerEl = infoBlockRef.current;
       const measureWrapEl = householdMeasureWrapRef.current;
       const ceilingEl = householdCeilingMeasureRef.current;
       const minEl = householdMinMeasureRef.current;
-      if (!bodyEl || !headerEl || !measureWrapEl || !ceilingEl || !minEl) return;
+      if (!headerEl || !measureWrapEl || !ceilingEl || !minEl) return;
+
+      // headerEl sits inside the poster's fixed-logical-size wrapper (MODERN_LOGICAL_WIDTH),
+      // which is visually fit to its real on-screen size with a CSS transform —
+      // getBoundingClientRect() reports that scaled (real) size, so its height reading is
+      // converted back to logical units by dividing out the same scale below. The poster's
+      // own width/height and padding are computed directly from the fixed logical
+      // constants instead of measured at all: CSS transforms are a paint-time operation
+      // and never affect layout, so percentage padding here already resolves against the
+      // fixed logical width regardless of the real on-screen scale — measuring it would
+      // just be re-deriving a constant. This combination is what keeps the whole
+      // calculation (and the font sizes/row counts it produces) from changing every time
+      // the on-screen scale does (browser zoom, the mobile map sheet being dragged),
+      // rather than only being right at whatever size happened to be on screen when it
+      // last ran.
+      const toLogical = modernScaleFactor > 0 ? 1 / modernScaleFactor : 1;
+
+      const paddingX = 2 * 0.07 * MODERN_LOGICAL_WIDTH;
+      const paddingY = 2 * 0.07 * MODERN_LOGICAL_WIDTH;
+      const posterWidthPx = MODERN_LOGICAL_WIDTH - paddingX;
+      const posterHeightPx = modernLogicalHeight - paddingY;
 
       // Hidden clones must render at the same width the real table will, or a long cell
       // (an occupation, say) can wrap in one but not the other and throw the estimate off.
-      measureWrapEl.style.width = `${headerEl.getBoundingClientRect().width}px`;
+      measureWrapEl.style.width = `${posterWidthPx}px`;
 
-      // bodyEl (not posterRef) is the flex column *inside* the poster's own padding — but
-      // getBoundingClientRect() is a border-box measurement, so with h-full it reports the
-      // same size as the unpadded outer poster. Subtract the padding explicitly to get the
-      // content box the header/map/table actually share.
-      const bodyRect = bodyEl.getBoundingClientRect();
-      const bodyStyle = getComputedStyle(bodyEl);
-      const paddingX = (parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0);
-      const paddingY = (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0);
-      const posterWidthPx = bodyRect.width - paddingX;
-      const posterHeightPx = bodyRect.height - paddingY;
-      const headerHeightPx = headerEl.getBoundingClientRect().height;
+      const headerHeightPx = headerEl.getBoundingClientRect().height * toLogical;
       const mapMinHeightPx = posterWidthPx * MAP_MIN_HEIGHT_RATIO;
       const budgetPx = posterHeightPx - headerHeightPx - mapMinHeightPx;
       setHouseholdBudgetPx(Math.max(0, budgetPx));
@@ -1361,7 +1471,17 @@ function ModernDesignContent() {
     const observer = new ResizeObserver(() => measure());
     observer.observe(posterEl);
     return () => observer.disconnect();
-  }, [level, visibleHousehold, visibleHouseholdFields, householdDisplayMode, houseNoText, headingText, aspect.w, aspect.h]);
+  }, [
+    level,
+    visibleHousehold,
+    visibleHouseholdFields,
+    householdDisplayMode,
+    houseNoText,
+    headingText,
+    aspect.w,
+    aspect.h,
+    modernScaleFactor,
+  ]);
 
   /**
    * Re-renders the map offscreen at print resolution, swaps that image into the poster in
@@ -1422,7 +1542,7 @@ function ModernDesignContent() {
           accentColour: polygonHex,
           borderColour: borderHex,
           outlineColour: effectiveOutlineColour,
-          outlineWidth: OUTLINE_WIDTH,
+          outlineWidth: effectiveOutlineWidth,
           showFill: showPolygonFill,
           highlightLineWidth: borderWidth,
         });
@@ -1533,6 +1653,7 @@ function ModernDesignContent() {
           design: {
             surname: headingText,
             county,
+            countyDisplay: countyDisplayText,
             dedDisplay: dedDisplayText,
             product: selectedSku.product,
             template: template === "historic" ? "Historic" : "Modern",
@@ -1595,7 +1716,7 @@ function ModernDesignContent() {
           // the underscore-prefixed one is kept for fulfilment and hidden from them.
           attributes: [
             { key: "Surname", value: headingText || "—" },
-            ...(county ? [{ key: "County", value: county }] : []),
+            ...(countyDisplayText ? [{ key: "County", value: countyDisplayText }] : []),
             ...(dedDisplayText ? [{ key: "District", value: dedDisplayText }] : []),
             ...(townlandText ? [{ key: "Townland", value: townlandText }] : []),
             ...(houseNoText ? [{ key: "House", value: houseNoText }] : []),
@@ -1649,7 +1770,7 @@ function ModernDesignContent() {
   };
 
   const detailFields: { label: string; value: string; set: (v: string) => void }[] = [
-    { label: "County", value: county, set: setCounty },
+    { label: "County", value: countyDisplayText, set: setCountyDisplayText },
     { label: "District", value: dedDisplayText, set: setDedDisplayText },
     { label: "Townland", value: townlandText, set: setTownlandText },
     { label: "House", value: houseNoText, set: setHouseNoText },
@@ -1817,34 +1938,43 @@ function ModernDesignContent() {
                 })}
               </div>
 
-              <p className="mb-2 text-[12px] font-medium text-stone-700">Details to print</p>
-              <div className="flex flex-wrap gap-1.5">
-                {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
-                  const active = visibleHouseholdFields.has(f.id);
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() =>
-                        setVisibleHouseholdFields((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(f.id)) next.delete(f.id);
-                          else next.add(f.id);
-                          return next;
-                        })
-                      }
-                      className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
-                        active
-                          ? "border-stone-800 bg-stone-800 text-white"
-                          : "border-stone-300 bg-white text-stone-600 hover:bg-white"
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* List mode prints a name/age summary line per person (see
+                  renderHouseholdTable) and never reads visibleHouseholdFields at all —
+                  showing this picker there let a customer toggle columns that had no
+                  effect on the print. The selection itself is left untouched while
+                  hidden, so it's exactly as they left it if they switch back to Table. */}
+              {householdDisplayMode === "table" && (
+                <>
+                  <p className="mb-2 text-[12px] font-medium text-stone-700">Details to print</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {HOUSEHOLD_FIELD_OPTIONS.map((f) => {
+                      const active = visibleHouseholdFields.has(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() =>
+                            setVisibleHouseholdFields((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(f.id)) next.delete(f.id);
+                              else next.add(f.id);
+                              return next;
+                            })
+                          }
+                          className={`rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                            active
+                              ? "border-stone-800 bg-stone-800 text-white"
+                              : "border-stone-300 bg-white text-stone-600 hover:bg-white"
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -2024,16 +2154,20 @@ function ModernDesignContent() {
 
           {pin && (
             <div className="mb-3 rounded-md border border-stone-200 bg-stone-50 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[13px] font-medium text-stone-800">Marker placed</span>
-                <button
-                  type="button"
-                  onClick={removeMarker}
-                  className="text-[13px] text-red-700 hover:underline"
-                >
-                  Remove
-                </button>
-              </div>
+              <Toggle
+                label="Marker placed"
+                checked={showMarkerDesign}
+                onChange={setShowMarkerDesign}
+                trailing={
+                  <button
+                    type="button"
+                    onClick={removeMarker}
+                    className="text-[13px] text-red-700 hover:underline"
+                  >
+                    Remove
+                  </button>
+                }
+              />
               <p className="mt-1 text-[12px] text-stone-600">
                 {pinSource === "geocoder" && "Found from the 1901 address. Please confirm the location — drag it on the map to adjust."}
                 {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
@@ -2087,64 +2221,47 @@ function ModernDesignContent() {
             )}
           </div>
 
-          <div className="mt-4">
-            <FieldLabel>Shape</FieldLabel>
-            <div className="grid grid-cols-3 gap-2">
-              {MARKER_SHAPES.map((shape) => (
-                <button
-                  key={shape.id}
-                  type="button"
-                  aria-label={shape.label}
-                  aria-pressed={markerShape === shape.id}
-                  onClick={() => setMarkerShape(shape.id)}
-                  className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
-                    markerShape === shape.id
-                      ? "border-stone-900 ring-1 ring-stone-900"
-                      : "border-stone-300 hover:bg-stone-50"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    dangerouslySetInnerHTML={{ __html: markerSvg(shape.id, markerColour, 30) }}
-                  />
-                </button>
-              ))}
+          {pin && showMarkerDesign && (
+            <div className="mt-4">
+              <FieldLabel>Shape</FieldLabel>
+              <div className="grid grid-cols-3 gap-2">
+                {MARKER_SHAPES.map((shape) => (
+                  <button
+                    key={shape.id}
+                    type="button"
+                    aria-label={shape.label}
+                    aria-pressed={markerShape === shape.id}
+                    onClick={() => setMarkerShape(shape.id)}
+                    className={`flex items-center justify-center rounded-md border py-4 transition-colors ${
+                      markerShape === shape.id
+                        ? "border-stone-900 ring-1 ring-stone-900"
+                        : "border-stone-300 hover:bg-stone-50"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      dangerouslySetInnerHTML={{ __html: markerSvg(shape.id, markerColour, 30) }}
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-4">
-            <FieldLabel>Colour</FieldLabel>
-            <div className="flex flex-wrap items-start gap-2">
-              {MARKER_COLOUR_PRESETS.map((option) => (
-                <ColourDot
-                  key={option.id}
-                  colour={option.hex}
-                  label={option.label}
-                  selected={markerColour.toLowerCase() === option.hex.toLowerCase()}
-                  onClick={() => setMarkerColour(option.hex)}
-                />
-              ))}
-              <CustomColourDot
-                value={markerColour}
-                onChange={setMarkerColour}
-                selected={
-                  !MARKER_COLOUR_PRESETS.some(
-                    (o) => o.hex.toLowerCase() === markerColour.toLowerCase()
-                  )
-                }
-              />
-            </div>
-          </div>
-
-          <Stepper
-            label="Size"
-            valueLabel={`${markerSize}px`}
-            index={markerSizeIndex}
-            count={MARKER_SIZES.length}
-            onIndexChange={setMarkerSizeIndex}
-            minLabel="Small"
-            maxLabel="Large"
-          />
+          {/* Size stays out of the design-details toggle above — unlike Shape it's a
+              practical adjustment (is the pin legible on the print), not a decorative
+              one, so it stays reachable without switching the toggle on first. */}
+          {pin && (
+            <Stepper
+              label="Size"
+              valueLabel={`${markerSize}px`}
+              index={markerSizeIndex}
+              count={MARKER_SIZES.length}
+              onIndexChange={setMarkerSizeIndex}
+              minLabel="Small"
+              maxLabel="Large"
+            />
+          )}
         </div>
         )}
       </div>
@@ -2687,16 +2804,36 @@ function ModernDesignContent() {
             ) : (
             <div
               ref={posterRef}
-              className="w-full"
+              className="relative w-full overflow-hidden"
               style={{ background: pageHex, aspectRatio: `${aspect.w} / ${aspect.h}` }}
             >
+              {/* Fixed-size logical canvas, visually fit to the real on-screen frame with
+                  a single CSS transform — same pattern as HistoricPoster. Everything
+                  inside (including the map area html2canvas/captureMapImage read
+                  getBoundingClientRect() from at export time) sits inside this, so its
+                  measured size at export always reflects the real on-screen size, not
+                  the fixed logical one. */}
+              <div
+                className="absolute left-0 top-0"
+                style={{
+                  width: MODERN_LOGICAL_WIDTH,
+                  height: modernLogicalHeight,
+                  transform: `scale(${modernScaleFactor})`,
+                  transformOrigin: "top left",
+                }}
+              >
               <div ref={posterBodyRef} className="flex h-full flex-col p-[7%]">
                 {/* Just the eyebrow, on every level — surname, count and caption all sit
                     below the map instead. */}
                 <div ref={infoBlockRef} className="pb-[1.5%] text-center">
                   <p
-                    className="text-[clamp(6px,1.3vw,11px)] font-medium uppercase"
-                    style={{ letterSpacing: "0.22em", color: inkHex, opacity: 0.6 }}
+                    className="font-medium uppercase"
+                    style={{
+                      letterSpacing: "0.22em",
+                      color: inkHex,
+                      opacity: 0.6,
+                      fontSize: MODERN_CAPTION_FONT_PX,
+                    }}
                   >
                     1901 Irish Census
                   </p>
@@ -2725,7 +2862,7 @@ function ModernDesignContent() {
                     accentColour={polygonHex}
                     borderColour={borderHex}
                     outlineColour={effectiveOutlineColour}
-                    outlineWidth={OUTLINE_WIDTH}
+                    outlineWidth={effectiveOutlineWidth}
                     showFill={showPolygonFill}
                     highlights={highlights}
                     outline={visibleOutline}
@@ -2749,13 +2886,13 @@ function ModernDesignContent() {
                 {level === "county" &&
                   renderSurnameCountBlock(
                     totalCountyCount,
-                    county ? `Recorded in ${county} in 1901` : ""
+                    countyDisplayText ? `Recorded in ${countyDisplayText} in 1901` : ""
                   )}
                 {level === "ded" &&
                   renderSurnameCountBlock(
                     selectedPolygon?.person_count ?? null,
-                    dedDisplayText || county
-                      ? `Recorded in ${[dedDisplayText, county].filter(Boolean).join(", ")} in 1901`
+                    dedDisplayText || countyDisplayText
+                      ? `Recorded in ${[dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in 1901`
                       : ""
                   )}
                 {/* Townland has no per-townland count of its own on file (the DED-level
@@ -2765,8 +2902,8 @@ function ModernDesignContent() {
                 {level === "townland" &&
                   renderSurnameCountBlock(
                     selectedPolygon?.person_count ?? null,
-                    townlandText || dedDisplayText || county
-                      ? `Recorded in ${[townlandText, dedDisplayText, county].filter(Boolean).join(", ")} in 1901`
+                    townlandText || dedDisplayText || countyDisplayText
+                      ? `Recorded in ${[townlandText, dedDisplayText, countyDisplayText].filter(Boolean).join(", ")} in 1901`
                       : ""
                   )}
 
@@ -2791,6 +2928,7 @@ function ModernDesignContent() {
                     )}
                   </div>
                 )}
+              </div>
               </div>
             </div>
             )}

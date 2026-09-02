@@ -1,13 +1,18 @@
 import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
 import CensusBlock from "./components/home/CensusBlock";
+import WhatWillYouMap from "./components/home/WhatWillYouMap";
+import HowItWorks from "./components/home/HowItWorks";
+import DiscoverHistory from "./components/home/DiscoverHistory";
+import RecentPurchases from "./components/home/RecentPurchases";
+import Testimonials from "./components/home/Testimonials";
+import NeedHelp from "./components/home/NeedHelp";
 import { siteFontVars } from "./fonts";
 import { IRISH_CENSUS } from "@/lib/censusEditions";
 
 const GROUND = "#f2ece0";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
-const MUTED = "#6b5f4a";
 
 export default function Home() {
   return (
@@ -26,30 +31,16 @@ export default function Home() {
 
       <main style={{ flex: 1 }}>
         {/* ── BLOCK 1 · WHAT THIS IS ───────────────────────────────────────────
-            Deliberately short. The search box in the block below is the thing people
-            come for, so this earns its place in a headline, a paragraph and a caveat
-            — anything longer pushes the search under the fold. */}
+            Just the headline — the search box in the block below is the thing people
+            come for, so nothing here should push it under the fold. */}
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-10 sm:pt-12 sm:pb-12">
           <div className="home-rise max-w-2xl">
-            <p
-              style={{
-                fontFamily: "var(--font-plex-mono)",
-                fontSize: "0.68rem",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: GOLD,
-              }}
-            >
-              Census records, mapped
-            </p>
-
             <h1
               style={{
                 fontFamily: "var(--font-cormorant)",
                 fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
                 lineHeight: 1.1,
                 fontWeight: 500,
-                marginTop: "1.25rem",
               }}
             >
               Your family was written down.
@@ -58,15 +49,6 @@ export default function Home() {
                 <em style={{ color: GOLD, fontStyle: "italic" }}>where</em>.
               </span>
             </h1>
-
-            <p
-              className="mt-4 text-base leading-relaxed"
-              style={{ color: MUTED, fontWeight: 300 }}
-            >
-              Census records are published free by national archives, but they&apos;re kept
-              as text. You can find your family without ever finding the place. What we
-              do is match those written addresses to real locations.
-            </p>
           </div>
         </section>
 
@@ -74,6 +56,13 @@ export default function Home() {
             One block per country. England and the rest follow this same shape, which
             is why it is a component fed by lib/censusEditions.ts rather than markup. */}
         <CensusBlock collection={IRISH_CENSUS} />
+
+        <WhatWillYouMap />
+        <HowItWorks />
+        <DiscoverHistory />
+        <RecentPurchases collection={IRISH_CENSUS} />
+        <Testimonials />
+        <NeedHelp />
       </main>
 
       <SiteFooter />

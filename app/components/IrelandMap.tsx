@@ -26,7 +26,6 @@ type IrelandMapProps = {
   polygons: DedPolygon[];
   selectedDedId?: string;
   onSelectDed?: (ded: DedPolygon | null) => void;
-  onClearDed?: () => void;
   softPreview?: boolean;
   interactive?: boolean;
   greenPolygons?: boolean;
@@ -62,7 +61,7 @@ type IrelandMapProps = {
    * ~23.5% case, not rare — so this prop is simply absent or has a null `geojson`
    * in both situations; there is no separate "not found" state to handle here.
    */
-  townlandPolygon?: { geojson: any; townland_display?: string } | null;
+  townlandPolygon?: { geojson: any; townland_display?: string; person_count?: number } | null;
   /**
    * Every townland boundary in the selected district — drawn as a light hoverable
    * layer once a DED is selected, so a customer can see how the district splits up
@@ -301,26 +300,14 @@ function FitBounds({
   return null;
 }
 
-function MapBackgroundClick({
-  onSelectDed,
-  onClearDed,
-  interactive,
-}: {
-  onSelectDed?: (ded: DedPolygon | null) => void;
-  onClearDed?: () => void;
-  interactive: boolean;
-}) {
-  useMapEvents({
-    click: () => {
-      if (!interactive) {
-        return;
-      }
-
-      onSelectDed?.(null);
-      onClearDed?.();
-    },
-  });
-
+// A background click used to clear the whole DED/townland selection and reset the view
+// to the full island — clicking anywhere off a polygon (open water, a gap between
+// districts) while browsing a selection was thrown away as "leave this view." Polygon
+// clicks already stopPropagation and only ever set a selection, so a background click
+// is now a no-op: the only way to change the view is to click a different polygon, or
+// use the surname/county/district pickers in the rail.
+function MapBackgroundClick() {
+  useMapEvents({ click: () => {} });
   return null;
 }
 
@@ -398,7 +385,6 @@ export default function IrelandMap({
   polygons,
   selectedDedId = "",
   onSelectDed,
-  onClearDed,
   softPreview = false,
   interactive = true,
   greenPolygons = false,
@@ -564,11 +550,7 @@ export default function IrelandMap({
           }
         />
 
-        <MapBackgroundClick
-          interactive={interactive}
-          onSelectDed={onSelectDed}
-          onClearDed={onClearDed}
-        />
+        <MapBackgroundClick />
 
         {pin && (
           <>
@@ -581,6 +563,16 @@ export default function IrelandMap({
                 dragend: (event) => {
                   const { lat, lng } = event.target.getLatLng();
                   onPinMove?.({ lat, lng });
+                },
+                // A plain tap (not a drag) must not bubble to the map's own click —
+                // without this it fell through to MapBackgroundClick, which used to
+                // clear the whole DED/townland selection and made the marker look like
+                // it "locked" the map against further selection.
+                mousedown: (event) => {
+                  L.DomEvent.stopPropagation(event);
+                },
+                click: (event) => {
+                  L.DomEvent.stopPropagation(event);
                 },
               }}
             />
@@ -661,7 +653,7 @@ export default function IrelandMap({
         {interactive &&
           selectedDedId &&
           townlandPolygons
-            .filter((t) => t.geojson && t.townland_id !== selectedTownlandId)
+            .filter((t) => t.geojson && t.person_count > 0 && t.townland_id !== selectedTownlandId)
             .map((t) => {
               const data = wrapAsFeature(t.geojson);
               if (!data) return null;
@@ -703,10 +695,8 @@ export default function IrelandMap({
                 >
                   <Tooltip sticky={true}>
                     <div>
-                      {selectedDedDisplay && (
-                        <div className="font-semibold">{selectedDedDisplay}</div>
-                      )}
-                      <div>{t.townland_display}</div>
+                      <div className="font-semibold">{t.townland_display}</div>
+                      {selectedDedDisplay && <div>{selectedDedDisplay}</div>}
                       <div>{t.person_count} matches</div>
                     </div>
                   </Tooltip>
@@ -729,15 +719,44 @@ export default function IrelandMap({
               <GeoJSON
                 key={`townland-${townlandPolygon.townland_display || "polygon"}`}
                 data={data}
-                interactive={false}
+                interactive
                 pathOptions={{
                   stroke: true,
                   color: "#1d4ed8",
                   weight: 3,
                   opacity: 1,
-                  fill: false,
+                  // Invisible but present: a `fill: false` path only hit-tests its own
+                  // stroke line, so hovering the polygon's interior fell through to the
+                  // DED layer underneath and showed its tooltip instead of this one.
+                  // fillOpacity 0 keeps it invisible while still catching pointer events
+                  // across the whole shape, not just the outline.
+                  fill: true,
+                  fillOpacity: 0,
                 }}
-              />
+                eventHandlers={{
+                  mousedown: (event: any) => {
+                    L.DomEvent.stopPropagation(event);
+                  },
+                  click: (event: any) => {
+                    // Already selected — swallow the click rather than re-firing a
+                    // select, same as re-clicking the same DED is already a no-op.
+                    L.DomEvent.stopPropagation(event);
+                    L.DomEvent.preventDefault(event);
+                  },
+                }}
+              >
+                {townlandPolygon.townland_display && (
+                  <Tooltip sticky={true}>
+                    <div>
+                      <div className="font-semibold">{townlandPolygon.townland_display}</div>
+                      {selectedDedDisplay && <div>{selectedDedDisplay}</div>}
+                      {typeof townlandPolygon.person_count === "number" && (
+                        <div>{townlandPolygon.person_count} matches</div>
+                      )}
+                    </div>
+                  </Tooltip>
+                )}
+              </GeoJSON>
             );
           })()}
       </MapContainer>

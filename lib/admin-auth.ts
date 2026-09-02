@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "crypto";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 // Server-only: reads a secret env var, must never be imported from a client component.
 
@@ -11,10 +11,13 @@ import { NextResponse } from "next/server";
  * are kept for internal test orders, so they need a credential rather than deletion.
  *
  * This is deliberately NOT a user authentication system. There are no accounts on this
- * site; this is one operator-held token, sent as `x-admin-token`.
+ * site; this is one operator-held token, checked either as an `x-admin-token` header
+ * (scripts, cron-style callers) or an `admin_session` httpOnly cookie (the browser
+ * dashboard, via POST /api/admin/login — see that route for why the cookie exists).
  */
 
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN || "";
+export const ADMIN_SESSION_COOKIE = "admin_session";
 
 /**
  * Compares two secrets without leaking their contents through timing.
@@ -30,6 +33,11 @@ function secretsMatch(supplied: string, expected: string): boolean {
   return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
+/** Used by POST /api/admin/login to check a submitted token before minting the cookie. */
+export function isValidAdminToken(supplied: string): boolean {
+  return Boolean(ADMIN_API_TOKEN) && Boolean(supplied) && secretsMatch(supplied, ADMIN_API_TOKEN);
+}
+
 /**
  * Returns a 401 response when the request is not an authorised admin call, or `null`
  * when it may proceed. Call it as the first statement in a handler:
@@ -40,7 +48,7 @@ function secretsMatch(supplied: string, expected: string): boolean {
  * Fails closed. If `ADMIN_API_TOKEN` is unset the gate denies everything rather than
  * waving traffic through — an absent secret is a misconfiguration, not permission.
  */
-export function requireAdmin(request: Request): NextResponse | null {
+export function requireAdmin(request: NextRequest): NextResponse | null {
   if (!ADMIN_API_TOKEN) {
     console.error(
       "admin-auth: ADMIN_API_TOKEN is not set — refusing all admin requests. Set it in the environment to use the internal order routes."
@@ -48,9 +56,15 @@ export function requireAdmin(request: Request): NextResponse | null {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  const supplied = request.headers.get("x-admin-token") || "";
+  // Header first (scripts, the legacy test-order flow), then the session cookie the
+  // browser dashboard sets after POST /api/admin/login — either one is sufficient.
+  const suppliedHeader = request.headers.get("x-admin-token") || "";
+  const suppliedCookie = request.cookies.get(ADMIN_SESSION_COOKIE)?.value || "";
 
-  if (!supplied || !secretsMatch(supplied, ADMIN_API_TOKEN)) {
+  const headerOk = Boolean(suppliedHeader) && secretsMatch(suppliedHeader, ADMIN_API_TOKEN);
+  const cookieOk = Boolean(suppliedCookie) && secretsMatch(suppliedCookie, ADMIN_API_TOKEN);
+
+  if (!headerOk && !cookieOk) {
     // 404 rather than 401: these routes are not a login prompt and nothing is meant to
     // discover them. Announcing "unauthorised" would confirm the endpoint exists.
     return NextResponse.json({ error: "Not found." }, { status: 404 });

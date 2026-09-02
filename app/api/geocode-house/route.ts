@@ -76,6 +76,9 @@ export async function GET(request: NextRequest) {
   const polygonIdNum = safeIntParam(searchParams.get("polygon_id"));
   const county = safeParam(searchParams.get("county")) || "";
   const townland = safeParam(searchParams.get("townland")) || "";
+  // Optional: without it, a candidate that fails the DED check has no townland fallback
+  // to fall back to (see geocodeAndValidate) and is simply rejected, same as before.
+  const townlandIdNum = safeIntParam(searchParams.get("townland_id"));
   const houseNo = safeParam(searchParams.get("house_no")) || "";
   const siblings = (safeParam(searchParams.get("siblings"), 2000) || "")
     .split(",")
@@ -114,6 +117,7 @@ export async function GET(request: NextRequest) {
     const result = await resolveCoordinate(
       polygonId,
       polygonIdNum,
+      townlandIdNum,
       b,
       county,
       townland,
@@ -155,6 +159,7 @@ async function writeCache(
 async function resolveCoordinate(
   polygonId: string,
   polygonIdNum: number,
+  townlandIdNum: number | null,
   bounds: DedBounds,
   county: string,
   townland: string,
@@ -186,6 +191,7 @@ async function resolveCoordinate(
     const exact = await geocodeAndValidate(
       `${houseDigits} ${place}, Co. ${county}, Ireland`,
       polygonIdNum,
+      townlandIdNum,
       bounds,
       apiKey
     );
@@ -223,6 +229,7 @@ async function resolveCoordinate(
       const found = await geocodeAndValidate(
         `${candidate} ${place}, Co. ${county}, Ireland`,
         polygonIdNum,
+        townlandIdNum,
         bounds,
         apiKey
       );
@@ -258,6 +265,7 @@ async function resolveCoordinate(
   const street = await geocodeAndValidate(
     `${place}, Co. ${county}, Ireland`,
     polygonIdNum,
+    townlandIdNum,
     bounds,
     apiKey
   );
@@ -286,6 +294,7 @@ async function resolveCoordinate(
 async function geocodeAndValidate(
   query: string,
   polygonId: number,
+  townlandId: number | null,
   bounds: DedBounds,
   apiKey: string
 ): Promise<{ lng: number; lat: number; houseNumber: string } | null> {
@@ -318,16 +327,39 @@ async function geocodeAndValidate(
 
   if (!candidate) return null;
 
-  const { data: withinBuffer, error: withinError } = await supabase.rpc("is_point_within_ded", {
+  const { data: withinDed, error: withinDedError } = await supabase.rpc("is_point_within_ded", {
     input_polygon_id: polygonId,
     input_lng: candidate.lng,
     input_lat: candidate.lat,
   });
 
-  if (withinError) {
-    console.error("geocode-house: buffer check error", withinError);
+  if (withinDedError) {
+    console.error("geocode-house: DED buffer check error", withinDedError);
     return null;
   }
 
-  return withinBuffer ? candidate : null;
+  if (withinDed) return candidate;
+
+  // The DED's simplified boundary has drifted enough since 1901 in some places that a
+  // house genuinely inside its own townland can still fall outside a 1km DED buffer.
+  // Rather than reject it, fall back to a tighter check against the townland's own
+  // boundary (when one is known and has geometry on file) before giving up on this
+  // candidate.
+  if (townlandId === null) return null;
+
+  const { data: withinTownland, error: withinTownlandError } = await supabase.rpc(
+    "is_point_within_townland",
+    {
+      input_townland_id: townlandId,
+      input_lng: candidate.lng,
+      input_lat: candidate.lat,
+    }
+  );
+
+  if (withinTownlandError) {
+    console.error("geocode-house: townland buffer check error", withinTownlandError);
+    return null;
+  }
+
+  return withinTownland ? candidate : null;
 }

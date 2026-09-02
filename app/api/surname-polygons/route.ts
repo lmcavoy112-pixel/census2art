@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { safeParam } from "../../../lib/validation";
 
 function cleanSurname(value: string) {
   return value
@@ -12,7 +13,7 @@ function cleanSurname(value: string) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const surname = searchParams.get("surname");
+  const surname = safeParam(searchParams.get("surname"));
 
   if (!surname) {
     return NextResponse.json([]);

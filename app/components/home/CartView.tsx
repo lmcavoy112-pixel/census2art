@@ -27,8 +27,16 @@ function money(amount: string, currency: string) {
 // signed-in customer is instead recognised by Shopify Checkout itself via `sso=silent`,
 // which checks for an active session on the Customer Accounts domain (set by the OAuth
 // login this site already does) rather than anything carried on the cart or this URL.
+//
+// Skipped on mobile: this is an unofficial, undocumented parameter, and on mobile it was
+// sending signed-in customers to Shopify's "Store opening soon" placeholder instead of
+// checkout (desktop was unaffected — likely the Shop app's own link handling stumbling on
+// the unrecognised query param). A guest checkout link always works; the SSO convenience
+// isn't worth a broken checkout.
 function checkoutHref(url: string, signedIn: boolean) {
-  if (!signedIn) return url;
+  const isMobile =
+    typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (!signedIn || isMobile) return url;
   try {
     const parsed = new URL(url);
     parsed.searchParams.set("sso", "silent");
@@ -167,16 +175,16 @@ export default function CartView() {
   const activeDiscounts = (cart?.discountCodes ?? []).filter((d) => d.applicable);
 
   return (
-    <div className="grid gap-12 lg:grid-cols-[1.7fr_1fr] lg:gap-16">
+    <div className="grid gap-8 lg:grid-cols-[1.7fr_1fr] lg:gap-16">
       {/* ── Line items ── */}
       <ul>
         {lines.map((line) => (
           <li
             key={line.id}
-            className="flex flex-col gap-5 py-8 sm:flex-row"
+            className="flex gap-3 py-5 sm:gap-5 sm:py-8"
             style={{ borderBottom: `1px solid ${RULE}` }}
           >
-            <div className="w-[110px] flex-none">
+            <div className="w-20 flex-none sm:w-[110px]">
               {line.imageUrl ? (
                 <Image
                   src={line.imageUrl}
@@ -196,11 +204,26 @@ export default function CartView() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h2 style={{ fontFamily: "var(--font-cormorant)", fontSize: "1.35rem" }}>
-                {line.title}
-              </h2>
+              <div className="flex items-start justify-between gap-3">
+                <h2
+                  className="text-[1.05rem] sm:text-[1.35rem]"
+                  style={{ fontFamily: "var(--font-cormorant)" }}
+                >
+                  {line.title}
+                </h2>
+                <div className="flex-none text-right">
+                  <p className="text-[13px] sm:text-sm" style={{ color: INK }}>
+                    {money(line.totalAmount, line.currency)}
+                  </p>
+                  {line.quantity > 1 && (
+                    <p className="mt-0.5 text-[11px] sm:text-[12px]" style={{ color: MUTED }}>
+                      {money(line.unitAmount, line.currency)} each
+                    </p>
+                  )}
+                </div>
+              </div>
               {line.variantTitle && line.variantTitle !== "Default Title" && (
-                <p className="mt-0.5 text-sm" style={{ color: MUTED }}>
+                <p className="mt-0.5 text-[13px] sm:text-sm" style={{ color: MUTED }}>
                   {line.variantTitle}
                 </p>
               )}
@@ -208,9 +231,9 @@ export default function CartView() {
               {/* The design's own details, straight off the line item — the same list
                   that follows the order through to fulfilment. */}
               {line.attributes.length > 0 && (
-                <dl className="mt-3 space-y-0.5">
+                <dl className="mt-1.5 space-y-0.5 sm:mt-3">
                   {line.attributes.map((attribute) => (
-                    <div key={attribute.key} className="flex gap-1.5 text-[13px]">
+                    <div key={attribute.key} className="flex gap-1.5 text-[12px] sm:text-[13px]">
                       <dt style={{ color: MUTED }}>{attribute.key}:</dt>
                       <dd className="min-w-0 truncate" style={{ color: INK }}>
                         {attribute.value}
@@ -220,7 +243,7 @@ export default function CartView() {
                 </dl>
               )}
 
-              <div className="mt-4 flex flex-wrap items-center gap-4">
+              <div className="mt-2 flex flex-wrap items-center gap-3 sm:mt-4 sm:gap-4">
                 <div
                   className="flex items-center rounded-full"
                   style={{ border: `1px solid ${RULE}`, background: RAISED }}
@@ -235,7 +258,7 @@ export default function CartView() {
                     }
                     disabled={busyLine === line.id}
                     aria-label={`Reduce quantity of ${line.title}`}
-                    className="px-3 py-2 text-sm transition-opacity disabled:opacity-40"
+                    className="px-2.5 py-1.5 text-sm transition-opacity disabled:opacity-40 sm:px-3 sm:py-2"
                     style={{ color: INK }}
                   >
                     −
@@ -253,7 +276,7 @@ export default function CartView() {
                     }
                     disabled={busyLine === line.id}
                     aria-label={`Increase quantity of ${line.title}`}
-                    className="px-3 py-2 text-sm transition-opacity disabled:opacity-40"
+                    className="px-2.5 py-1.5 text-sm transition-opacity disabled:opacity-40 sm:px-3 sm:py-2"
                     style={{ color: INK }}
                   >
                     +
@@ -264,23 +287,12 @@ export default function CartView() {
                   type="button"
                   onClick={() => mutate({ action: "remove", lineId: line.id }, line.id)}
                   disabled={busyLine === line.id}
-                  className="text-[13px] underline underline-offset-4 transition-opacity disabled:opacity-40"
+                  className="text-[12px] underline underline-offset-4 transition-opacity disabled:opacity-40 sm:text-[13px]"
                   style={{ color: MUTED }}
                 >
                   Remove
                 </button>
               </div>
-            </div>
-
-            <div className="flex-none text-right">
-              <p className="text-sm" style={{ color: INK }}>
-                {money(line.totalAmount, line.currency)}
-              </p>
-              {line.quantity > 1 && (
-                <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
-                  {money(line.unitAmount, line.currency)} each
-                </p>
-              )}
             </div>
           </li>
         ))}
@@ -289,7 +301,7 @@ export default function CartView() {
       {/* ── Summary ── */}
       <aside className="lg:sticky lg:top-28 lg:self-start">
         {/* Discount */}
-        <div style={{ borderBottom: `1px solid ${RULE}` }} className="pb-5">
+        <div style={{ borderBottom: `1px solid ${RULE}` }} className="pb-4 sm:pb-5">
           <button
             type="button"
             onClick={() => setDiscountOpen((open) => !open)}
@@ -350,7 +362,7 @@ export default function CartView() {
         </div>
 
         {/* Totals */}
-        <div className="flex items-baseline justify-between py-5">
+        <div className="flex items-baseline justify-between py-4 sm:py-5">
           <span style={{ fontFamily: "var(--font-cormorant)", fontSize: "1.15rem" }}>
             Estimated total
           </span>
@@ -371,7 +383,7 @@ export default function CartView() {
 
         <a
           href={cart?.checkoutUrl ? checkoutHref(cart.checkoutUrl, signedIn) : "#"}
-          className="mt-5 block rounded-full px-7 py-4 text-center text-sm transition-opacity hover:opacity-90"
+          className="mt-4 block rounded-full px-6 py-3.5 text-center text-sm transition-opacity hover:opacity-90 sm:mt-5 sm:px-7 sm:py-4"
           style={{ background: INK, color: GROUND }}
         >
           Check out
@@ -381,13 +393,13 @@ export default function CartView() {
             Shopify Checkout's own accelerated methods — they appear on the next step,
             and a button here that only pretended to offer them would be worse than
             naming them plainly. */}
-        <p className="mt-4 text-center text-[12.5px] leading-relaxed" style={{ color: MUTED }}>
+        <p className="mt-3 text-center text-[12.5px] leading-relaxed sm:mt-4" style={{ color: MUTED }}>
           Pay by card, Shop Pay, PayPal or Google Pay on the next step.
         </p>
 
         <Link
           href="/irish-census-1901"
-          className="mt-5 block text-center text-[13px] underline underline-offset-4"
+          className="mt-4 block text-center text-[13px] underline underline-offset-4 sm:mt-5"
           style={{ color: MUTED }}
         >
           Continue shopping

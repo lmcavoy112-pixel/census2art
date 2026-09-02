@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
+import { safeParam } from "../../../lib/validation";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  const county = searchParams.get("county") || searchParams.get("county_display");
+  const county = safeParam(searchParams.get("county") || searchParams.get("county_display"));
 
   if (!county) {
     return NextResponse.json(null);

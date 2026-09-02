@@ -2,22 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
 import { safeParam } from "../../../../lib/validation";
 
-function smartSurnameDisplay(value: string) {
-  return value
-    .trim()
-    .split(/(\s+|-)/)
-    .map((part) => {
-      if (/^\s+$/.test(part) || part === "-") return part;
-      const lower = part.toLowerCase();
-      if (lower.startsWith("mc") && lower.length > 2)
-        return `Mc${lower.charAt(2).toUpperCase()}${lower.slice(3)}`;
-      if (lower.startsWith("o'") && lower.length > 2)
-        return `O'${lower.charAt(2).toUpperCase()}${lower.slice(3)}`;
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    })
-    .join("");
-}
-
 function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
@@ -36,9 +20,9 @@ function levenshtein(a: string, b: string): number {
 }
 
 export async function GET(request: NextRequest) {
-  // Capped well below SHORT_TEXT: q feeds an O(m*n) Levenshtein comparison against up
-  // to 1000 candidate surnames per request, so an oversized value is a cheap CPU-burn
-  // lever even with the route's own rate limit in place.
+  // Capped well below SHORT_TEXT: q feeds an O(m*n) Levenshtein comparison against every
+  // distinct surname sharing its 2-char prefix, so an oversized value is a cheap
+  // CPU-burn lever even with the route's own rate limit in place.
   const q = safeParam(request.nextUrl.searchParams.get("q"), 50)?.toLowerCase() ?? "";
 
   if (q.length < 2) {
@@ -48,31 +32,29 @@ export async function GET(request: NextRequest) {
   const prefix = q.slice(0, 2);
   const maxDistance = Math.max(2, Math.floor(q.length * 0.4));
 
+  // irish_surname_lookup already carries one pre-aggregated row per surname (the same
+  // table app/api/surnames/route.ts reads for the real search total), so candidates
+  // come from here rather than irish_surname_county_counts (one row per surname x
+  // county) — that table needed a row-count cap before grouping, which undercounted
+  // any surname whose county rows didn't all fit under the cap.
   const { data, error } = await supabase
-    .from("irish_surname_county_counts")
-    .select("surname_search, person_count")
+    .from("irish_surname_lookup")
+    .select("surname_search, surname_display, count")
     .eq("census_year", 1901)
-    .ilike("surname_search", `${prefix}%`)
-    .limit(1000);
+    .ilike("surname_search", `${prefix}%`);
 
   if (error || !data) {
     return NextResponse.json({ suggestions: [] });
   }
 
-  // Aggregate totals per surname
-  const totals = new Map<string, number>();
-  for (const row of data as { surname_search: string; person_count: number }[]) {
-    const k = row.surname_search;
-    if (k !== q) {
-      totals.set(k, (totals.get(k) ?? 0) + Number(row.person_count || 0));
-    }
-  }
-
-  const suggestions = Array.from(totals.entries())
-    .map(([surname_search, count]) => ({
-      surname_display: smartSurnameDisplay(surname_search),
-      count,
-      distance: levenshtein(q, surname_search),
+  const suggestions = (
+    data as { surname_search: string; surname_display: string; count: number }[]
+  )
+    .filter((row) => row.surname_search !== q)
+    .map((row) => ({
+      surname_display: row.surname_display,
+      count: Number(row.count || 0),
+      distance: levenshtein(q, row.surname_search),
     }))
     .filter((r) => r.distance <= maxDistance)
     .sort((a, b) => a.distance - b.distance || b.count - a.count)

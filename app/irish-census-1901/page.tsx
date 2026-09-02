@@ -909,6 +909,7 @@ function CensusLanding() {
         polygon_id: polygonId,
         county: selectedCounty,
         townland: selectedHouse.townland_display,
+        townland_id: selectedHouse.townland_id,
         house_no: selectedHouse.house_no || "",
         // Every other house number recorded on this street, so the search can fall
         // back to the nearest one it can actually place.
@@ -1187,7 +1188,11 @@ function CensusLanding() {
           }))}
         />
 
-        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+        {/* No max-height/scroll of its own — the rail body around the whole section
+            (ScrollableRailBody, see below) already scrolls the full panel, so a second,
+            much shorter scroll region here just meant most of the page's height went
+            unused above a tiny 420px window. This lets the list actually use it. */}
+        <div className="space-y-2">
           {houseGroups.map((group) => {
             const isSelected =
               selectedHouse?.house_uid === group.house_uid &&
@@ -1513,7 +1518,11 @@ function CensusLanding() {
               fill
               polygons={mapPolygons}
               selectedDedId={selectedDed?.ded_id || ""}
-              townlandPolygon={townlandGeojson}
+              townlandPolygon={
+                townlandGeojson
+                  ? { ...townlandGeojson, person_count: selectedTownland?.person_count }
+                  : townlandGeojson
+              }
               townlandPolygons={townlandPolygons}
               selectedTownlandId={selectedTownland?.townland_id || ""}
               onSelectTownland={handleSelectTownlandFromMap}
@@ -1521,7 +1530,6 @@ function CensusLanding() {
                 if (ded) void handleMapSelectDed(ded as DedCount);
                 else handleClearDedFromMap();
               }}
-              onClearDed={handleClearDedFromMap}
               pin={pin}
               onPinMove={(position) => {
                 // Dragging is the customer correcting our guess, so the marker stops
