@@ -70,6 +70,12 @@ const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
 /** The narrowing steps, in the order the records themselves nest. */
 type SectionId = "surname" | "county" | "ded" | "townland" | "review";
 
+/** Primary surname plus opted-in spelling variants — matches safeSurnameList()'s own
+ *  cap in lib/validation.ts, which every multi-surname route enforces server-side
+ *  regardless of what the client sends. Kept here too so the checklist UI can disable
+ *  itself at the limit instead of sending a request the server would just truncate. */
+const MAX_SURNAMES = 5;
+
 export default function IrishCensus1901Page() {
   // useSearchParams needs a Suspense boundary above it, or the whole route opts out
   // of static prerendering.
@@ -101,6 +107,10 @@ function CensusLanding() {
   const deepLinkHouseNo = searchParams.get("houseNo")?.trim() ?? "";
   const deepLinkHouseUid = searchParams.get("houseUid")?.trim() ?? "";
   const deepLinkYear: CensusYear = searchParams.get("year")?.trim() === "1911" ? "1911" : "1901";
+  // Spelling variants opted into via the Surname step's checklist (e.g. searching
+  // "Clark" and also including "Clarke") — carried separately from `surname` since the
+  // artwork always prints whatever was originally typed, never a variant's spelling.
+  const deepLinkVariants = searchParams.get("variants")?.trim() ?? "";
 
   // Which census edition the whole cascade below is scoped to — both loaded years
   // share this one workspace rather than a separate route each (see the Surname
@@ -118,7 +128,15 @@ function CensusLanding() {
   const [surnameSearch, setSurnameSearch] = useState(
     deepLinkSurname ? normaliseSurnameSearch(deepLinkSurname) : ""
   );
-  const [similarSurnames, setSimilarSurnames] = useState<{ surname_display: string; count: number }[]>([]);
+  // Extra surnames included alongside the primary search — see toggleIncludedSurname.
+  // Capped at MAX_SURNAMES total (this set plus the primary): every included surname
+  // becomes its own round trip at every step below, merged server-side.
+  const [includedSurnames, setIncludedSurnames] = useState<Set<string>>(
+    () => new Set(deepLinkVariants ? deepLinkVariants.split(",").map((s) => s.trim()).filter(Boolean) : [])
+  );
+  const [similarSurnames, setSimilarSurnames] = useState<
+    { surname_display: string; surname_search: string; count: number }[]
+  >([]);
   const [surnameOptions, setSurnameOptions] = useState<{ surname_display: string; surname_search: string; count: number }[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const comboboxRef = useRef<HTMLDivElement>(null);
@@ -191,8 +209,26 @@ function CensusLanding() {
   // See useMobileMapSheet — unused above `lg`, where the two sit side by side instead.
   const [mobileMapSheetRef, mobileMapSheet] = useMobileMapSheet();
 
-  const activeSurnameSearch = surnameSearch || normaliseSurnameSearch(surname);
+  // The originally-typed/searched surname — always what prints on the artwork,
+  // regardless of which spelling variants get included alongside it below.
+  const primarySurnameSearch = surnameSearch || normaliseSurnameSearch(surname);
   const surnameTitle = surnameDisplay || smartSurnameDisplay(surname);
+
+  // Every surname the current search/browse/map should match against: the primary
+  // plus whatever's been checked in the Surname step's variant list. Every fetcher
+  // from here down takes this array (not the scalar primary) and every API route
+  // merges results across it — see lib/validation.ts's safeSurnameList().
+  const activeSurnameSearches = useMemo(() => {
+    if (!primarySurnameSearch) return [];
+    return [primarySurnameSearch, ...Array.from(includedSurnames)];
+  }, [primarySurnameSearch, includedSurnames]);
+
+  /** Looks up a checked variant's display-cased spelling for UI text — `similarSurnames`
+   *  and `includedSurnames` reset together on every new primary search, so a value in
+   *  the latter is always a valid key into the former while it's non-empty. */
+  function surnameDisplayFor(search: string): string {
+    return similarSurnames.find((s) => s.surname_search === search)?.surname_display ?? search;
+  }
 
   // /api/deds returns counts only — the polygon id the geocoder needs, and the
   // geometry a by-hand pin starts from, live on the map rows instead. Pair the two
@@ -436,18 +472,18 @@ function CensusLanding() {
     clearMarker();
   }
 
-  async function loadSurnamePolygons(searchValue: string, year: CensusYear) {
-    const rows = await fetchSurnamePolygons(searchValue, year);
+  async function loadSurnamePolygons(surnames: string[], year: CensusYear) {
+    const rows = await fetchSurnamePolygons(surnames, year);
     setMapPolygons(rows);
   }
 
-  async function loadCountyPolygons(searchValue: string, countyName: string, year: CensusYear) {
-    const rows = await fetchCountyPolygons(searchValue, countyName, year);
+  async function loadCountyPolygons(surnames: string[], countyName: string, year: CensusYear) {
+    const rows = await fetchCountyPolygons(surnames, countyName, year);
     setMapPolygons(rows);
   }
 
-  async function loadDedsForCounty(searchValue: string, countyName: string, year: CensusYear) {
-    const rows = await fetchDeds(searchValue, countyName, year);
+  async function loadDedsForCounty(surnames: string[], countyName: string, year: CensusYear) {
+    const rows = await fetchDeds(surnames, countyName, year);
     setDeds(rows);
     return rows;
   }
@@ -468,6 +504,7 @@ function CensusLanding() {
       setSurnameDisplay("");
       setSurnameSearch("");
       setSimilarSurnames([]);
+      setIncludedSurnames(new Set());
       return;
     }
 
@@ -477,6 +514,10 @@ function CensusLanding() {
     setLoadingMessage("Searching surname...");
     setError("");
     setSimilarSurnames([]);
+    // A fresh primary search starts a fresh variant selection — carrying the old one
+    // forward could silently include a spelling that has nothing to do with the new
+    // search.
+    setIncludedSurnames(new Set());
     resetBelowSurname();
     setSurnameSearch(searchValue);
     setSurnameDisplay(displayValue);
@@ -507,10 +548,6 @@ function CensusLanding() {
 
       setCounties(rows);
 
-      if (rows.length > 0) {
-        setOpenSection("county");
-      }
-
       if (apiSurnameDisplay) {
         setSurnameDisplay(smartSurnameDisplay(apiSurnameDisplay));
       }
@@ -525,7 +562,7 @@ function CensusLanding() {
         })
         .catch(() => {});
 
-      await loadSurnamePolygons(searchValue, year);
+      await loadSurnamePolygons([searchValue], year);
 
       if (rows.length === 0) {
         setError("No matching counties found for that surname.");
@@ -553,6 +590,45 @@ function CensusLanding() {
       void runSurnameSearch(surname, year);
     } else {
       resetBelowSurname();
+    }
+  }
+
+  /**
+   * Checking/unchecking a spelling variant in the Surname step's checklist. Resets
+   * everything below Surname — the combined result set just changed, so a previously
+   * picked county might not even apply under it — then re-fetches county counts and
+   * the nationwide map under the new combined surname set. Deliberately never touches
+   * `surnameDisplay`/`similarSurnames`: the artwork heading stays frozen to whatever
+   * was originally typed, and suggestions stay relative to the primary surname only.
+   */
+  async function toggleIncludedSurname(variantSearch: string) {
+    const isIncluded = includedSurnames.has(variantSearch);
+    if (!isIncluded && activeSurnameSearches.length >= MAX_SURNAMES) return;
+
+    const next = new Set(includedSurnames);
+    if (isIncluded) next.delete(variantSearch);
+    else next.add(variantSearch);
+    setIncludedSurnames(next);
+
+    resetBelowSurname();
+    setError("");
+    setLoadingMessage("Updating search...");
+
+    const nextSurnames = [primarySurnameSearch, ...Array.from(next)];
+
+    try {
+      const rows = await fetchCounties(nextSurnames, censusYear);
+      setCounties(rows);
+      await loadSurnamePolygons(nextSurnames, censusYear);
+
+      if (rows.length === 0) {
+        setError("No matching counties found for that surname.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Could not update surname results.");
+    } finally {
+      setLoadingMessage("");
     }
   }
 
@@ -584,11 +660,11 @@ function CensusLanding() {
     setOpenSection(countyName ? "ded" : "county");
 
     if (!countyName) {
-      if (activeSurnameSearch) {
+      if (activeSurnameSearches.length > 0) {
         setLoadingMessage("Loading surname map...");
 
         try {
-          await loadSurnamePolygons(activeSurnameSearch, censusYear);
+          await loadSurnamePolygons(activeSurnameSearches, censusYear);
         } catch (err) {
           console.error(err);
           setError("Could not reload surname map.");
@@ -604,8 +680,8 @@ function CensusLanding() {
 
     try {
       await Promise.all([
-        loadDedsForCounty(activeSurnameSearch, countyName, censusYear),
-        loadCountyPolygons(activeSurnameSearch, countyName, censusYear),
+        loadDedsForCounty(activeSurnameSearches, countyName, censusYear),
+        loadCountyPolygons(activeSurnameSearches, countyName, censusYear),
       ]);
     } catch (err) {
       console.error(err);
@@ -637,8 +713,8 @@ function CensusLanding() {
       // dropdown that follows just filters this client-side ("Viewing all" is the
       // unfiltered list), rather than firing a new request per townland.
       const [townlandRows, matches] = await Promise.all([
-        fetchTownlands(activeSurnameSearch, ded.ded_id, censusYear),
-        fetchPersonMatches(activeSurnameSearch, ded.ded_id, censusYear),
+        fetchTownlands(activeSurnameSearches, ded.ded_id, censusYear),
+        fetchPersonMatches(activeSurnameSearches, ded.ded_id, censusYear),
       ]);
 
       if (selectionToken !== selectionRef.current) return;
@@ -652,7 +728,14 @@ function CensusLanding() {
         setSelectedTownland(townlandRows[0]);
       }
 
-      const displayFromRows = matches.find((person) => person.surname_display);
+      // Matched against the primary surname specifically, never a variant — matches
+      // can now include people found only via an included spelling variant (see
+      // toggleIncludedSurname), and the artwork heading must stay whatever was
+      // originally typed regardless of which of the active surnames a household
+      // actually turns out to have.
+      const displayFromRows = matches.find(
+        (person) => person.surname_search === primarySurnameSearch && person.surname_display
+      );
       if (displayFromRows?.surname_display) {
         setSurnameDisplay(displayFromRows.surname_display);
       }
@@ -682,7 +765,7 @@ function CensusLanding() {
       setSelectedCounty(countyName);
 
       try {
-        await loadDedsForCounty(activeSurnameSearch, countyName, censusYear);
+        await loadDedsForCounty(activeSurnameSearches, countyName, censusYear);
       } catch (err) {
         console.error(err);
       }
@@ -762,7 +845,7 @@ function CensusLanding() {
       // matches the surname being searched for.
       const displayFromRows =
         rows.find(
-          (person) => person.surname_search === activeSurnameSearch && person.surname_display
+          (person) => person.surname_search === primarySurnameSearch && person.surname_display
         ) || rows.find((person) => person.surname_display);
 
       if (displayFromRows?.surname_display) {
@@ -809,7 +892,7 @@ function CensusLanding() {
     }
 
     try {
-      const countyRows = await fetchCounties(activeSurnameSearch, censusYear);
+      const countyRows = await fetchCounties(activeSurnameSearches, censusYear);
       setCounties(countyRows);
 
       if (!target.county) {
@@ -820,8 +903,8 @@ function CensusLanding() {
       // Deliberately fetchCountyPolygons rather than fetchSurnamePolygons — the map
       // should land on the county being restored to, not fly nationwide first.
       const [dedRows, polyRows] = await Promise.all([
-        fetchDeds(activeSurnameSearch, target.county, censusYear),
-        fetchCountyPolygons(activeSurnameSearch, target.county, censusYear),
+        fetchDeds(activeSurnameSearches, target.county, censusYear),
+        fetchCountyPolygons(activeSurnameSearches, target.county, censusYear),
       ]);
       setSelectedCounty(target.county);
       setDeds(dedRows);
@@ -834,7 +917,7 @@ function CensusLanding() {
       }
       setSelectedDed(ded);
 
-      const townlandRows = await fetchTownlands(activeSurnameSearch, ded.ded_id, censusYear);
+      const townlandRows = await fetchTownlands(activeSurnameSearches, ded.ded_id, censusYear);
       setTownlands(townlandRows);
 
       // Prefer matching by townland_id (a newer snapshot/link carries one) — falls
@@ -850,7 +933,7 @@ function CensusLanding() {
       setSelectedTownland(townland);
 
       const matches = await fetchPersonMatches(
-        activeSurnameSearch,
+        activeSurnameSearches,
         ded.ded_id,
         censusYear,
         townland.townland_id
@@ -996,7 +1079,8 @@ function CensusLanding() {
 
     const snapshot: DesignSnapshot = {
       surnameDisplay: surnameTitle,
-      surnameSearch: activeSurnameSearch,
+      surnameSearch: primarySurnameSearch,
+      includedSurnames: Array.from(includedSurnames),
       censusYear,
       county: selectedCounty,
       dedId: selectedDed?.ded_id || "",
@@ -1034,6 +1118,10 @@ function CensusLanding() {
 
     if (snapshot.surnameSearch) {
       params.set("surnameSearch", snapshot.surnameSearch);
+    }
+
+    if (snapshot.includedSurnames && snapshot.includedSurnames.length > 0) {
+      params.set("variants", snapshot.includedSurnames.join(","));
     }
 
     if (snapshot.county) {
@@ -1083,7 +1171,11 @@ function CensusLanding() {
     id: "surname",
     title: "Surname",
     summary: surnameTitle
-      ? `${surnameTitle}${counties.length ? ` · ${counties.length} counties` : ""}`
+      ? `${surnameTitle}${counties.length ? ` · ${counties.length} counties` : ""}${
+          includedSurnames.size > 0
+            ? ` +${includedSurnames.size} variant${includedSurnames.size > 1 ? "s" : ""}`
+            : ""
+        }`
       : "Select a census year",
     icon: <SurnameIcon />,
     body: (
@@ -1135,26 +1227,55 @@ function CensusLanding() {
           </button>
         </form>
 
-        {similarSurnames.length > 0 && (
+        {surnameTitle && similarSurnames.length > 0 && (
           <div>
-            <div className="flex flex-wrap gap-1.5">
-              {similarSurnames.map((s) => (
-                <button
-                  key={s.surname_display}
-                  type="button"
-                  onClick={() => {
-                    setSurname(s.surname_display);
-                    void runSurnameSearch(s.surname_display);
-                  }}
-                  className="rounded-full border border-stone-300 px-2.5 py-1 text-[12.5px] text-stone-700 transition-colors hover:bg-stone-100"
-                >
-                  {s.surname_display}
-                  <span className="ml-1.5 text-stone-400">
-                    {s.count.toLocaleString()}
-                  </span>
-                </button>
-              ))}
+            <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-[0.08em] text-stone-500">
+              Also search for
+            </p>
+            <p className="mb-2 text-[12.5px] leading-relaxed text-stone-500">
+              The census recorded spelling inconsistently — include a likely variant to
+              search it alongside &ldquo;{surnameTitle}&rdquo;. The artwork will still
+              say &ldquo;{surnameTitle}&rdquo;.
+            </p>
+            <div className="space-y-1 rounded-md border border-stone-200">
+              {/* The primary surname itself, pinned at the top and always checked —
+                  makes the combined set legible at a glance rather than implicit. */}
+              <label className="flex items-center gap-2.5 border-b border-stone-100 px-3 py-2 text-[13px] text-stone-500">
+                <input type="checkbox" checked disabled className="h-4 w-4" />
+                <span className="flex-1">{surnameTitle}</span>
+                <span className="text-[11.5px] uppercase tracking-wide text-stone-400">
+                  Searched
+                </span>
+              </label>
+
+              {similarSurnames.map((s) => {
+                const checked = includedSurnames.has(s.surname_search);
+                const atLimit = !checked && activeSurnameSearches.length >= MAX_SURNAMES;
+                return (
+                  <label
+                    key={s.surname_search}
+                    className={`flex items-center gap-2.5 border-b border-stone-100 px-3 py-2 text-[13px] last:border-b-0 ${
+                      atLimit ? "cursor-not-allowed text-stone-400" : "cursor-pointer text-stone-700 hover:bg-stone-50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={atLimit}
+                      onChange={() => void toggleIncludedSurname(s.surname_search)}
+                      className="h-4 w-4"
+                    />
+                    <span className="flex-1">{s.surname_display}</span>
+                    <span className="text-stone-400">{s.count.toLocaleString()}</span>
+                  </label>
+                );
+              })}
             </div>
+            {activeSurnameSearches.length >= MAX_SURNAMES && (
+              <p className="mt-1.5 text-[12px] text-stone-500">
+                Included limit reached ({MAX_SURNAMES} surnames) — remove one to add another.
+              </p>
+            )}
           </div>
         )}
 
@@ -1416,6 +1537,13 @@ function CensusLanding() {
         <div className="space-y-1.5">
           {[
             { label: "Surname", value: surnameTitle },
+            {
+              label: "Also searched",
+              value:
+                includedSurnames.size > 0
+                  ? Array.from(includedSurnames).map(surnameDisplayFor).join(", ")
+                  : "",
+            },
             { label: "County", value: selectedCounty },
             { label: "District", value: selectedDed?.ded_display },
             {
@@ -1463,9 +1591,8 @@ function CensusLanding() {
                 <tbody>
                   {household.map((person, index) => {
                     const highlight =
-                      person.surname_search &&
-                      activeSurnameSearch &&
-                      person.surname_search === activeSurnameSearch;
+                      Boolean(person.surname_search) &&
+                      activeSurnameSearches.includes(person.surname_search || "");
                     return (
                       <tr
                         key={`${person.full_name || "person"}-${index}`}

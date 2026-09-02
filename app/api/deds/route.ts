@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
-import { safeParam, safeCensusYear } from "../../../lib/validation";
-
-function normaliseSurnameSearch(value: string) {
-  return value.trim().toLowerCase();
-}
+import { safeParam, safeCensusYear, safeSurnameList } from "../../../lib/validation";
 
 function getSurnameFromRequest(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -34,14 +30,16 @@ function getCountyFromRequest(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const rawSurname = getSurnameFromRequest(request);
-    const surnameSearch = normaliseSurnameSearch(rawSurname);
+    const surnames = safeSurnameList(
+      request.nextUrl.searchParams.get("surnames"),
+      getSurnameFromRequest(request)
+    );
     const countyDisplay = getCountyFromRequest(request).trim();
     const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
-    if (!surnameSearch || !countyDisplay) {
+    if (surnames.length === 0 || !countyDisplay) {
       return NextResponse.json({
-        surname_search: surnameSearch,
+        surname_search: surnames[0] || "",
         county_display: countyDisplay,
         deds: [],
       });
@@ -53,10 +51,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("irish_surname_ded_counts")
       .select("ded_id, person_count, irish_deds!inner(ded_display, county_display)")
-      .eq("surname_search", surnameSearch)
+      .in("surname_search", surnames)
       .eq("census_year", censusYear)
-      .eq("irish_deds.county_display", countyDisplay)
-      .order("person_count", { ascending: false });
+      .eq("irish_deds.county_display", countyDisplay);
 
     if (error) {
       console.error("DED route error:", error);
@@ -66,7 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Could not load DED counts.",
-          surname_search: surnameSearch,
+          surname_search: surnames[0],
           county_display: countyDisplay,
           deds: [],
         },
@@ -74,22 +71,29 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const deds =
-      data?.map((row) => {
-        const ded = row.irish_deds as unknown as {
-          ded_display: string;
-          county_display: string;
-        } | null;
-        return {
-          ded_id: row.ded_id,
+    // Merged across every included surname — one row per district, its person_count
+    // summed across whichever of the selected surnames appear there.
+    const dedTotals = new Map<string, { ded_display: string; county_display: string; person_count: number }>();
+    (data || []).forEach((row) => {
+      const ded = row.irish_deds as unknown as { ded_display: string; county_display: string } | null;
+      const key = String(row.ded_id);
+      const existing = dedTotals.get(key);
+      if (existing) {
+        existing.person_count += Number(row.person_count || 0);
+      } else {
+        dedTotals.set(key, {
           ded_display: ded?.ded_display ?? "",
           county_display: ded?.county_display ?? countyDisplay,
           person_count: Number(row.person_count || 0),
-        };
-      }) || [];
+        });
+      }
+    });
+    const deds = Array.from(dedTotals.entries())
+      .map(([ded_id, rest]) => ({ ded_id, ...rest }))
+      .sort((a, b) => b.person_count - a.person_count);
 
     return NextResponse.json({
-      surname_search: surnameSearch,
+      surname_search: surnames[0],
       county_display: countyDisplay,
       deds,
     });

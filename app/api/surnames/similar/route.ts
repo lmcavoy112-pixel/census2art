@@ -54,13 +54,14 @@ export async function GET(request: NextRequest) {
     .filter((row) => row.surname_search !== q)
     .map((row) => ({
       surname_display: row.surname_display,
+      surname_search: row.surname_search,
       count: Number(row.count || 0),
       distance: levenshtein(q, row.surname_search),
     }))
     .filter((r) => r.distance <= maxDistance)
     .sort((a, b) => a.distance - b.distance || b.count - a.count)
     .slice(0, 10)
-    .map(({ surname_display, count }) => ({ surname_display, count }));
+    .map(({ surname_display, surname_search, count }) => ({ surname_display, surname_search, count }));
 
   return NextResponse.json({ suggestions });
 }

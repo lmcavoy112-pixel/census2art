@@ -129,6 +129,44 @@ export function safeCensusYear(value: string | null): 1901 | 1911 {
 }
 
 /**
+ * Cleans a single surname into the canonical `surname_search` form the DB actually
+ * stores — lowercase, apostrophes and spaces stripped ("O'Brien" -> "obrien"). Every
+ * census route that filters by surname_search re-applies this defensively rather
+ * than trusting the caller already did.
+ */
+export function cleanSurnameSearch(value: string): string {
+  return value.toLowerCase().replaceAll("'", "").replaceAll("’", "").replaceAll(" ", "");
+}
+
+/** Every one of these becomes its own DB round trip when a route merges results
+ *  across surnames (see the "why not a text[] RPC param" note in the affected
+ *  routes), so an unbounded list is an unbounded fan-out. Matches the Surname
+ *  step's own checklist cap in app/irish-census/page.tsx. */
+const MAX_SURNAMES = 5;
+
+/**
+ * Parses the `surnames` query param — a comma-separated list of `surname_search`
+ * values, the primary surname a customer searched plus any spelling variants they've
+ * opted into via the Surname step's checklist — into a deduped, cleaned, capped list.
+ * Falls back to a single legacy surname alias for any caller that predates this
+ * feature (an old deep link, a `DesignSnapshot` saved before `includedSurnames`
+ * existed) and only ever sent one surname.
+ */
+export function safeSurnameList(surnamesParam: string | null, legacySurname: string | null): string[] {
+  const raw = surnamesParam?.trim()
+    ? surnamesParam.split(",")
+    : legacySurname
+      ? [legacySurname]
+      : [];
+
+  const cleaned = raw
+    .map((s) => cleanSurnameSearch(s.trim()))
+    .filter((s) => s.length > 0 && s.length <= SHORT_TEXT);
+
+  return Array.from(new Set(cleaned)).slice(0, MAX_SURNAMES);
+}
+
+/**
  * True for a same-site relative path an OAuth `returnTo`-style redirect can safely target.
  *
  * Rejects anything starting `//` (protocol-relative) *and* anything starting `/\` or

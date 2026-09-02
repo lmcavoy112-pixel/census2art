@@ -34,6 +34,12 @@ export type HouseholdPerson = {
 export type DesignSnapshot = {
   surnameDisplay?: string;
   surnameSearch?: string;
+  /** Spelling variants opted into alongside `surnameSearch` (e.g. searching "Clark"
+   *  and also including "Clarke") — see the Surname step's checklist. Every county/
+   *  district/map fetch scopes to `[surnameSearch, ...includedSurnames]`, but
+   *  `surnameDisplay` (the artwork heading) always stays just what was originally
+   *  typed, regardless of what's in here. */
+  includedSurnames?: string[];
   /** Which census edition this selection was made under — 1901 or 1911. Drives the
    *  poster's year text (see HistoricPoster.tsx) so a 1911 print never says 1901. */
   censusYear?: string;

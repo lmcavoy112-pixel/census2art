@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/supabase";
-import { safeParam, safeCensusYear } from "../../../lib/validation";
-
-function normaliseSurnameSearch(value: string) {
-  return value.trim().toLowerCase();
-}
+import { safeParam, safeCensusYear, safeSurnameList } from "../../../lib/validation";
 
 function getSurnameFromRequest(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -23,11 +19,13 @@ function getSurnameFromRequest(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const rawSurname = getSurnameFromRequest(request);
-    const surnameSearch = normaliseSurnameSearch(rawSurname);
+    const surnames = safeSurnameList(
+      request.nextUrl.searchParams.get("surnames"),
+      getSurnameFromRequest(request)
+    );
     const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
-    if (!surnameSearch) {
+    if (surnames.length === 0) {
       return NextResponse.json({
         surname_search: "",
         surname_display: "",
@@ -37,13 +35,12 @@ export async function GET(request: NextRequest) {
 
     // census_year filter is required, not optional: irish_surname_lookup's PK is now
     // (surname_search, census_year), so a bare surname_search filter matches both
-    // 1901 and 1911 rows and .maybeSingle() throws on the second one.
+    // 1901 and 1911 rows.
     const { data: lookupData, error: lookupError } = await supabase
       .from("irish_surname_lookup")
       .select("surname_display, surname_search, count")
-      .eq("surname_search", surnameSearch)
-      .eq("census_year", censusYear)
-      .maybeSingle();
+      .in("surname_search", surnames)
+      .eq("census_year", censusYear);
 
     if (lookupError) {
       console.error("Surname lookup error:", lookupError);
@@ -52,9 +49,8 @@ export async function GET(request: NextRequest) {
     const { data: countyData, error: countyError } = await supabase
       .from("irish_surname_county_counts")
       .select("county_display, person_count")
-      .eq("surname_search", surnameSearch)
-      .eq("census_year", censusYear)
-      .order("person_count", { ascending: false });
+      .in("surname_search", surnames)
+      .eq("census_year", censusYear);
 
     if (countyError) {
       console.error("County count error:", countyError);
@@ -69,18 +65,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const counties =
-      countyData?.map((row) => {
-        return {
-          county_display: row.county_display,
-          person_count: Number(row.person_count || 0),
-        };
-      }) || [];
+    // Merged across every included surname (the primary search plus any opted-in
+    // spelling variants — see the Surname step's checklist): one row per county, its
+    // person_count summed across whichever of the selected surnames appear there.
+    const countyTotals = new Map<string, number>();
+    (countyData || []).forEach((row) => {
+      const current = countyTotals.get(row.county_display) || 0;
+      countyTotals.set(row.county_display, current + Number(row.person_count || 0));
+    });
+    const counties = Array.from(countyTotals.entries())
+      .map(([county_display, person_count]) => ({ county_display, person_count }))
+      .sort((a, b) => b.person_count - a.person_count);
+
+    const totalCount = (lookupData || []).reduce((sum, row) => sum + Number(row.count || 0), 0);
+    // The primary surname (first in the list) is the one whose canonical display/
+    // capitalisation this route echoes back — a variant's own display never overrides
+    // it, since the artwork always prints what was originally typed.
+    const primaryLookup = (lookupData || []).find((row) => row.surname_search === surnames[0]);
 
     return NextResponse.json({
-      surname_search: lookupData?.surname_search || surnameSearch,
-      surname_display: lookupData?.surname_display || rawSurname,
-      total_count: Number(lookupData?.count || 0),
+      surname_search: primaryLookup?.surname_search || surnames[0],
+      surname_display: primaryLookup?.surname_display || surnames[0],
+      total_count: totalCount,
       counties,
     });
   } catch (error) {

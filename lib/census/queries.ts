@@ -46,18 +46,15 @@ export type TownlandPolygon = {
   geojson: any | null;
 };
 
-/** Every fetcher below sends the same surname under every alias an API route might
- *  read it back as — a PostgREST select, an RPC param, or a hand-rolled JSON wrapper
- *  each picked their own name at different times, and the routes were never unified. */
-function surnameAliases(surnameSearch: string) {
+/** Every fetcher below sends the whole set of included surnames — the primary search
+ *  plus any spelling variants a customer has opted into via the Surname step's
+ *  checklist (e.g. "Clark" + "Clarke") — as one comma-joined `surnames` param, which
+ *  every route now parses via `safeSurnameList()`. `surname` carries just the primary
+ *  alone, for any older/unmigrated route that only reads the singular alias. */
+function surnameAliases(surnames: string[]) {
   return {
-    surname: surnameSearch,
-    surname_search: surnameSearch,
-    surnameSearch,
-    q: surnameSearch,
-    query: surnameSearch,
-    search: surnameSearch,
-    name: surnameSearch,
+    surnames: surnames.join(","),
+    surname: surnames[0] ?? "",
   };
 }
 
@@ -185,23 +182,23 @@ export function normaliseHouseholdRows(rows: any[]): HouseholdPerson[] {
 export type CensusYear = "1901" | "1911";
 
 export async function fetchCounties(
-  surnameSearch: string,
+  surnames: string[],
   censusYear: CensusYear
 ): Promise<CountyCount[]> {
   const payload = await fetchJson(
-    buildUrl("/api/surnames", { ...surnameAliases(surnameSearch), census_year: censusYear })
+    buildUrl("/api/surnames", { ...surnameAliases(surnames), census_year: censusYear })
   );
   return normaliseCountyRows(readArray(payload, ["counties", "results", "data"]));
 }
 
 export async function fetchDeds(
-  surnameSearch: string,
+  surnames: string[],
   county: string,
   censusYear: CensusYear
 ): Promise<DedCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/deds", {
-      ...surnameAliases(surnameSearch),
+      ...surnameAliases(surnames),
       county,
       county_display: county,
       countyDisplay: county,
@@ -212,13 +209,13 @@ export async function fetchDeds(
 }
 
 export async function fetchCountyPolygons(
-  surnameSearch: string,
+  surnames: string[],
   county: string,
   censusYear: CensusYear
 ): Promise<DedCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/county-polygons", {
-      ...surnameAliases(surnameSearch),
+      ...surnameAliases(surnames),
       county,
       county_display: county,
       countyDisplay: county,
@@ -231,12 +228,12 @@ export async function fetchCountyPolygons(
 }
 
 export async function fetchSurnamePolygons(
-  surnameSearch: string,
+  surnames: string[],
   censusYear: CensusYear
 ): Promise<DedCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/surname-polygons", {
-      ...surnameAliases(surnameSearch),
+      ...surnameAliases(surnames),
       census_year: censusYear,
     })
   );
@@ -246,13 +243,13 @@ export async function fetchSurnamePolygons(
 }
 
 export async function fetchTownlands(
-  surnameSearch: string,
+  surnames: string[],
   dedId: string,
   censusYear: CensusYear
 ): Promise<TownlandCount[]> {
   const payload = await fetchJson(
     buildUrl("/api/townlands", {
-      ...surnameAliases(surnameSearch),
+      ...surnameAliases(surnames),
       ded_id: dedId,
       dedId,
       census_year: censusYear,
@@ -263,14 +260,14 @@ export async function fetchTownlands(
 
 /** Omit townlandId (or pass "") to fetch every household in the DED at once. */
 export async function fetchPersonMatches(
-  surnameSearch: string,
+  surnames: string[],
   dedId: string,
   censusYear: CensusYear,
   townlandId?: string
 ): Promise<PersonMatch[]> {
   const payload = await fetchJson(
     buildUrl("/api/person-matches", {
-      ...surnameAliases(surnameSearch),
+      ...surnameAliases(surnames),
       ded_id: dedId,
       dedId,
       townland_id: townlandId,

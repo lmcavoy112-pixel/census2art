@@ -21,10 +21,13 @@ export type ModernPresetConfig = {
   /** Only the street preset offers a manually-placed pin. */
   allowsPin: boolean;
   /**
-   * Whether district (DED) borders are drawn at all. False at Country/County — dozens to
-   * hundreds of district outlines at that scale read as visual noise, not information —
-   * so the border colour/thickness controls are hidden and the width forced to 0 at
-   * those two levels. True at District/Street, where there's one district to see.
+   * Whether district/townland borders are drawn at all. False at Country/County —
+   * dozens to hundreds of district outlines at that scale read as visual noise, not
+   * information — so the border colour/thickness controls are hidden and the width
+   * forced to 0 there. Also false at Street: the focus there is the house itself, so
+   * no district/townland polygon is shown at all (fill or border) regardless of what
+   * the customer has picked — see the design page's `highlights`/`visibleOutline`.
+   * True only at District and Townland, where there's exactly one polygon to see.
    */
   districtBorders: boolean;
 };
@@ -91,7 +94,7 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
     fitPadding: 56,
     defaultPlaceLabels: "all",
     allowsPin: true,
-    districtBorders: true,
+    districtBorders: false,
   },
 };
 

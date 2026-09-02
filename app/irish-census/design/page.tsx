@@ -226,14 +226,17 @@ function naturalTableWidth(container: HTMLElement): number {
 }
 
 // Prefers surname_search (normalised, e.g. "kernohan") since that's what's actually
-// compared against; falls back to surname_display for records missing it.
-function personMatchesPrimarySurname(
+// compared against; falls back to surname_display for records missing it. Accepts a
+// list, not just the primary surname — a household can genuinely have a mix (e.g. 5
+// "Clark" and 1 "Clarke") once spelling variants are included via the Surname step's
+// checklist, and all of them are "the surname(s) searched for", not just the primary.
+function personMatchesSearchedSurnames(
   person: HouseholdPerson,
-  primarySurnameSearch: string,
+  acceptedSurnameSearches: string[],
   primarySurnameDisplay: string
 ): boolean {
   const search = (person.surname_search || "").trim().toLowerCase();
-  if (search) return search === primarySurnameSearch.trim().toLowerCase();
+  if (search) return acceptedSurnameSearches.includes(search);
   const display = (person.surname_display || "").trim().toLowerCase();
   return display === primarySurnameDisplay.trim().toLowerCase();
 }
@@ -379,6 +382,11 @@ function ModernDesignContent() {
   // which is not always unique within a townland).
   const [designKey, setDesignKey] = useState("");
   const [surnameSearch, setSurnameSearch] = useState("");
+  // Spelling variants included alongside surnameSearch (see the Surname step's
+  // checklist, app/irish-census/page.tsx) — merged into every county/country polygon
+  // fetch below so the map/counts match what the customer actually searched for.
+  // headingText (the printed surname) is driven by surnameDisplay only, never this.
+  const [includedSurnames, setIncludedSurnames] = useState<string[]>([]);
   // Which census edition this print's records came from — drives every "1901"/"1911"
   // shown on the poster itself (see the Historic template's stat labels below) and is
   // carried back onto "Back to search" so that page reopens under the same year.
@@ -558,10 +566,13 @@ function ModernDesignContent() {
     const nextHousehold = saved?.household || [];
     const nextSurnameSearch =
       saved?.surnameSearch || getParam(params, "surnameSearch") || nextSurname.toLowerCase();
+    const nextIncludedSurnames =
+      saved?.includedSurnames ?? (getParam(params, "variants") ? getParam(params, "variants").split(",").filter(Boolean) : []);
     const nextCensusYear = (saved?.censusYear || getParam(params, "year")) === "1911" ? "1911" : "1901";
 
     setDesignKey(incomingDesignKey);
     setSurnameSearch(nextSurnameSearch);
+    setIncludedSurnames(nextIncludedSurnames);
     setCensusYear(nextCensusYear);
     setCounty(nextCounty);
     setCountyDisplayText(nextCounty);
@@ -573,13 +584,16 @@ function ModernDesignContent() {
     setHouseNoText(nextHouseNo);
     setHousehold(nextHousehold);
 
-    // Default to showing only members of the searched-for surname — co-residents with a
-    // different surname start hidden, and the user opts them back in below if they want
-    // them included. Table vs List then defaults off how many that leaves: a short list
+    // Default to showing only members of the searched-for surname(s) — the primary
+    // plus any included spelling variants — so a genuinely mixed household (5 "Clark"
+    // and 1 "Clarke") prints in full, while an unrelated co-resident (a servant, an
+    // in-law) starts hidden and the customer opts them back in below if they want them
+    // included. Table vs List then defaults off how many that leaves: a short list
     // reads fine as a table, a long one is tidier as prose.
+    const acceptedSurnameSearches = [nextSurnameSearch, ...nextIncludedSurnames];
     const defaultHidden = new Set<number>();
     nextHousehold.forEach((person, index) => {
-      if (!personMatchesPrimarySurname(person, nextSurnameSearch, nextSurname)) {
+      if (!personMatchesSearchedSurnames(person, acceptedSurnameSearches, nextSurname)) {
         defaultHidden.add(index);
       }
     });
@@ -663,7 +677,11 @@ function ModernDesignContent() {
       setMapError("");
       try {
         const payload = await fetchJson(
-          buildUrl("/api/county-polygons", { surname: surnameSearch, county, census_year: censusYear })
+          buildUrl("/api/county-polygons", {
+            surnames: [surnameSearch, ...includedSurnames].join(","),
+            county,
+            census_year: censusYear,
+          })
         );
         const rows = normaliseDedRows(
           readArray(payload, ["polygons", "deds", "results", "data"]),
@@ -677,7 +695,7 @@ function ModernDesignContent() {
     }
 
     void loadPolygons();
-  }, [loaded, surnameSearch, county, template, censusYear]);
+  }, [loaded, surnameSearch, includedSurnames, county, template, censusYear]);
 
   // Nationwide DEDs, fetched lazily the first time something actually needs them —
   // the Country level, or the Historic template, which is nationwide by definition.
@@ -691,7 +709,10 @@ function ModernDesignContent() {
       setMapError("");
       try {
         const payload = await fetchJson(
-          buildUrl("/api/surname-polygons", { surname: surnameSearch, census_year: censusYear })
+          buildUrl("/api/surname-polygons", {
+            surnames: [surnameSearch, ...includedSurnames].join(","),
+            census_year: censusYear,
+          })
         );
         const rows = normaliseDedRows(
           readArray(payload, ["polygons", "deds", "results", "data"]),
@@ -710,7 +731,7 @@ function ModernDesignContent() {
     return () => {
       cancelled = true;
     };
-  }, [loaded, surnameSearch, level, template, countryLoaded, censusYear]);
+  }, [loaded, surnameSearch, includedSurnames, level, template, countryLoaded, censusYear]);
 
   // The true county boundary, dissolved from its DEDs server-side. Without it the county
   // view frames only the districts the surname appears in, which crops the county badly
@@ -817,6 +838,7 @@ function ModernDesignContent() {
     if (designKey) params.set("designKey", designKey);
     params.set("year", censusYear);
     if (surnameSearch) params.set("surname", surnameSearch);
+    if (includedSurnames.length > 0) params.set("variants", includedSurnames.join(","));
     if (county) params.set("county", county);
     if (dedId) params.set("dedId", dedId);
     if (dedDisplayText) params.set("dedDisplay", dedDisplayText);
@@ -873,17 +895,12 @@ function ModernDesignContent() {
   // polygon_id check is needed on top of it.
   const hasTownlandPolygon = Boolean(townlandGeojson);
 
-  // County draws the dissolved county boundary; Townland and Street both draw the
-  // selected townland's own boundary when one is on file (falls back to nothing — just
-  // the DED highlight stroke — both while no townland is known and when it has no
-  // geometry). Country and District have no outline of their own, just the highlight
-  // stroke — see the Country-extent comment above for why.
-  const visibleOutline =
-    level === "county"
-      ? outline
-      : level === "street" || level === "townland"
-        ? townlandGeojson
-        : null;
+  // County draws the dissolved county boundary as a separate furniture layer — it isn't
+  // a shape the customer is styling, just basemap context (see outlineHex below).
+  // District, Townland and Street all go through `highlights` instead, so a real
+  // townland gets filled exactly the way a district does rather than sitting here as a
+  // bare, unfilled outline.
+  const visibleOutline = level === "county" ? outline : null;
 
   const highlights = useMemo(() => {
     if (level === "country") {
@@ -898,16 +915,30 @@ function ModernDesignContent() {
         weight: (p.person_count || 0) / maxCount,
       }));
     }
-    // Townland/Street with a real townland polygon: the DED fill would sit underneath
-    // and behind the townland's own outline for no reason, since visibleOutline above
-    // already draws the townland boundary — suppressed here so it's the only shape on
-    // screen. Falls back to the whole DED (District's own behaviour) whenever there's
-    // no townland geometry to show instead.
-    if ((level === "townland" || level === "street") && hasTownlandPolygon) {
+    // Street's focus is the house itself — no district/townland polygon competes with
+    // the marker for attention at this extent, regardless of what's on file.
+    if (level === "street") {
       return [];
     }
+    // Townland, with a real boundary on file: filled the same way District is, just
+    // with the townland's own geometry instead of the selected DED's. weight: 1 (not a
+    // relative share like Country/County) because only one polygon is ever shown at
+    // this extent — there's nothing to weigh it against.
+    if (level === "townland" && hasTownlandPolygon) {
+      return [{ geometry: townlandGeojson, weight: 1 }];
+    }
+    // District, and Townland with no boundary on file, both fall back to the whole DED.
     return selectedPolygon ? [{ geometry: selectedPolygon.geojson, weight: 1 }] : [];
-  }, [level, polygons, countryPolygons, selectedPolygon, maxCount, countryMaxCount, hasTownlandPolygon]);
+  }, [
+    level,
+    polygons,
+    countryPolygons,
+    selectedPolygon,
+    maxCount,
+    countryMaxCount,
+    hasTownlandPolygon,
+    townlandGeojson,
+  ]);
 
   const fitBounds = useMemo<LngLatBox | null>(() => {
     if (level === "country") {
@@ -978,28 +1009,16 @@ function ModernDesignContent() {
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
   const borderHex = getPolygonColourById(borderColourId)?.hex ?? polygonHex;
-  // At Street/Townland the outline draws over the dark district highlight fill instead
-  // of the plain basemap the county outline was tuned for -- outlineHex (tuned for
-  // contrast against land colour) reads as effectively invisible on top of that fill.
-  // Uses the customer's own DED boundary colour preset instead, so the townland
-  // boundary always matches whatever they picked for District borders.
-  const effectiveOutlineColour =
-    level === "street" || level === "townland" ? borderHex : outlineHex;
   // Country/County show dozens to hundreds of districts at once, where individual
   // borders read as noise rather than information — forced to 0 there regardless of the
-  // customer's chosen thickness. Deliberately never writes back to borderWidthIndex, so
-  // the setting they picked survives a trip out to County and back.
+  // customer's chosen thickness. Also false at Street (see districtBorders in
+  // lib/modern/presets.ts) — deliberately never writes back to borderWidthIndex, so
+  // the setting they picked survives a trip out to Country/County/Street and back.
   const bordersConfigurable = preset.districtBorders;
   const borderWidth =
     !bordersConfigurable || borderColourId === NO_BORDER_COLOUR_ID
       ? 0
       : BORDER_WIDTHS[borderWidthIndex];
-  // Same reasoning as effectiveOutlineColour just above: at Street/Townland this stroke
-  // *is* the district/townland boundary the customer is styling, so it takes their
-  // chosen thickness too, not just their chosen colour — matching "the exact design
-  // settings as DEDs" rather than a flat, fixed line weight.
-  const effectiveOutlineWidth =
-    level === "street" || level === "townland" ? borderWidth : OUTLINE_WIDTH;
 
   // Shape is decided up front, in the Template section, because it gates what the rest
   // of the designer can offer — square has no symbol divider and only one border.
@@ -1533,8 +1552,8 @@ function ModernDesignContent() {
           outline: visibleOutline,
           accentColour: polygonHex,
           borderColour: borderHex,
-          outlineColour: effectiveOutlineColour,
-          outlineWidth: effectiveOutlineWidth,
+          outlineColour: outlineHex,
+          outlineWidth: OUTLINE_WIDTH,
           showFill: showPolygonFill,
           highlightLineWidth: borderWidth,
         });
@@ -1999,44 +2018,56 @@ function ModernDesignContent() {
         <div className="border-t border-stone-200 pt-5">
           <GroupLabel>Districts</GroupLabel>
 
-          <PolygonSwatchRow
-            label="Fill colour"
-            inheritColour={palette.polygon}
-            inheritLabel="Match palette"
-            clearLabel="No fill"
-            value={polygonColourId}
-            onChange={setPolygonColourId}
-          >
+          {/* Street shows no district/townland polygon at all (see districtBorders in
+              lib/modern/presets.ts) — fill colour would be a control with no visible
+              effect, so it's replaced with a note instead of offered anyway. */}
+          {level === "street" ? (
             <HelpText>
-              {polygonColourId === NO_BORDER_COLOUR_ID
-                ? "No fill — the district border alone."
-                : "Districts are shaded by how many of your name lived there."}
+              The focus at this extent is the house itself — no district or townland
+              shading.
             </HelpText>
-          </PolygonSwatchRow>
-
-          {bordersConfigurable ? (
+          ) : (
             <>
               <PolygonSwatchRow
-                label="Border colour"
-                inheritColour={polygonHex}
-                inheritLabel="Match fill"
-                clearLabel="No border"
-                value={borderColourId}
-                onChange={setBorderColourId}
-              />
+                label="Fill colour"
+                inheritColour={palette.polygon}
+                inheritLabel="Match palette"
+                clearLabel="No fill"
+                value={polygonColourId}
+                onChange={setPolygonColourId}
+              >
+                <HelpText>
+                  {polygonColourId === NO_BORDER_COLOUR_ID
+                    ? "No fill — the district border alone."
+                    : "Districts are shaded by how many of your name lived there."}
+                </HelpText>
+              </PolygonSwatchRow>
 
-              <Stepper
-                label="Border thickness"
-                valueLabel={borderWidth === 0 ? "None" : `${borderWidth}px`}
-                index={borderWidthIndex}
-                count={BORDER_WIDTHS.length}
-                onIndexChange={setBorderWidthIndex}
-                minLabel="Fine"
-                maxLabel="Heavy"
-              />
+              {bordersConfigurable ? (
+                <>
+                  <PolygonSwatchRow
+                    label="Border colour"
+                    inheritColour={polygonHex}
+                    inheritLabel="Match fill"
+                    clearLabel="No border"
+                    value={borderColourId}
+                    onChange={setBorderColourId}
+                  />
+
+                  <Stepper
+                    label="Border thickness"
+                    valueLabel={borderWidth === 0 ? "None" : `${borderWidth}px`}
+                    index={borderWidthIndex}
+                    count={BORDER_WIDTHS.length}
+                    onIndexChange={setBorderWidthIndex}
+                    minLabel="Fine"
+                    maxLabel="Heavy"
+                  />
+                </>
+              ) : (
+                <HelpText>Shown as shaded areas only at this extent.</HelpText>
+              )}
             </>
-          ) : (
-            <HelpText>Shown as shaded areas only at this extent.</HelpText>
           )}
         </div>
       </div>
@@ -2854,8 +2885,8 @@ function ModernDesignContent() {
                     contourDensity={contourDensity}
                     accentColour={polygonHex}
                     borderColour={borderHex}
-                    outlineColour={effectiveOutlineColour}
-                    outlineWidth={effectiveOutlineWidth}
+                    outlineColour={outlineHex}
+                    outlineWidth={OUTLINE_WIDTH}
                     showFill={showPolygonFill}
                     highlights={highlights}
                     outline={visibleOutline}
