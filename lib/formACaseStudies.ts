@@ -45,8 +45,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Samuel Hammond baked for a living on Union Street in Ballymoney, Co. Antrim; he, his wife Martha, and their four children — from an infant son to a nine-year-old daughter already at school — filled out the return with three slightly different labels for their shared Protestant faith: Church of Ireland, Protestant, and Episcopalian.",
     scanSrc: "/examples/form a examples/scans/Hammond_nai001377255.jpg",
-    scanWidth: 1800,
-    scanHeight: 1223,
+    scanWidth: 2600,
+    scanHeight: 1767,
   },
   {
     surname: "Frazer",
@@ -57,8 +57,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Thomas and Eleaner Frazer's household spanned two counties before it spanned two rooms: she born in Belfast, the children in Antrim, three of the four already at school.",
     scanSrc: "/examples/form a examples/scans/Frazer_nai001392158.jpg",
-    scanWidth: 1800,
-    scanHeight: 1137,
+    scanWidth: 2600,
+    scanHeight: 1643,
   },
   {
     surname: "Byrne",
@@ -69,8 +69,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "John Byrne farmed Arranmore Island with his wife Magie and nine children; by 1911 the eldest son worked the land alongside him and every child but the three youngest could already read and write.",
     scanSrc: "/examples/form a examples/scans/Byrne_nai002076867.jpg",
-    scanWidth: 1800,
-    scanHeight: 1212,
+    scanWidth: 2600,
+    scanHeight: 1750,
   },
   {
     surname: "Hughes",
@@ -81,8 +81,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Mary Hughes headed the household alone, having crossed from Scotland; her two eldest daughters were already earning wages as paper sorters beside her, while the youngest, born in Antrim, marked the family's move to Ireland.",
     scanSrc: "/examples/form a examples/scans/Hughes_nai000367913.jpg",
-    scanWidth: 1800,
-    scanHeight: 1150,
+    scanWidth: 2600,
+    scanHeight: 1660,
   },
   {
     surname: "Jennings",
@@ -93,8 +93,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Pat and Margaret Jennings raised ten children on their farm on the Galway coast; not one of them, parents included, could yet read — rural Connemara schooling hadn't caught up.",
     scanSrc: "/examples/form a examples/scans/Jennings_nai000805431.jpg",
-    scanWidth: 1800,
-    scanHeight: 1174,
+    scanWidth: 2600,
+    scanHeight: 1696,
   },
   {
     surname: "King",
@@ -105,8 +105,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Joseph King made slates for a living while his wife Margaret kept house; their four children, all born in the county, were being raised to read and write.",
     scanSrc: "/examples/form a examples/scans/King_nai003898634.jpg",
-    scanWidth: 1800,
-    scanHeight: 1176,
+    scanWidth: 2600,
+    scanHeight: 1699,
   },
   {
     surname: "McCarthy",
@@ -117,8 +117,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "William and Mary Anne McCarthy farmed Corkbeg Island in Cork Harbour and raised nine children under one roof, from a 20-year-old eldest son down to a 7-year-old still starting school.",
     scanSrc: "/examples/form a examples/scans/McCarthy_nai001989309.jpg",
-    scanWidth: 1800,
-    scanHeight: 1243,
+    scanWidth: 2600,
+    scanHeight: 1796,
   },
   {
     surname: "O'Neill",
@@ -129,8 +129,8 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "John O'Neill served as an Acting Sergeant in the Royal Irish Constabulary in Sligo town, where he and his wife Bridget were raising two children still in nappies.",
     scanSrc: "/examples/form a examples/scans/ONeill_nai003877121.jpg",
-    scanWidth: 1800,
-    scanHeight: 1182,
+    scanWidth: 2600,
+    scanHeight: 1706,
   },
   {
     surname: "Sullivan",
@@ -141,7 +141,7 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     blurb:
       "Patrick Sullivan, a widowed shoemaker, ran what was practically a family trade: three sons worked as shoemakers or finishers beside him and a fourth was apprenticing in, while his daughter kept house and the youngest was still at school.",
     scanSrc: "/examples/form a examples/scans/Sullivan_nai000869145.jpg",
-    scanWidth: 1800,
-    scanHeight: 1170,
+    scanWidth: 2600,
+    scanHeight: 1689,
   },
 ];
