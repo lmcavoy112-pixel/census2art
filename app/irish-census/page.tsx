@@ -976,9 +976,13 @@ function CensusLanding() {
     }
   }
 
-  /** Centre of the selected district — where a by-hand marker starts before dragging. */
+  /** Centre of the selected townland (if one is picked and has its own boundary on
+   *  file), else the district — where a by-hand marker starts before dragging. */
   function selectedDistrictCentre() {
-    const geometry = selectedPolygon?.geojson || selectedDed?.geojson;
+    const geometry =
+      (selectedTownland && townlandGeojson?.geojson) ||
+      selectedPolygon?.geojson ||
+      selectedDed?.geojson;
     const centre = geometry ? polygonCentroid(geometry) : null;
     return centre ? { lng: centre[0], lat: centre[1] } : null;
   }
@@ -1075,6 +1079,13 @@ function CensusLanding() {
   }
 
   function handleContinueToDesign() {
+    // A house pick's household fetch (auto-selected or clicked) is still in flight —
+    // proceeding now would hand the designer a house with an empty household, since
+    // `household` only gets set once that fetch resolves. The button below is disabled
+    // for the same reason; this is a second guard against a click already queued before
+    // that took effect.
+    if (loadingMessage) return;
+
     const formAUrl = formAUrls[0] || "";
 
     const snapshot: DesignSnapshot = {
@@ -1668,7 +1679,11 @@ function CensusLanding() {
               spacer just reserves the room it would otherwise cover, so the table/
               Form A preview above never sits underneath it. */}
           <div className="hidden lg:block">
-            <CreateArtworkButton variant="pane" onClick={handleContinueToDesign} />
+            <CreateArtworkButton
+              variant="pane"
+              onClick={handleContinueToDesign}
+              disabled={Boolean(loadingMessage)}
+            />
           </div>
           <div aria-hidden="true" className="h-24 lg:hidden" />
         </div>
@@ -1813,7 +1828,11 @@ function CensusLanding() {
           this — it gets the enlarged inline CTA inside the panel itself instead. */}
       {openSection === "review" && surnameTitle && (
         <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
-          <CreateArtworkButton variant="bar" onClick={handleContinueToDesign} />
+          <CreateArtworkButton
+            variant="bar"
+            onClick={handleContinueToDesign}
+            disabled={Boolean(loadingMessage)}
+          />
         </div>
       )}
 
@@ -1911,16 +1930,19 @@ function CensusLanding() {
 function CreateArtworkButton({
   onClick,
   variant,
+  disabled,
 }: {
   onClick: () => void;
   variant: "pane" | "bar";
+  disabled?: boolean;
 }) {
   if (variant === "bar") {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="flex w-full items-center justify-between gap-3 bg-[#1e2b18] py-3.5 pl-5 pr-4 text-left text-white transition-colors active:bg-[#141d10]"
+        disabled={disabled}
+        className="flex w-full items-center justify-between gap-3 bg-[#1e2b18] py-3.5 pl-5 pr-4 text-left text-white transition-colors active:bg-[#141d10] disabled:opacity-60"
         style={{ paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))" }}
       >
         <span className="text-[14.5px] font-semibold">Create the Artwork</span>
@@ -1933,7 +1955,8 @@ function CreateArtworkButton({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center justify-between gap-4 rounded-lg bg-[#1e2b18] px-6 py-5 text-left shadow-[0_10px_28px_-10px_rgba(30,43,24,0.55)] transition-all hover:shadow-[0_14px_32px_-8px_rgba(30,43,24,0.6)] hover:brightness-[1.08]"
+      disabled={disabled}
+      className="group flex w-full items-center justify-between gap-4 rounded-lg bg-[#1e2b18] px-6 py-5 text-left shadow-[0_10px_28px_-10px_rgba(30,43,24,0.55)] transition-all hover:shadow-[0_14px_32px_-8px_rgba(30,43,24,0.6)] hover:brightness-[1.08] disabled:opacity-60 disabled:shadow-none disabled:hover:brightness-100"
     >
       <span>
         <span className="block text-[16px] font-semibold text-white">

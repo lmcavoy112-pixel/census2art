@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabase";
-import { safeParam, safeCensusYear } from "../../../../lib/validation";
+import { safeParam, safeCensusYear, cleanSurnameSearch } from "../../../../lib/validation";
 
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
   // Capped well below SHORT_TEXT: q feeds an O(m*n) Levenshtein comparison against every
   // distinct surname sharing its 2-char prefix, so an oversized value is a cheap
   // CPU-burn lever even with the route's own rate limit in place.
-  const q = safeParam(request.nextUrl.searchParams.get("q"), 50)?.toLowerCase() ?? "";
+  // Cleaned the same way surname_search is stored (lowercase, apostrophes/spaces
+  // stripped) — otherwise a query like "O'Shaughnessy" keeps its apostrophe in the
+  // 2-char prefix below ("o'"), which never matches any stored surname_search (those
+  // never contain apostrophes), silently starving the candidate list to zero.
+  const q = cleanSurnameSearch(safeParam(request.nextUrl.searchParams.get("q"), 50) ?? "");
   const censusYear = safeCensusYear(request.nextUrl.searchParams.get("census_year"));
 
   if (q.length < 2) {

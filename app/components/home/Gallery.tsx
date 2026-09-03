@@ -29,8 +29,8 @@ function useIsDesktop(): boolean {
 
 /**
  * Sample prints (GET /api/recent-purchase-samples), a shuffled pool read from
- * public/examples/Recent Purchases/ rather than a fixed array, so growing the pool
- * is "drop a file in", not a code change.
+ * public/examples/gallery/ rather than a fixed array, so growing the pool is
+ * "drop a file in", not a code change.
  */
 function useGalleryPrints(): GalleryPrint[] {
   const [prints, setPrints] = useState<GalleryPrint[]>([]);

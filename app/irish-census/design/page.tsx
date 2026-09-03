@@ -26,7 +26,7 @@ import {
   smartSurnameDisplay,
   type DedRow,
 } from "@/lib/design/fetching";
-import { fetchTownlandPolygon } from "@/lib/census/queries";
+import { fetchHousehold, fetchTownlandPolygon } from "@/lib/census/queries";
 import { buildHouseholdSummaryLines } from "@/lib/census/householdSummary";
 import {
   buildGalleryGroups,
@@ -599,6 +599,29 @@ function ModernDesignContent() {
     });
     setHiddenHouseholdIndices(defaultHidden);
     setHouseholdDisplayMode(nextHousehold.length - defaultHidden.size <= 8 ? "table" : "list");
+
+    // The snapshot can reach here with a house already picked (houseUid/houseNo set,
+    // driving "street" level and the marker below) but an empty household — the census
+    // page's own "Create the Artwork" button isn't disabled while its household fetch
+    // is still in flight, so a fast click can hand off before that fetch resolves. Mirrors
+    // the census page's own restoreSelection fallback: re-fetch here rather than printing
+    // a house with no family table.
+    if (nextHousehold.length === 0 && nextHouseUid) {
+      fetchHousehold(nextHouseUid, nextCensusYear)
+        .then((rows) => {
+          if (rows.length === 0) return;
+          setHousehold(rows);
+          const hidden = new Set<number>();
+          rows.forEach((person, index) => {
+            if (!personMatchesSearchedSurnames(person, acceptedSurnameSearches, nextSurname)) {
+              hidden.add(index);
+            }
+          });
+          setHiddenHouseholdIndices(hidden);
+          setHouseholdDisplayMode(rows.length - hidden.size <= 8 ? "table" : "list");
+        })
+        .catch(() => {});
+    }
 
     const deepest = detectModernLevel({
       county: nextCounty,

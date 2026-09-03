@@ -5,7 +5,7 @@ import path from "path";
 /**
  * Feeds the homepage's Gallery strip (see Gallery.tsx).
  *
- * Reads whatever image files sit in public/examples/Recent Purchases/ at request
+ * Reads whatever image files sit in public/examples/gallery/ at request
  * time (no manifest to keep in sync — drop a file in, it's in the pool) and returns
  * them shuffled. Two filename conventions are understood, both optional:
  *   - "Surname - County.png" shows a county line.
@@ -15,7 +15,7 @@ import path from "path";
  *     printed as a fake county name. "_"/"-"/space are all accepted as the
  *     separator before the extent word.
  */
-const SAMPLES_DIR = path.join(process.cwd(), "public", "examples", "Recent Purchases");
+const SAMPLES_DIR = path.join(process.cwd(), "public", "examples", "gallery");
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg"]);
 // The homepage's scroller shows the whole pool now — this is just a cap so a folder
 // with hundreds of files doesn't ship a huge response, not a meaningful limit today.
@@ -58,7 +58,7 @@ export async function GET() {
   }
 
   const samples = images.slice(0, RESULT_LIMIT).map((filename) => ({
-    img: `/examples/Recent Purchases/${filename}`,
+    img: `/examples/gallery/${filename}`,
     ...parseFilename(filename),
   }));
 
