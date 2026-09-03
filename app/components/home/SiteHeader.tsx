@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CENSUS_COLLECTIONS } from "@/lib/censusEditions";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currency";
 import { useCurrency } from "../CurrencyProvider";
 import AnnouncementBar from "./AnnouncementBar";
@@ -32,90 +31,6 @@ type SiteHeaderProps = {
    */
   back?: { href: string; label: string; onClick?: () => void };
 };
-
-/**
- * Every collection this site covers, as the Examples menu shows them — Irish Census
- * with its loaded/unloaded years, Scotland and England with nothing loaded yet. Reads
- * straight from CENSUS_COLLECTIONS (the same list the homepage's year picker will
- * eventually iterate) rather than a second hardcoded copy, so flipping an edition's
- * `available` flag updates the header for free. `columns` is the only thing that
- * differs between the desktop dropdown (wide enough for three side by side) and the
- * mobile sheet (stacked, one per row).
- */
-function ExamplesCollections({
-  onNavigate,
-  columns,
-}: {
-  onNavigate: () => void;
-  columns: "grid-cols-1" | "grid-cols-3";
-}) {
-  return (
-    <div>
-      <Link
-        href="/examples"
-        onClick={onNavigate}
-        className="text-sm font-medium underline-offset-4 transition-colors hover:underline"
-        style={{ color: GOLD }}
-      >
-        View all examples
-      </Link>
-
-      <div className={`mt-4 grid gap-5 border-t pt-4 ${columns}`} style={{ borderColor: RULE }}>
-      {CENSUS_COLLECTIONS.map((collection) => {
-        const hasAvailable = collection.editions.some((edition) => edition.available);
-        return (
-          <div key={collection.label}>
-            <p
-              className="text-[11px] font-semibold uppercase tracking-[0.12em]"
-              style={{ color: INK }}
-            >
-              {collection.label}
-            </p>
-            {hasAvailable ? (
-              <ul className="mt-2 space-y-1.5">
-                {collection.editions.map((edition) =>
-                  edition.available && edition.href ? (
-                    <li key={edition.year}>
-                      <Link
-                        // Every loaded edition of a collection shares one workspace route
-                        // today (see /irish-census's year toggle) rather than a route per
-                        // year, so the year itself only survives as a `?year=` query param
-                        // — dropping it here would always land on the route's own default
-                        // (1901) no matter which year was actually clicked.
-                        href={edition.year === "1901" ? edition.href! : `${edition.href}?year=${edition.year}`}
-                        onClick={onNavigate}
-                        className="text-sm transition-colors hover:text-[#1e2b18]"
-                        style={{ color: MUTED }}
-                      >
-                        {edition.year}
-                      </Link>
-                    </li>
-                  ) : (
-                    <li
-                      key={edition.year}
-                      className="flex items-center gap-1.5 text-sm"
-                      style={{ color: MUTED, opacity: 0.55 }}
-                    >
-                      {edition.year}
-                      <span className="text-[9px] font-semibold uppercase tracking-wide">
-                        Soon
-                      </span>
-                    </li>
-                  )
-                )}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm" style={{ color: MUTED, opacity: 0.55 }}>
-                Coming soon
-              </p>
-            )}
-          </div>
-        );
-      })}
-      </div>
-    </div>
-  );
-}
 
 const CURRENCY_LABELS: Record<CurrencyCode, { symbol: string; name: string }> = {
   GBP: { symbol: "£", name: "British pound" },
@@ -337,124 +252,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
       .catch(() => setCustomer({ signedIn: false }));
   }
 
-  // ── Examples menu (desktop nav dropdown; mobile reaches Examples through the side
-  // menu below instead) ──
-  // Opens on hover; the close is delayed a beat so crossing the gap from trigger to
-  // panel doesn't drop it, the classic hover-menu flicker.
-  const [examplesOpen, setExamplesOpen] = useState(false);
-  const examplesDesktopRef = useRef<HTMLDivElement>(null);
-  // The panel itself lives outside the ref above once portalled (see below) — this is
-  // what lets the outside-click and blur handlers still recognise it as "inside the menu".
-  const examplesPanelRef = useRef<HTMLDivElement>(null);
-  const examplesCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function openExamples() {
-    if (examplesCloseTimer.current) {
-      clearTimeout(examplesCloseTimer.current);
-      examplesCloseTimer.current = null;
-    }
-    setAccountOpen(false);
-    setExamplesOpen(true);
-  }
-
-  function closeExamplesNow() {
-    if (examplesCloseTimer.current) {
-      clearTimeout(examplesCloseTimer.current);
-      examplesCloseTimer.current = null;
-    }
-    setExamplesOpen(false);
-  }
-
-  function scheduleCloseExamples() {
-    examplesCloseTimer.current = setTimeout(() => setExamplesOpen(false), 150);
-  }
-
-  // The trigger and the panel are separate DOM subtrees once the panel is portalled (see
-  // examplesPanelRef below), so "still within the Examples control" has to check both
-  // rather than relying on ordinary containment/bubbling within one wrapper.
-  function isInExamplesGroup(node: Node | null): boolean {
-    return (
-      !!examplesDesktopRef.current?.contains(node) || !!examplesPanelRef.current?.contains(node)
-    );
-  }
-
-  // Closes on Tab-ing (or clicking) past the trigger+panel group — relatedTarget is
-  // the element about to receive focus, so this only fires when focus is genuinely
-  // leaving rather than moving between the trigger and a link inside the panel.
-  // Attached to both the trigger and the panel (they're separate subtrees), so tabbing
-  // off either end of the group closes it, and tabbing between them does not.
-  function handleExamplesBlur(event: React.FocusEvent<HTMLDivElement>) {
-    if (!isInExamplesGroup(event.relatedTarget as Node | null)) {
-      setExamplesOpen(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!examplesOpen) return;
-
-    function onPointerDown(event: MouseEvent) {
-      if (!isInExamplesGroup(event.target as Node)) {
-        setExamplesOpen(false);
-      }
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setExamplesOpen(false);
-    }
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [examplesOpen]);
-
-  useEffect(() => {
-    return () => {
-      if (examplesCloseTimer.current) clearTimeout(examplesCloseTimer.current);
-    };
-  }, []);
-
-  // The panel is portalled to <body> (see the surname dropdown on the census search page
-  // for the same pattern) rather than left as a plain absolutely-positioned child of the
-  // header. A page with a live MapLibre canvas below the header — the designer's Step 1
-  // is the case that surfaced it — can otherwise paint that canvas above the panel
-  // regardless of the header's z-50: WebGL canvases get their own GPU compositor layer,
-  // and which layer wins isn't reliably governed by CSS z-index the way two ordinary DOM
-  // elements are. Moving the panel out to `document.body` sidesteps the ambiguity
-  // entirely instead of trying to out-number a stacking rule that isn't the one in play.
-  const [examplesPortalPos, setExamplesPortalPos] = useState<{
-    top: number;
-    centerX: number;
-  } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!examplesOpen) {
-      setExamplesPortalPos(null);
-      return;
-    }
-
-    function update() {
-      const el = examplesDesktopRef.current;
-      if (!el) return setExamplesPortalPos(null);
-      const r = el.getBoundingClientRect();
-      setExamplesPortalPos({
-        top: r.bottom + window.scrollY + 12,
-        centerX: r.left + r.width / 2 + window.scrollX,
-      });
-    }
-
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-    };
-  }, [examplesOpen]);
-
-  // ── Mobile side menu ── the hamburger's destination: Examples (with its full
-  // collection list, same content the desktop dropdown shows) plus the Discover/
+  // ── Mobile side menu ── the hamburger's destination: Examples plus the Discover/
   // Background/Contact links that otherwise have no way to be reached below `sm`.
   // Kept mounted through its own close animation (menuClosing) rather than
   // unmounting immediately — see ImageLightbox.tsx for the same pattern.
@@ -579,82 +377,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
         </div>
 
         <nav className="hidden items-center gap-6 sm:flex">
-          <div
-            ref={examplesDesktopRef}
-            className="relative -my-2 flex items-center gap-1 py-2"
-            onMouseEnter={openExamples}
-            onMouseLeave={scheduleCloseExamples}
-            onFocus={openExamples}
-            onBlur={handleExamplesBlur}
-          >
-            {/* The label itself is a real link to the gallery — for "no specific year,
-                just show me examples" — separate from the chevron, which only opens the
-                dropdown to pick a collection/year. Clicking "Examples" used to do nothing
-                but toggle this menu; now it actually goes somewhere. */}
-            <Link
-              href="/examples"
-              className="text-sm transition-colors hover:text-[#1e2b18]"
-              style={{ color: MUTED }}
-            >
-              Examples
-            </Link>
-            <button
-              type="button"
-              onClick={() => (examplesOpen ? closeExamplesNow() : openExamples())}
-              aria-expanded={examplesOpen}
-              aria-haspopup="true"
-              aria-label="Show example collections"
-              className="flex items-center p-1 transition-colors hover:text-[#1e2b18]"
-              style={{ color: MUTED }}
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                className={`transition-transform ${examplesOpen ? "rotate-180" : ""}`}
-              >
-                <path d="M3 4.5L6 7.5L9 4.5" />
-              </svg>
-            </button>
-
-            {examplesOpen &&
-              examplesPortalPos &&
-              createPortal(
-                <div
-                  ref={examplesPanelRef}
-                  role="menu"
-                  aria-label="Examples"
-                  // Hover handlers duplicated from the trigger: the panel is portalled out
-                  // of the trigger's DOM subtree, so without these, moving the mouse from
-                  // the trigger onto the panel now reads as leaving it — the browser no
-                  // longer sees the panel as a descendant — which armed the close timer
-                  // before a customer could reach a link.
-                  onMouseEnter={openExamples}
-                  onMouseLeave={scheduleCloseExamples}
-                  onBlur={handleExamplesBlur}
-                  className="w-[420px] rounded-xl p-5 shadow-lg"
-                  style={{
-                    position: "absolute",
-                    top: examplesPortalPos.top,
-                    left: examplesPortalPos.centerX,
-                    transform: "translateX(-50%)",
-                    zIndex: 9999,
-                    background: RAISED,
-                    border: `1px solid ${RULE}`,
-                  }}
-                >
-                  <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-3" />
-                </div>,
-                document.body
-              )}
-          </div>
-
+          <HeaderLink href="/examples">Examples</HeaderLink>
           <HeaderLink href="/discover">Discover</HeaderLink>
           <HeaderLink href="/background">Background</HeaderLink>
           <HeaderLink href="/contact">Contact</HeaderLink>
@@ -856,12 +579,15 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
               </div>
 
               <div className="px-5 py-5">
-                <ExamplesCollections onNavigate={requestCloseMenu} columns="grid-cols-1" />
-
-                <div
-                  className="mt-6 flex flex-col gap-4 border-t pt-5"
-                  style={{ borderColor: RULE }}
-                >
+                <div className="flex flex-col gap-4">
+                  <Link
+                    href="/examples"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Examples
+                  </Link>
                   <Link
                     href="/discover"
                     onClick={requestCloseMenu}
