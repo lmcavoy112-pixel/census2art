@@ -32,6 +32,9 @@ const SCALES: { label: string; src: string; description: string }[] = [
  * Gallery section uses — but sized much larger, since the point of this section is
  * comparing the four against each other, and each one's baked-in detail (a full
  * household table vs. just a count) has to actually be legible to tell them apart.
+ * `pagingOnMobile` makes phone swipe one card at a time (dots below) starting on
+ * House, rather than Gallery's centered/free-scroll treatment — see
+ * HorizontalScroller.tsx.
  */
 export default function WhatWillYouMap() {
   return (
@@ -49,7 +52,7 @@ export default function WhatWillYouMap() {
         </h2>
       </div>
 
-      <HorizontalScroller itemCount={SCALES.length}>
+      <HorizontalScroller itemCount={SCALES.length} pagingOnMobile>
         {SCALES.map((scale) => (
           <li
             key={scale.src}

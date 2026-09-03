@@ -32,7 +32,7 @@ export default function Home() {
         flexDirection: "column",
       }}
     >
-      <SiteHeader showExamplesOnMobile />
+      <SiteHeader />
 
       <main style={{ flex: 1 }}>
         {/* ── BLOCK 1 · WHAT THIS IS ───────────────────────────────────────────

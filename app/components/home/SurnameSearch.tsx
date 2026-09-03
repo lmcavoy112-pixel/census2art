@@ -33,13 +33,18 @@ export default function SurnameSearch({
   disabled = false,
   disabledNote,
   censusYear = "1901",
+  onSelect,
 }: {
-  targetHref: string;
+  targetHref?: string;
   disabled?: boolean;
   disabledNote?: string;
   /** Which census edition the autocomplete list and the target page's search should
    *  scope to — CensusBlock passes its selected year's tab through here. */
   censusYear?: "1901" | "1911";
+  /** When set, a chosen surname is handed back here instead of navigating to
+   *  `targetHref` — used by the Examples page's live preview, which wants to render
+   *  the surname in place rather than send the visitor off to the designer. */
+  onSelect?: (surname: { display: string; search: string }) => void;
 }) {
   const router = useRouter();
 
@@ -83,20 +88,27 @@ export default function SurnameSearch({
     };
   }, [surname, disabled, censusYear]);
 
-  function go(value: string) {
+  function go(value: string, surnameSearch?: string) {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
     setOpen(false);
+
+    if (onSelect) {
+      onSelect({ display: trimmed, search: surnameSearch || normaliseSurnameSearch(trimmed) });
+      return;
+    }
+
     setSubmitting(true);
     // buildUrl, not string interpolation — targetHref is a bare path today, but
     // appending "?surname=..." directly would double up the "?" the moment a caller
     // passes one that already carries its own query string.
-    router.push(buildUrl(targetHref, { surname: trimmed, year: censusYear }));
+    router.push(buildUrl(targetHref || "#", { surname: trimmed, year: censusYear }));
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    go(highlighted >= 0 ? options[highlighted].surname_display : surname);
+    const chosen = highlighted >= 0 ? options[highlighted] : null;
+    go(chosen?.surname_display ?? surname, chosen?.surname_search);
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -180,7 +192,7 @@ export default function SurnameSearch({
                 type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  go(opt.surname_display);
+                  go(opt.surname_display, opt.surname_search);
                 }}
                 onMouseEnter={() => setHighlighted(index)}
                 className="flex w-full items-center justify-between px-5 py-3 text-left text-sm"

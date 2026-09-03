@@ -250,6 +250,36 @@ export async function findVariantPriceBySku(
 }
 
 /**
+ * Every SKU's price in one market's presentment currency — the same `@inContext` query
+ * scripts/repull-prodigi-pricing.ts uses, exposed here so lib/design/price-sync.ts (the
+ * webhook-driven counterpart to that manual script) doesn't duplicate the GraphQL query
+ * string a third time. `@inContext` is what makes Shopify return that market's real
+ * presentment price rather than the shop's base price converted on the fly.
+ */
+export async function fetchVariantPricesByMarket(countryCode: string): Promise<Map<string, number>> {
+  const data = await shopifyFetch<{
+    products: { nodes: { variants: { nodes: { sku: string | null; price: { amount: string } }[] } }[] };
+  }>(
+    `query FindVariants($country: CountryCode!) @inContext(country: $country) {
+       products(first: 50) {
+         nodes { variants(first: 100) { nodes { sku price { amount } } } }
+       }
+     }`,
+    { country: countryCode }
+  );
+
+  const prices = new Map<string, number>();
+  for (const product of data.products.nodes) {
+    for (const variant of product.variants.nodes) {
+      if (!variant.sku) continue;
+      const amount = Number(variant.price.amount);
+      if (Number.isFinite(amount) && amount > 0) prices.set(variant.sku, amount);
+    }
+  }
+  return prices;
+}
+
+/**
  * What currency a cart prices in is decided by `buyerIdentity.countryCode`, not by the
  * `@inContext` directive — Shopify's docs are explicit that @inContext's buyer/country
  * arguments are ignored on Cart queries and mutations. Verified live: the same variant

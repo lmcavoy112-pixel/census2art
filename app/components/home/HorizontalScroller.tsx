@@ -23,12 +23,43 @@ export const SCROLLER_EDGE_PADDING = "max(1.5rem, calc((100vw - 72rem) / 2 + 1.5
 export default function HorizontalScroller({
   children,
   itemCount,
+  pagingOnMobile = false,
 }: {
   children: ReactNode;
   itemCount: number;
+  /**
+   * On phone, swap the centered/proximity-snap/pill treatment for a strict pager:
+   * starts on the first card, `scroll-snap-type: mandatory` so a swipe always lands
+   * on exactly one card rather than sometimes resting between two, and dot indicators
+   * below instead of the pill. WhatWillYouMap opts in — it's showing four distinct
+   * options, not a browsable filmstrip, so "which one am I on" needs to read as a
+   * clean page rather than something you can be halfway through. Desktop is
+   * unaffected either way. Default false keeps Gallery's existing mobile behaviour.
+   */
+  pagingOnMobile?: boolean;
 }) {
   const scrollerRef = useRef<HTMLUListElement>(null);
   const [progress, setProgress] = useState({ thumbPercent: 100, offsetPercent: 0 });
+  const [activeIndex, setActiveIndex] = useState(0);
+  // Computed eagerly (not defaulted to false and fixed up in an effect) so it's
+  // already correct on the very first render — otherwise the centering effect below
+  // runs once believing it's on desktop, centers the row, and only learns it's
+  // actually a mobile pager afterwards, by which point the row is already centered
+  // rather than starting on the first card.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 639px)");
+    function onChange(event: MediaQueryListEvent) {
+      setIsMobile(event.matches);
+    }
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  const paging = pagingOnMobile && isMobile;
 
   function scrollByCard(direction: 1 | -1) {
     const el = scrollerRef.current;
@@ -68,11 +99,25 @@ export default function HorizontalScroller({
   // jump to center happens before the browser paints — otherwise the left-aligned
   // start would flash for a frame first. Same late-mount reasoning as the wheel
   // effect above — itemCount as a dep, not [], and centered again if the pool changes.
+  //
+  // In paging mode this skips the centering (a pager starts on page one) and instead
+  // tracks which card is currently in view, for the dot indicators below.
+  //
+  // scroll-snap-type is set imperatively here rather than left in the JSX `style`
+  // prop below: `paging` depends on isMobile, which is necessarily wrong during the
+  // server-rendered pass (no window there) — and since a `style` attribute mismatch
+  // between server and client HTML doesn't get corrected by React's hydration, the
+  // server's "proximity" value stuck permanently otherwise. Direct DOM mutation
+  // (already required for scrollLeft above) doesn't have that problem.
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
 
-    el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    el.style.scrollSnapType = paging ? "x mandatory" : "x proximity";
+
+    if (!paging) {
+      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    }
 
     function update() {
       const { scrollLeft, scrollWidth, clientWidth } = el!;
@@ -80,6 +125,17 @@ export default function HorizontalScroller({
       const maxScroll = scrollWidth - clientWidth;
       const offsetPercent = maxScroll > 0 ? (scrollLeft / maxScroll) * (100 - thumbPercent) : 0;
       setProgress({ thumbPercent, offsetPercent });
+
+      if (paging) {
+        const cards = el!.querySelectorAll("li");
+        // Measured, not assumed — the actual gap between two cards, however Tailwind's
+        // gap-* resolves at this breakpoint, rather than a hardcoded px guess.
+        const step =
+          cards.length > 1
+            ? cards[1].getBoundingClientRect().left - cards[0].getBoundingClientRect().left
+            : clientWidth;
+        setActiveIndex(step > 0 ? Math.round(scrollLeft / step) : 0);
+      }
     }
 
     update();
@@ -89,7 +145,7 @@ export default function HorizontalScroller({
       el.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
-  }, [itemCount]);
+  }, [itemCount, paging]);
 
   return (
     <div className="relative mt-6">
@@ -97,6 +153,8 @@ export default function HorizontalScroller({
         ref={scrollerRef}
         className="horizontal-scroller flex scroll-smooth gap-5 overflow-x-auto pt-3 pb-5 sm:gap-7"
         style={{
+          // Real value ("mandatory" in paging mode) is set imperatively in the
+          // layout effect above — see the comment there for why.
           scrollSnapType: "x proximity",
           paddingLeft: SCROLLER_EDGE_PADDING,
           paddingRight: SCROLLER_EDGE_PADDING,
@@ -115,11 +173,31 @@ export default function HorizontalScroller({
           <ScrollArrow direction="left" onClick={() => scrollByCard(-1)} />
           <ScrollArrow direction="right" onClick={() => scrollByCard(1)} />
 
+          {pagingOnMobile ? (
+            <div className="mt-3 flex items-center justify-center gap-2 sm:hidden">
+              {Array.from({ length: itemCount }).map((_, index) => (
+                <span
+                  key={index}
+                  className="rounded-full"
+                  style={{
+                    width: index === activeIndex ? 18 : 6,
+                    height: 6,
+                    background: index === activeIndex ? GOLD : RULE,
+                    transition: "width 0.2s ease, background-color 0.2s ease",
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
+
           {/* A short, centered progress pill rather than a native scrollbar — the row
               is full-bleed now, so a real scrollbar would run the entire width of the
-              screen instead of reading as this one row's own control. */}
+              screen instead of reading as this one row's own control. Hidden on mobile
+              in paging mode, where the dots above take over. */}
           <div
-            className="mx-auto mt-3 h-1 w-24 overflow-hidden rounded-full"
+            className={`mx-auto mt-3 h-1 w-24 overflow-hidden rounded-full ${
+              pagingOnMobile ? "hidden sm:block" : ""
+            }`}
             style={{ background: RULE }}
           >
             <div

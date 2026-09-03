@@ -62,10 +62,12 @@ colour even though the physical print (colour comes from the attribute, not the
 variant) would still be correct.
 
 Shopify is the sole authority on price — set each variant's price directly in Shopify,
-nothing in Supabase feeds it. The designer's own price display is a cache: after
-setting/changing prices here, run `npx tsx scripts/repull-prodigi-pricing.ts` to pull
-them back into `catalogue_skus.sell_gbp` / `sell_usd` / `sell_eur` so the size picker
-shows the current figure without an extra request per page load.
+nothing in Supabase feeds it. The designer's own price display is a cache
+(`catalogue_skus.sell_gbp` / `sell_usd` / `sell_eur`), kept in sync automatically by the
+`products/update` webhook (see **Register the webhooks** below) — changing a price in
+Shopify resyncs the cache within moments, no manual step needed. If the webhook is ever
+unregistered or fails, `npx tsx scripts/repull-prodigi-pricing.ts` does the same resync
+by hand; run it after a price change if you're not sure the webhook fired.
 
 Because prints are made to order, on every variant:
 
@@ -105,18 +107,23 @@ When a customer pays through Shopify Checkout, the order is created in Shopify w
 containing all the print details as attributes. A webhook automatically sends each item to
 Prodigi for printing.
 
-### Register the webhook
+### Register the webhooks
 
-In your Shopify admin:
+In your Shopify admin, **Settings → Apps and sales channels → Develop apps** (the same
+app as your Storefront token) → **Configuration** tab → **Webhooks** → **Create webhook**,
+once for each of the two below. Both need the API version set to match
+`SHOPIFY_API_VERSION` (default 2026-07) and are signed with the same
+`SHOPIFY_APP_SECRET`.
 
-1. **Settings → Apps and sales channels → Develop apps** (use the same app as your Storefront token)
-2. **Configuration** tab → **Webhooks** → **Create webhook**
-3. Set:
-   - **Topic**: `Orders` → `Order creation`
-   - **Delivery URL**: `https://your-domain.com/api/shopify/webhook/orders-create`
-   - **API version**: Match your `SHOPIFY_API_VERSION` (default 2026-07)
+| Topic | Delivery URL | Scope needed | What it does |
+| --- | --- | --- | --- |
+| `Orders` → `Order creation` | `https://your-domain.com/api/shopify/webhook/orders-create` | `read_orders` | Sends each line item to Prodigi for printing |
+| `Products` → `Product update` | `https://your-domain.com/api/shopify/webhook/products-update` | `read_products` | Resyncs `catalogue_skus.sell_*` from the new price |
 
-The app's Admin API scopes must include `read_orders` to see webhook permissions.
+The `products/update` webhook fires on any product edit (price, title, images, ...) —
+it always re-fetches the live price from Shopify rather than trusting the webhook
+payload, so it's harmless to trigger on non-price edits too; see
+`app/api/shopify/webhook/products-update/route.ts`.
 
 ### What happens
 

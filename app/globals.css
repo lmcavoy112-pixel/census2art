@@ -251,3 +251,50 @@ body {
     animation: none;
   }
 }
+
+/* ── Mobile side menu (app/components/home/SiteHeader.tsx) ────────────────
+   Same backdrop-fade + kept-mounted-through-the-exit approach as the Gallery
+   lightbox above, but the panel slides in from the screen edge it's anchored to
+   rather than scaling up from the middle. */
+@keyframes drawer-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-panel-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.drawer-backdrop-in {
+  animation: drawer-backdrop-in 0.2s ease-out both;
+}
+
+.drawer-panel-in {
+  animation: drawer-panel-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.drawer-backdrop-out {
+  animation: drawer-backdrop-in 0.18s ease-in reverse both;
+}
+
+.drawer-panel-out {
+  animation: drawer-panel-in 0.18s ease-in reverse both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-backdrop-in,
+  .drawer-panel-in,
+  .drawer-backdrop-out,
+  .drawer-panel-out {
+    animation: none;
+  }
+}

@@ -31,13 +31,6 @@ type SiteHeaderProps = {
    * calls router.push — and still supports the usual open-in-new-tab/middle-click.
    */
   back?: { href: string; label: string; onClick?: () => void };
-  /**
-   * Shows the Examples menu's icon-only mobile trigger — Home and Checkout only, per
-   * the call. It's a nav entry, not page furniture, so it's opt-in rather than the
-   * default; every other page reaches it via the desktop nav only. The desktop
-   * trigger itself is unconditional, on every page, at every breakpoint from `sm` up.
-   */
-  showExamplesOnMobile?: boolean;
 };
 
 /**
@@ -279,14 +272,16 @@ function CurrencyMenu() {
  * than a dead icon: until the shop is wired up it explains where accounts have got
  * to, and that panel is the slot the storefront's customer-account widget replaces.
  *
- * Below `sm` the header collapses to a single slim line — wordmark, an optional back
- * chevron, Cart and Account (icon-only; the nav links still drop) — to save
- * horizontal space on a phone without dropping sign-in access.
+ * Below `sm` the header collapses to a single slim line — a hamburger (opens the side
+ * menu below), an optional back chevron, the centered wordmark, and Cart/Account
+ * (icon-only) — to save horizontal space on a phone without dropping nav or sign-in
+ * access. The nav links themselves (Examples, Discover, Background, Contact) move
+ * into that side menu rather than just disappearing.
  * Both breakpoints share one `height: var(--site-header-h)` (see globals.css), which
  * every page that offsets or sizes against the header reads from the same variable
  * rather than a hardcoded pixel value that only matched one of the two heights.
  */
-export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteHeaderProps) {
+export default function SiteHeader({ back }: SiteHeaderProps) {
   const pathname = usePathname();
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -342,15 +337,13 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
       .catch(() => setCustomer({ signedIn: false }));
   }
 
-  // ── Examples menu ──
-  // Two triggers (a desktop nav link, a mobile-only icon) share this one open state —
-  // only one is ever visible at a given breakpoint, so there is never a conflict over
-  // who owns it. Desktop opens on hover; the close is delayed a beat so crossing the
-  // gap from trigger to panel doesn't drop it, the classic hover-menu flicker.
+  // ── Examples menu (desktop nav dropdown; mobile reaches Examples through the side
+  // menu below instead) ──
+  // Opens on hover; the close is delayed a beat so crossing the gap from trigger to
+  // panel doesn't drop it, the classic hover-menu flicker.
   const [examplesOpen, setExamplesOpen] = useState(false);
   const examplesDesktopRef = useRef<HTMLDivElement>(null);
-  const examplesMobileRef = useRef<HTMLDivElement>(null);
-  // The panel itself lives outside both refs above once portalled (see below) — this is
+  // The panel itself lives outside the ref above once portalled (see below) — this is
   // what lets the outside-click and blur handlers still recognise it as "inside the menu".
   const examplesPanelRef = useRef<HTMLDivElement>(null);
   const examplesCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -381,9 +374,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
   // rather than relying on ordinary containment/bubbling within one wrapper.
   function isInExamplesGroup(node: Node | null): boolean {
     return (
-      !!examplesDesktopRef.current?.contains(node) ||
-      !!examplesMobileRef.current?.contains(node) ||
-      !!examplesPanelRef.current?.contains(node)
+      !!examplesDesktopRef.current?.contains(node) || !!examplesPanelRef.current?.contains(node)
     );
   }
 
@@ -434,8 +425,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
   // entirely instead of trying to out-number a stacking rule that isn't the one in play.
   const [examplesPortalPos, setExamplesPortalPos] = useState<{
     top: number;
-    centerX?: number;
-    right?: number;
+    centerX: number;
   } | null>(null);
 
   useLayoutEffect(() => {
@@ -445,25 +435,13 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
     }
 
     function update() {
-      const desktopEl = examplesDesktopRef.current;
-      if (desktopEl && desktopEl.offsetParent !== null) {
-        const r = desktopEl.getBoundingClientRect();
-        setExamplesPortalPos({
-          top: r.bottom + window.scrollY + 12,
-          centerX: r.left + r.width / 2 + window.scrollX,
-        });
-        return;
-      }
-      const mobileEl = examplesMobileRef.current;
-      if (mobileEl && mobileEl.offsetParent !== null) {
-        const r = mobileEl.getBoundingClientRect();
-        setExamplesPortalPos({
-          top: r.bottom + window.scrollY + 12,
-          right: window.innerWidth - (r.right + window.scrollX),
-        });
-        return;
-      }
-      setExamplesPortalPos(null);
+      const el = examplesDesktopRef.current;
+      if (!el) return setExamplesPortalPos(null);
+      const r = el.getBoundingClientRect();
+      setExamplesPortalPos({
+        top: r.bottom + window.scrollY + 12,
+        centerX: r.left + r.width / 2 + window.scrollX,
+      });
     }
 
     update();
@@ -475,6 +453,46 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
     };
   }, [examplesOpen]);
 
+  // ── Mobile side menu ── the hamburger's destination: Examples (with its full
+  // collection list, same content the desktop dropdown shows) plus the Discover/
+  // Background/Contact links that otherwise have no way to be reached below `sm`.
+  // Kept mounted through its own close animation (menuClosing) rather than
+  // unmounting immediately — see ImageLightbox.tsx for the same pattern.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuClosing, setMenuClosing] = useState(false);
+
+  function openMenu() {
+    setMenuClosing(false);
+    setMenuOpen(true);
+  }
+
+  function requestCloseMenu() {
+    if (menuClosing) return;
+    setMenuClosing(true);
+    setTimeout(() => {
+      setMenuOpen(false);
+      setMenuClosing(false);
+    }, 180);
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") requestCloseMenu();
+    }
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen]);
+
   return (
     <>
       <AnnouncementBar />
@@ -485,8 +503,35 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
         style={{ background: GROUND, height: "var(--site-header-h)" }}
         className="sticky top-0 z-50"
       >
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
+      <div className="relative mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 shrink items-center gap-1">
+          {/* Opens the side menu below — the nav links (Examples, Discover,
+              Background, Contact) that the desktop-only <nav> further down drops
+              below `sm` live there instead of just disappearing. */}
+          <button
+            type="button"
+            onClick={openMenu}
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            aria-haspopup="true"
+            className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 sm:hidden"
+            style={{ color: MUTED, outlineColor: GOLD }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
           {back && (
             <Link
               href={back.href}
@@ -511,9 +556,12 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             </Link>
           )}
 
+          {/* Centered on mobile (absolute, so the hamburger/back on the left and
+              Cart/Account on the right — different widths on every page — can't push it
+              off-center) but back to its normal spot in the flex row from `sm` up. */}
           <Link
             href="/"
-            className="shrink-0 truncate text-[1.05rem] sm:text-[1.15rem]"
+            className="absolute left-1/2 top-1/2 max-w-[50vw] -translate-x-1/2 -translate-y-1/2 truncate text-[1.05rem] sm:static sm:max-w-none sm:shrink-0 sm:translate-x-0 sm:translate-y-0 sm:text-[1.15rem]"
             style={{
               // Bold system sans, not Cormorant — this reproduces what the designer
               // page showed by accident (its wrapper never applies siteFontVars, so
@@ -576,7 +624,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             </button>
 
             {examplesOpen &&
-              examplesPortalPos?.centerX !== undefined &&
+              examplesPortalPos &&
               createPortal(
                 <div
                   ref={examplesPanelRef}
@@ -622,62 +670,6 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
             >
               {back.label}
             </Link>
-          )}
-
-          {/* Icon-only counterpart to the desktop nav's "Examples" — there's no hover
-              on a phone to open a dropdown with, so this is tap-to-toggle instead,
-              matching the desktop trigger's open state. Home and Checkout only, per
-              showExamplesOnMobile — every other page reaches Examples through the
-              desktop nav, same as it always could. */}
-          {showExamplesOnMobile && (
-            <div ref={examplesMobileRef} className="relative sm:hidden">
-              <button
-                type="button"
-                onClick={() => setExamplesOpen((open) => !open)}
-                aria-expanded={examplesOpen}
-                aria-haspopup="true"
-                aria-label="Examples"
-                className="flex items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ color: MUTED, outlineColor: GOLD }}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" />
-                </svg>
-              </button>
-
-              {examplesOpen &&
-                examplesPortalPos?.right !== undefined &&
-                createPortal(
-                  <div
-                    ref={examplesPanelRef}
-                    role="menu"
-                    aria-label="Examples"
-                    className="w-[min(88vw,300px)] rounded-xl p-4 shadow-lg"
-                    style={{
-                      position: "absolute",
-                      top: examplesPortalPos.top,
-                      right: examplesPortalPos.right,
-                      zIndex: 9999,
-                      background: RAISED,
-                      border: `1px solid ${RULE}`,
-                    }}
-                  >
-                    <ExamplesCollections onNavigate={closeExamplesNow} columns="grid-cols-1" />
-                  </div>,
-                  document.body
-                )}
-            </div>
           )}
 
           <Link
@@ -808,6 +800,98 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
         </div>
       </div>
       </header>
+
+      {/* Mobile side menu — portalled for the same reason the Examples dropdown is
+          (see the comment above examplesPortalPos): a page with a live MapLibre canvas
+          can otherwise paint over a plain in-header panel regardless of z-index. */}
+      {menuOpen &&
+        createPortal(
+          <div
+            className={`fixed inset-0 z-[9999] sm:hidden ${
+              menuClosing ? "drawer-backdrop-out" : "drawer-backdrop-in"
+            }`}
+            style={{ background: "rgba(20,28,16,0.5)" }}
+            onClick={requestCloseMenu}
+          >
+            <div
+              role="dialog"
+              aria-label="Menu"
+              className={`absolute left-0 top-0 h-full w-[min(85vw,320px)] overflow-y-auto ${
+                menuClosing ? "drawer-panel-out" : "drawer-panel-in"
+              }`}
+              style={{ background: RAISED }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div
+                className="flex items-center justify-between px-5 py-4"
+                style={{ borderBottom: `1px solid ${RULE}` }}
+              >
+                <span
+                  style={{
+                    fontFamily: "Arial, Helvetica, sans-serif",
+                    fontWeight: 700,
+                    letterSpacing: "0.16em",
+                    fontSize: "0.8rem",
+                    color: INK,
+                  }}
+                >
+                  MENU
+                </span>
+                <button
+                  type="button"
+                  onClick={requestCloseMenu}
+                  aria-label="Close menu"
+                  className="flex items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ color: MUTED, outlineColor: GOLD }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6 6l12 12M18 6L6 18"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="px-5 py-5">
+                <ExamplesCollections onNavigate={requestCloseMenu} columns="grid-cols-1" />
+
+                <div
+                  className="mt-6 flex flex-col gap-4 border-t pt-5"
+                  style={{ borderColor: RULE }}
+                >
+                  <Link
+                    href="/discover"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Discover
+                  </Link>
+                  <Link
+                    href="/background"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Background
+                  </Link>
+                  <Link
+                    href="/contact"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Contact
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }

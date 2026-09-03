@@ -64,6 +64,13 @@ Focus the assessment on the areas below. They are ordered by expected impact.
   lookalikes, case variation, redirects from an allowed origin, and whether a same-origin
   open redirect or an uploaded HTML file could be used to reach an off-origin asset.
 - Replay the same delivery id twice and confirm exactly one Prodigi order.
+- `app/api/shopify/webhook/products-update/route.ts` (new) — same HMAC/topic/shop-domain
+  checks and `processed_webhooks` dedupe as orders-create, but lower stakes: on success it
+  only re-fetches prices from Shopify's own API and writes them to
+  `catalogue_skus.sell_*` — it never trusts a price from the webhook payload itself, so a
+  forged delivery (if the HMAC check were ever bypassed) can trigger at most an extra
+  legitimate resync, not an attacker-chosen price. Confirm that holds: that no field from
+  the request body reaches the Supabase write.
 
 ## 3. Genealogy PII endpoints
 

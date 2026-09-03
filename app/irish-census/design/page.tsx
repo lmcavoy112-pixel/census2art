@@ -645,6 +645,11 @@ function ModernDesignContent() {
     const savedFormat = getParam(params, "format");
     if (savedFormat === "ISO" || savedFormat === "Square") setFormat(savedFormat);
 
+    // Only "historic"/"modern" is meaningful — an incoming link with a garbled or
+    // absent value leaves the "modern" default in place rather than resetting it.
+    const savedTemplate = getParam(params, "template");
+    if (savedTemplate === "historic" || savedTemplate === "modern") setTemplate(savedTemplate);
+
     if (isAccentId(saved?.accent)) setAccentId(saved.accent);
 
     // A marker placed back on the census search carries over — but only onto the
