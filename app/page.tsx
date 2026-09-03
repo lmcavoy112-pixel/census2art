@@ -5,7 +5,7 @@ import SiteFooter from "./components/home/SiteFooter";
 import CensusBlock from "./components/home/CensusBlock";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import HowItWorks from "./components/home/HowItWorks";
-import RecentPurchases from "./components/home/RecentPurchases";
+import Gallery from "./components/home/Gallery";
 import Testimonials from "./components/home/Testimonials";
 import NeedHelp from "./components/home/NeedHelp";
 import HeroLedgerMap from "./components/home/HeroLedgerMap";
@@ -98,7 +98,7 @@ export default function Home() {
 
         <WhatWillYouMap />
         <HowItWorks />
-        <RecentPurchases />
+        <Gallery />
         <Testimonials />
         <NeedHelp />
       </main>

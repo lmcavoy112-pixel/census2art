@@ -104,9 +104,9 @@ export async function POST(request: NextRequest) {
     } = supabaseAdmin.storage.from("print-exports").getPublicUrl(imagePath);
 
     // Optional: a small permanent thumbnail (see canvasToPreviewBlob, lib/printExport.ts).
-    // Unlike the full-res asset above, nothing ever deletes this — it's what backs the
-    // homepage's recent-orders gallery once this order is actually paid. A failure here
-    // shouldn't block the order itself, so it's best-effort.
+    // Unlike the full-res asset above, nothing ever deletes this — it's what the paid
+    // order's Shopify confirmation email shows. A failure here shouldn't block the
+    // order itself, so it's best-effort.
     let previewPath: string | null = null;
     let previewUrl: string | null = null;
     if (preview instanceof Blob) {

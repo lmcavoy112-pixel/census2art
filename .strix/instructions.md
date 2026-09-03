@@ -120,7 +120,7 @@ files, and resource exhaustion from unbounded geometry queries.
 
 Added in the commit that introduced Shopify customer sign-in: `app/api/auth/login`,
 `app/api/auth/callback`, `app/api/auth/logout`, `app/api/account/me`,
-`app/admin/orders/page.tsx`, `app/api/admin/orders/stats`, `app/api/recent-orders`.
+`app/admin/orders/page.tsx`, `app/api/admin/orders/stats`.
 
 - **OAuth flow** (`lib/shopify-customer-account.ts`): authorization-code + PKCE against
   Shopify's Customer Account API, `state` cookie checked against the callback's `state`
@@ -149,9 +149,3 @@ Added in the commit that introduced Shopify customer sign-in: `app/api/auth/logi
   in section 1, and that the token (kept in the browser's `localStorage` by
   `app/admin/orders/page.tsx`, key `census2art_admin_token`) isn't reachable via XSS anywhere
   else on the site.
-- **`/api/recent-orders`** is intentionally public (feeds the homepage gallery) and scoped to
-  `shopify_order_id is not null` — real paid orders only. It returns `surname`, `county`,
-  `district`, `product`, `template`, `preview_url`, `created_at`, deliberately excluding
-  `recipient` and the raw design blob. Confirm no other column (e.g. full address fields, if
-  the `orders` table schema changes later) can leak through this route, and that
-  `preview_url` points only at the `order-previews` bucket, never `print-exports`.

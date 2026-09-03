@@ -17,8 +17,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
  * reference this exact image right up until the cookie expires, so deleting any sooner
  * risks breaking a legitimate late checkout.
  *
- * The `order-previews` bucket is untouched — that thumbnail is intentionally permanent
- * (backs the homepage recent-orders gallery) regardless of whether the order was ever paid.
+ * The `order-previews` bucket is untouched — that thumbnail is what a paid order's
+ * Shopify confirmation email shows (see PrintOrderResult.previewUrl, lib/design/order.ts),
+ * so it's kept intentionally permanent rather than tied to this cutoff.
  */
 
 const ABANDONED_AFTER_MS = 35 * 24 * 60 * 60 * 1000;

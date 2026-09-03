@@ -39,7 +39,16 @@ export async function GET(request: Request) {
   const firstError = results.find((r) => r.error)?.error;
   if (firstError) {
     console.error(firstError);
-    return NextResponse.json([]);
+    // Same reasoning as /api/townlands: a real RPC failure (statement timeout on a
+    // large/urban district is the common case — see get_person_matches's forced
+    // nested-loop plan comment in the migration) must surface as an error, not as
+    // "no households in this district", which the DED step's own nonzero count
+    // already contradicts. Non-2xx makes fetchJson throw and the caller show a real
+    // error instead of the misleading "No matching households found" message.
+    return NextResponse.json(
+      { error: "Could not load households.", people: [] },
+      { status: 502 }
+    );
   }
 
   const merged = results.flatMap((r) => (Array.isArray(r.data) ? r.data : []));

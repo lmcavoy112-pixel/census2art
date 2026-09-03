@@ -4,13 +4,13 @@ const INK = "#1e2b18";
 const RAISED = "#fdfaf5";
 
 /**
- * A print in a frame: dark moulding, cream mat, artwork. The artwork files carry
- * their own drawn border, so the mat is what stops that border reading as the frame.
+ * A print in a frame: dark moulding, artwork, and an optional cream mat between them
+ * — pass `matPadding="0"` when the artwork has no drawn border of its own to keep
+ * separated from the frame edge (Gallery, Examples, and WhatWillYouMap all do today).
  *
  * The frame box holds a fixed aspect ratio and the artwork is contained within it
- * (never cropped or stretched) — the static placeholders are all one shape, but real
- * orders (GET /api/recent-orders) can be any catalogue ratio from a square print to
- * a tall A-series sheet, and this frame has to hold either without distortion.
+ * (never cropped or stretched, via object-contain) rather than assuming every image
+ * passed in is already exactly that ratio.
  */
 export default function FramedPrint({
   src,
@@ -30,12 +30,11 @@ export default function FramedPrint({
       style={{
         background: INK,
         padding: frameWidth,
-        boxShadow:
-          "0 30px 60px -24px rgba(30,43,24,0.4), 0 3px 10px rgba(30,43,24,0.1)",
+        boxShadow: "0 6px 14px -10px rgba(30,43,24,0.3)",
       }}
     >
       <div style={{ background: RAISED, padding: matPadding }}>
-        <div className="relative aspect-[4/5]">
+        <div className="relative aspect-[210/297]">
           <Image
             src={src}
             alt={alt}

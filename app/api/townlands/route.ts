@@ -26,7 +26,13 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error(error);
-    return NextResponse.json([]);
+    // A real query failure (e.g. a statement timeout on a large district) must not
+    // look like "this district genuinely has zero townlands" — the DED step already
+    // showed a nonzero count from a separate, cheaper query, so silently returning []
+    // here made the townland/house step look broken with no explanation. A non-2xx
+    // status makes fetchJson throw, which the caller already turns into a proper
+    // "Could not load households for this district" error instead of a false empty state.
+    return NextResponse.json({ error: "Could not load townlands.", townlands: [] }, { status: 502 });
   }
 
   // Merged across every included surname — one row per townland, its person_count

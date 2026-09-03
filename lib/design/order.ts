@@ -17,8 +17,8 @@ export type PrintOrderRequest = {
   design: Record<string, unknown>;
   /**
    * Small JPEG thumbnail (see canvasToPreviewBlob in lib/printExport.ts), stored in a
-   * bucket that's never cleaned up so it can back the homepage's recent-orders gallery
-   * after the full-res print asset is gone. Optional so older callers keep working.
+   * bucket that's never cleaned up — see PrintOrderResult.previewUrl below for why it
+   * has to outlive the full-res print asset. Optional so older callers keep working.
    */
   previewBlob?: Blob;
   previewFileName?: string;

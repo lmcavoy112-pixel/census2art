@@ -11,12 +11,8 @@
  */
 
 export type RecentPurchase = {
-  /**
-   * Either a placeholder under `public/examples/<Collection>/<year>/`, or a real
-   * order's permanent preview thumbnail (see canvasToPreviewBlob, lib/printExport.ts,
-   * and GET /api/recent-orders) — CensusBlock fills these in with live orders first
-   * and pads out with placeholders from here when there aren't enough yet.
-   */
+  /** A static sample image under `public/examples/<Collection>/<year>/` — this list
+   *  is hand-maintained per edition and only feeds the /examples gallery page. */
   img: string;
   surname: string;
   /** County shown alongside the surname for a real order; placeholders leave it unset. */

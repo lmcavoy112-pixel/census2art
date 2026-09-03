@@ -607,6 +607,7 @@ export default function SiteHeader({ back, showExamplesOnMobile = false }: SiteH
               )}
           </div>
 
+          <HeaderLink href="/discover">Discover</HeaderLink>
           <HeaderLink href="/background">Background</HeaderLink>
           <HeaderLink href="/contact">Contact</HeaderLink>
         </nav>

@@ -189,3 +189,65 @@ body {
     animation: none;
   }
 }
+
+/* ── Horizontal filmstrip scrollers (Gallery, WhatWillYouMap) ──────────────
+   These rows are full-bleed, so a native scrollbar would run the full width of the
+   screen rather than reading as the row's own control — hidden here in favour of the
+   short centered progress pill HorizontalScroller.tsx renders instead. */
+.horizontal-scroller {
+  scrollbar-width: none;
+}
+
+.horizontal-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Gallery lightbox (app/components/home/ImageLightbox.tsx) ─────────────
+   Backdrop fades, panel fades + scales up slightly — a closing card growing into
+   its full-size preview rather than just appearing. The *-out pair plays the same
+   motion in reverse; ImageLightbox keeps the component mounted for CLOSE_MS so the
+   exit animation has time to finish before it actually unmounts. */
+@keyframes lightbox-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lightbox-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lightbox-backdrop-in {
+  animation: lightbox-backdrop-in 0.2s ease-out both;
+}
+
+.lightbox-panel-in {
+  animation: lightbox-panel-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.lightbox-backdrop-out {
+  animation: lightbox-backdrop-in 0.18s ease-in reverse both;
+}
+
+.lightbox-panel-out {
+  animation: lightbox-panel-in 0.18s ease-in reverse both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-backdrop-in,
+  .lightbox-panel-in,
+  .lightbox-backdrop-out,
+  .lightbox-panel-out {
+    animation: none;
+  }
+}

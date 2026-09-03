@@ -1,14 +1,8 @@
-import Image from "next/image";
+import FramedPrint from "./FramedPrint";
+import HorizontalScroller from "./HorizontalScroller";
 
 const INK = "#1e2b18";
 const MUTED = "#6b5f4a";
-
-/** Just the frame — no mat between it and the image (see CensusBlock.tsx for the
- *  same treatment on the homepage's other sample print). */
-const FRAME_WIDTH = "10px";
-/** Soft, close-in shadow — the reference's own lift is subtle, not the heavier
- *  floating-card shadow used elsewhere on this page. */
-const CARD_SHADOW = "0 10px 24px -8px rgba(30,43,24,0.28)";
 
 const SCALES: { label: string; src: string; description: string }[] = [
   {
@@ -34,10 +28,10 @@ const SCALES: { label: string; src: string; description: string }[] = [
 ];
 
 /**
- * The four scales a print can be built at, in a 2×2 grid — House and Townland on top,
- * District and County below. Each card is sized to match CensusBlock's own sample
- * print (`aspect-[210/297] max-w-sm`) rather than the row of four this used to be, so
- * the two homepage examples read as the same kind of object.
+ * The four scales a print can be built at, as the same horizontal filmstrip the
+ * Gallery section uses — but sized much larger, since the point of this section is
+ * comparing the four against each other, and each one's baked-in detail (a full
+ * household table vs. just a count) has to actually be legible to tell them apart.
  */
 export default function WhatWillYouMap() {
   return (
@@ -53,50 +47,45 @@ export default function WhatWillYouMap() {
         >
           Who will you map?
         </h2>
-
-        <div className="mx-auto mt-10 grid max-w-2xl grid-cols-1 gap-x-10 gap-y-12 sm:grid-cols-2">
-          {SCALES.map((scale) => (
-            <div key={scale.src}>
-              <p
-                style={{
-                  fontFamily: "var(--font-plex-mono)",
-                  fontSize: "0.7rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: MUTED,
-                }}
-              >
-                {scale.label}
-              </p>
-
-              {/* Frame padding lives on this outer box; aspect-ratio lives on the inner
-                  one. Putting both on the same element would fold the padding into the
-                  ratio itself and skew the image's actual proportions. */}
-              <div
-                className="mx-auto mt-3 w-full max-w-sm"
-                style={{ background: INK, padding: FRAME_WIDTH, boxShadow: CARD_SHADOW }}
-              >
-                <div className="relative aspect-[210/297] w-full">
-                  <Image
-                    src={scale.src}
-                    alt={`${scale.label} example print`}
-                    fill
-                    unoptimized
-                    className="object-cover"
-                  />
-                </div>
-              </div>
-
-              <p
-                className="mx-auto mt-3 max-w-sm text-base leading-relaxed"
-                style={{ color: MUTED, fontWeight: 300 }}
-              >
-                {scale.description}
-              </p>
-            </div>
-          ))}
-        </div>
       </div>
+
+      <HorizontalScroller itemCount={SCALES.length}>
+        {SCALES.map((scale) => (
+          <li
+            key={scale.src}
+            className="w-[85vw] shrink-0 sm:w-[420px] lg:w-[480px]"
+            style={{ scrollSnapAlign: "start" }}
+          >
+            <p
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                fontSize: "0.7rem",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: MUTED,
+              }}
+            >
+              {scale.label}
+            </p>
+
+            <div className="mt-3">
+              <FramedPrint
+                src={scale.src}
+                alt={`${scale.label} example print`}
+                matPadding="0"
+                frameWidth="6px"
+              />
+            </div>
+
+            <p
+              className="mt-3 text-base leading-relaxed"
+              style={{ color: MUTED, fontWeight: 300 }}
+            >
+              {scale.description}
+            </p>
+          </li>
+        ))}
+      </HorizontalScroller>
     </section>
   );
 }

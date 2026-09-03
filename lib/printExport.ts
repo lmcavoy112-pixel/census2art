@@ -35,8 +35,8 @@ export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
  * Downscales the print-ready canvas to a small JPEG for the permanent showcase preview
  * (see lib/design/order.ts). The full-res PNG this is derived from gets deleted from
  * storage soon after Prodigi ingests it (app/api/prodigi/webhook/[secret]/route.ts) — this
- * thumbnail lives in a separate bucket that nothing ever cleans up, so it's what the
- * homepage's recent-orders gallery reads from.
+ * thumbnail lives in a separate bucket that nothing ever cleans up, so it can still be
+ * shown in a paid order's Shopify confirmation email after that happens.
  */
 export function canvasToPreviewBlob(
   canvas: HTMLCanvasElement,

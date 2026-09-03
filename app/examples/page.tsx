@@ -89,7 +89,7 @@ export default function ExamplesPage() {
                       <FramedPrint
                         src={purchase.img}
                         alt={`${purchase.surname} family print from ${group.heading}`}
-                        matPadding="8px"
+                        matPadding="0"
                         frameWidth="6px"
                       />
                       <p

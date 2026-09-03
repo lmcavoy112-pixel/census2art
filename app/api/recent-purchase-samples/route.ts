@@ -3,16 +3,12 @@ import { readdir } from "fs/promises";
 import path from "path";
 
 /**
- * Feeds the homepage's "recent purchases" strip alongside real orders
- * (GET /api/recent-orders) — RecentPurchases.tsx mixes real ones in first and pads
- * out the remaining slots from here, so a brand-new store with few or no real orders
- * yet doesn't show an empty section.
+ * Feeds the homepage's Gallery strip (see Gallery.tsx).
  *
  * Reads whatever image files sit in public/examples/Recent Purchases/ at request
  * time (no manifest to keep in sync — drop a file in, it's in the pool) and returns
  * them shuffled. Two filename conventions are understood, both optional:
- *   - "Surname - County.png" shows a county line, matching how a real order's
- *     caption looks (see DisplayPurchase in RecentPurchases.tsx).
+ *   - "Surname - County.png" shows a county line.
  *   - "Surname_house.png" / "Surname_district.png" / "Surname_townland.png" /
  *     "Surname_county.png" — an extent suffix (the actual naming the first real
  *     batch of samples used), stripped from the caption entirely rather than
@@ -21,7 +17,7 @@ import path from "path";
  */
 const SAMPLES_DIR = path.join(process.cwd(), "public", "examples", "Recent Purchases");
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg"]);
-// Comfortably above the 3 the homepage ever shows at once — just a cap so a folder
+// The homepage's scroller shows the whole pool now — this is just a cap so a folder
 // with hundreds of files doesn't ship a huge response, not a meaningful limit today.
 const RESULT_LIMIT = 24;
 const EXTENT_WORDS = new Set(["house", "district", "townland", "county"]);

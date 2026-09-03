@@ -1,0 +1,46 @@
+import type { Metadata } from "next";
+
+import SiteHeader from "../components/home/SiteHeader";
+import SiteFooter from "../components/home/SiteFooter";
+import CensusBlock from "../components/home/CensusBlock";
+import Gallery from "../components/home/Gallery";
+import { siteFontVars } from "../fonts";
+import { IRISH_CENSUS } from "@/lib/censusEditions";
+
+export const metadata: Metadata = {
+  title: "Discover",
+  description: "See a real household from the Irish census turned into a print, then search your own surname.",
+};
+
+const GROUND = "#fdfaf5";
+const INK = "#1e2b18";
+
+/**
+ * Landing page for ad traffic (Instagram/Meta): the artwork example, surname
+ * search, and a print gallery, with none of the homepage's other sections
+ * competing for attention. Reuses CensusBlock/Gallery as-is.
+ */
+export default function DiscoverPage() {
+  return (
+    <div
+      className={siteFontVars}
+      style={{
+        background: GROUND,
+        color: INK,
+        fontFamily: "var(--font-jost)",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <SiteHeader />
+
+      <main style={{ flex: 1 }}>
+        <CensusBlock collection={IRISH_CENSUS} />
+        <Gallery />
+      </main>
+
+      <SiteFooter />
+    </div>
+  );
+}
