@@ -32,14 +32,11 @@ import { IRELAND_PAN_BOUNDS } from "@/lib/modern/bounds";
 import {
   applyModernOverlays,
   highlightsToFeatureCollection,
-  outlineToFeatureCollection,
   fillOpacityFor,
   DEFAULT_HIGHLIGHT_LINE_WIDTH,
   HIGHLIGHT_FILL_LAYER,
   HIGHLIGHT_LINE_LAYER,
-  OUTLINE_LINE_LAYER,
   OVERLAY_SOURCE,
-  OUTLINE_SOURCE,
   type Highlight,
 } from "@/lib/modern/overlays";
 
@@ -62,13 +59,8 @@ export type ModernMapCanvasProps = {
   showFill?: boolean;
   /** DED polygons to shade, as GeoJSON geometries with a 0..1 weight. */
   highlights?: Highlight[];
-  /** County boundary, drawn as a stroke only. */
-  outline?: unknown | null;
   /** Stroke width for the highlighted polygon(s). */
   highlightLineWidth?: number;
-  /** County boundary stroke colour/width. Falls back to borderColour/3px. */
-  outlineColour?: string;
-  outlineWidth?: number;
   /** [[west, south], [east, north]] — fitted only when fitKey changes. */
   fitBounds?: [[number, number], [number, number]] | null;
   /** Change this to request a re-fit (e.g. when the level or selection changes). */
@@ -93,14 +85,11 @@ export default function ModernMapCanvas({
   contourDensity = DEFAULT_CONTOUR_DENSITY,
   accentColour,
   borderColour,
-  outlineColour,
-  outlineWidth,
   markerShape = "pin",
   markerColour = "#C08497",
   markerSize = 34,
   showFill = true,
   highlights,
-  outline,
   highlightLineWidth,
   fitBounds,
   fitKey = "",
@@ -133,11 +122,8 @@ export default function ModernMapCanvas({
   // rendering.
   const propsRef = useRef({
     highlights,
-    outline,
     accentColour,
     borderColour,
-    outlineColour,
-    outlineWidth,
     showFill,
     highlightLineWidth,
     pin,
@@ -152,11 +138,8 @@ export default function ModernMapCanvas({
   useEffect(() => {
     propsRef.current = {
       highlights,
-      outline,
       accentColour,
       borderColour,
-      outlineColour,
-      outlineWidth,
       showFill,
       highlightLineWidth,
       pin,
@@ -256,28 +239,22 @@ export default function ModernMapCanvas({
     // requested. At county zoom that resolves quickly, which is why the map looked fine on
     // first load; at district/street zoom (more tiles, plus the slower DEM contour source)
     // it can take much longer than the base style itself, or effectively never resolve, so
-    // "styledata" kept firing with isStyleLoaded() stuck false and the district/outline
-    // layers were never (re)added after a basemap or level switch. "style.load" fires as
+    // "styledata" kept firing with isStyleLoaded() stuck false and the district layers
+    // were never (re)added after a basemap or level switch. "style.load" fires as
     // soon as the new style's sources and layers are registered — before any tile fetching
     // starts — which is the actual precondition for addSource/addLayer to succeed.
     const applyOverlays = () => {
       const {
         highlights: h,
-        outline: o,
         accentColour: accent,
         borderColour: border,
-        outlineColour: oColour,
-        outlineWidth: oWidth,
         showFill: fill,
         highlightLineWidth: width,
       } = propsRef.current;
       applyModernOverlays(map, {
         highlights: h,
-        outline: o,
         accentColour: accent,
         borderColour: border,
-        outlineColour: oColour,
-        outlineWidth: oWidth,
         showFill: fill,
         highlightLineWidth: width,
       });
@@ -371,14 +348,6 @@ export default function ModernMapCanvas({
     const map = mapRef.current;
     if (!map) return;
 
-    const src = map.getSource(OUTLINE_SOURCE) as GeoJSONSource | undefined;
-    src?.setData(outlineToFeatureCollection(outline));
-  }, [outline]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
     const line = borderColour ?? accentColour;
 
     if (map.getLayer(HIGHLIGHT_FILL_LAYER)) {
@@ -393,11 +362,7 @@ export default function ModernMapCanvas({
         highlightLineWidth ?? DEFAULT_HIGHLIGHT_LINE_WIDTH
       );
     }
-    if (map.getLayer(OUTLINE_LINE_LAYER)) {
-      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", outlineColour ?? line);
-      map.setPaintProperty(OUTLINE_LINE_LAYER, "line-width", outlineWidth ?? 3);
-    }
-  }, [accentColour, borderColour, outlineColour, outlineWidth, showFill, highlightLineWidth]);
+  }, [accentColour, borderColour, showFill, highlightLineWidth]);
 
   useEffect(() => {
     if (!fitBounds || !fitKey || fitKey === lastFitKey.current) return;

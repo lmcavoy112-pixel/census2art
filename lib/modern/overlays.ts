@@ -1,4 +1,4 @@
-// The DED / county-outline overlays drawn on top of the Modern basemap.
+// The DED overlays drawn on top of the Modern basemap.
 //
 // Shared by the live designer canvas and the offscreen print capture. If these two ever
 // drew overlays differently, the print would not match the preview the customer approved,
@@ -9,12 +9,10 @@ import type { Map as MapLibreMap, GeoJSONSource, DataDrivenPropertyValueSpecific
 import { markerSvg, type MarkerShape } from "./marker";
 
 export const OVERLAY_SOURCE = "modern-highlights";
-export const OUTLINE_SOURCE = "modern-outline";
 export const MARKER_SOURCE = "modern-marker";
 
 export const HIGHLIGHT_FILL_LAYER = "modern-highlight-fill";
 export const HIGHLIGHT_LINE_LAYER = "modern-highlight-line";
-export const OUTLINE_LINE_LAYER = "modern-outline-line";
 export const MARKER_LAYER = "modern-marker-symbol";
 export const MARKER_IMAGE = "modern-marker-icon";
 
@@ -31,7 +29,6 @@ export type MarkerState = {
 
 export type OverlayState = {
   highlights?: Highlight[];
-  outline?: unknown | null;
   /** Interior fill colour for the districts. */
   accentColour: string;
   /** District border colour. Falls back to the fill colour when not set. */
@@ -40,15 +37,6 @@ export type OverlayState = {
   showFill?: boolean;
   /** Stroke width for the highlighted polygon(s), in px. 0 draws no border at all. */
   highlightLineWidth?: number;
-  /**
-   * County boundary stroke colour/width. The county outline is basemap furniture, not a
-   * district the customer coloured — it takes its own colour from the palette rather
-   * than the district border swatch, so it stays legible however the district border is
-   * set (including "No border"). Falls back to borderColour/3px for callers that don't
-   * set these explicitly.
-   */
-  outlineColour?: string;
-  outlineWidth?: number;
 };
 
 /** Exported so the live canvas and the print export cannot disagree on it. */
@@ -107,15 +95,6 @@ export function highlightsToFeatureCollection(highlights?: Highlight[]) {
   };
 }
 
-export function outlineToFeatureCollection(outline?: unknown | null) {
-  return {
-    type: "FeatureCollection" as const,
-    features: outline
-      ? [{ type: "Feature" as const, properties: {}, geometry: outline as GeoJSON.Geometry }]
-      : [],
-  };
-}
-
 /**
  * Adds the overlay sources and layers, or updates them if already present.
  *
@@ -124,15 +103,12 @@ export function outlineToFeatureCollection(outline?: unknown | null) {
  * drop the districts.
  */
 export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
-  const { highlights, outline, accentColour, showFill, highlightLineWidth } = state;
+  const { highlights, accentColour, showFill, highlightLineWidth } = state;
   const borderColour = state.borderColour ?? accentColour;
   const fillOpacity = fillOpacityFor(showFill);
   const lineWidth = highlightLineWidth ?? DEFAULT_HIGHLIGHT_LINE_WIDTH;
-  const outlineColour = state.outlineColour ?? borderColour;
-  const outlineWidth = state.outlineWidth ?? 3;
 
   const highlightData = highlightsToFeatureCollection(highlights);
-  const outlineData = outlineToFeatureCollection(outline);
   const beforeId = labelAnchorId(map);
 
   const highlightSource = map.getSource(OVERLAY_SOURCE) as GeoJSONSource | undefined;
@@ -140,13 +116,6 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
     highlightSource.setData(highlightData);
   } else {
     map.addSource(OVERLAY_SOURCE, { type: "geojson", data: highlightData });
-  }
-
-  const outlineSource = map.getSource(OUTLINE_SOURCE) as GeoJSONSource | undefined;
-  if (outlineSource) {
-    outlineSource.setData(outlineData);
-  } else {
-    map.addSource(OUTLINE_SOURCE, { type: "geojson", data: outlineData });
   }
 
   if (!map.getLayer(HIGHLIGHT_FILL_LAYER)) {
@@ -160,6 +129,13 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
           // Denser districts read heavier — same intent as lib/dedShading.ts — unless
           // the "No fill" swatch turned the whole layer off, in which case flat 0.
           "fill-opacity": fillOpacity,
+          // Country/County shade thousands of adjacent DEDs at once. With antialiasing
+          // on, every shared edge between two touching polygons gets blended twice
+          // (once per polygon's own edge), which reads as a dense grid of seams even at
+          // highlightLineWidth 0 — this was mistaken for a border that needed removing.
+          // Antialiasing off lets touching/overlapping fills butt up cleanly; a real
+          // overlap just stacks opacity into a darker patch, which is fine.
+          "fill-antialias": false,
         },
       },
       beforeId
@@ -182,21 +158,6 @@ export function applyModernOverlays(map: MapLibreMap, state: OverlayState) {
   } else {
     map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-color", borderColour);
     map.setPaintProperty(HIGHLIGHT_LINE_LAYER, "line-width", lineWidth);
-  }
-
-  if (!map.getLayer(OUTLINE_LINE_LAYER)) {
-    map.addLayer(
-      {
-        id: OUTLINE_LINE_LAYER,
-        type: "line",
-        source: OUTLINE_SOURCE,
-        paint: { "line-color": outlineColour, "line-width": outlineWidth, "line-opacity": 0.85 },
-      },
-      beforeId
-    );
-  } else {
-    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-color", outlineColour);
-    map.setPaintProperty(OUTLINE_LINE_LAYER, "line-width", outlineWidth);
   }
 }
 

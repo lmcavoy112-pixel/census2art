@@ -923,13 +923,6 @@ function ModernDesignContent() {
   // polygon_id check is needed on top of it.
   const hasTownlandPolygon = Boolean(townlandGeojson);
 
-  // County draws the dissolved county boundary as a separate furniture layer — it isn't
-  // a shape the customer is styling, just basemap context (see outlineHex below).
-  // District, Townland and Street all go through `highlights` instead, so a real
-  // townland gets filled exactly the way a district does rather than sitting here as a
-  // bare, unfilled outline.
-  const visibleOutline = level === "county" ? outline : null;
-
   const highlights = useMemo(() => {
     if (level === "country") {
       return countryPolygons.map((p) => ({
@@ -1025,14 +1018,6 @@ function ModernDesignContent() {
   // picked — palette.ink is already tuned as a readable foreground against every
   // palette's own paper/land colours, so it reads clearly wherever the marker sits.
   const markerColour = palette.ink;
-
-  // The county boundary is basemap furniture, not a district the customer coloured, so
-  // it takes its colour from the palette rather than from the district border swatch —
-  // it stays legible on every palette and however the district border is set, including
-  // "No border". mapPalette.label is already tuned as a readable ink against this
-  // palette's land colour.
-  const outlineHex = mapPalette.label;
-  const OUTLINE_WIDTH = 2;
 
   const polygonHex = getPolygonColourById(polygonColourId)?.hex ?? palette.polygon;
   const showPolygonFill = polygonColourId !== NO_BORDER_COLOUR_ID;
@@ -1577,11 +1562,8 @@ function ModernDesignContent() {
       decorate: async (map) => {
         applyModernOverlays(map, {
           highlights,
-          outline: visibleOutline,
           accentColour: polygonHex,
           borderColour: borderHex,
-          outlineColour: outlineHex,
-          outlineWidth: OUTLINE_WIDTH,
           showFill: showPolygonFill,
           highlightLineWidth: borderWidth,
         });
@@ -2913,11 +2895,8 @@ function ModernDesignContent() {
                     contourDensity={contourDensity}
                     accentColour={polygonHex}
                     borderColour={borderHex}
-                    outlineColour={outlineHex}
-                    outlineWidth={OUTLINE_WIDTH}
                     showFill={showPolygonFill}
                     highlights={highlights}
-                    outline={visibleOutline}
                     highlightLineWidth={borderWidth}
                     fitBounds={fitBounds}
                     fitKey={fitKey}
