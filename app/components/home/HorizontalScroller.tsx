@@ -12,6 +12,12 @@ const GOLD = "#b8902a";
 // past it to the true viewport edge, rather than stopping at the 6xl container.
 export const SCROLLER_EDGE_PADDING = "max(1.5rem, calc((100vw - 72rem) / 2 + 1.5rem))";
 
+// The ordinary `px-6` gutter every other section uses — swapped in for the wide edge
+// padding above once a row turns out not to need scrolling at all (see `needsScroll`
+// below), so a short row (WhatWillYouMap's fixed four cards, on a wide screen) sits
+// flush with the page's normal margin instead of carrying scrollable empty padding.
+const STANDARD_GUTTER_PX = 24;
+
 /**
  * The full-bleed, horizontally-scrolling `<ul>` shared by every filmstrip on the site
  * (Gallery, WhatWillYouMap): scroll-snap, a hover-the-row mouse-wheel handler (a wheel
@@ -41,6 +47,10 @@ export default function HorizontalScroller({
   const scrollerRef = useRef<HTMLUListElement>(null);
   const [progress, setProgress] = useState({ thumbPercent: 100, offsetPercent: 0 });
   const [activeIndex, setActiveIndex] = useState(0);
+  // Whether the row actually has more content than fits the viewport. Defaults true
+  // (today's behaviour) and is corrected by the layout effect below before the first
+  // paint, so there is no flash of arrows that immediately disappear.
+  const [needsScroll, setNeedsScroll] = useState(true);
   // Computed eagerly (not defaulted to false and fixed up in an effect) so it's
   // already correct on the very first render — otherwise the centering effect below
   // runs once believing it's on desktop, centers the row, and only learns it's
@@ -115,11 +125,25 @@ export default function HorizontalScroller({
 
     el.style.scrollSnapType = paging ? "x mandatory" : "x proximity";
 
-    if (!paging) {
-      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    // The cards' own combined width, independent of the ul's current padding (so this
+    // reads the same whether the wide edge padding or the standard gutter is applied
+    // right now) — compared against what's left of the viewport once a normal gutter
+    // is set aside. True here means the row would need the wide edge-padding/scroll
+    // treatment at all; false means every card already fits, so that treatment would
+    // only add scrollable empty space past the cards for nothing to reveal.
+    function computeNeedsScroll(): boolean {
+      const cards = Array.from(el!.children) as HTMLElement[];
+      if (cards.length === 0) return false;
+      const styles = getComputedStyle(el!);
+      const gap = parseFloat(styles.columnGap || styles.gap) || 0;
+      const contentWidth =
+        cards.reduce((sum, card) => sum + card.offsetWidth, 0) + gap * (cards.length - 1);
+      return contentWidth > el!.clientWidth - STANDARD_GUTTER_PX * 2;
     }
 
     function update() {
+      setNeedsScroll(computeNeedsScroll());
+
       const { scrollLeft, scrollWidth, clientWidth } = el!;
       const thumbPercent = Math.min(100, (clientWidth / scrollWidth) * 100);
       const maxScroll = scrollWidth - clientWidth;
@@ -136,6 +160,15 @@ export default function HorizontalScroller({
             : clientWidth;
         setActiveIndex(step > 0 ? Math.round(scrollLeft / step) : 0);
       }
+    }
+
+    const fitsWithoutScrolling = !computeNeedsScroll();
+    setNeedsScroll(!fitsWithoutScrolling);
+    if (!paging) {
+      // Center within the wide edge padding only when that padding is actually in
+      // play; a row that fits stays at 0, flush with the standard gutter it renders
+      // with once the state update above lands.
+      el.scrollLeft = fitsWithoutScrolling ? 0 : (el.scrollWidth - el.clientWidth) / 2;
     }
 
     update();
@@ -156,19 +189,23 @@ export default function HorizontalScroller({
           // Real value ("mandatory" in paging mode) is set imperatively in the
           // layout effect above — see the comment there for why.
           scrollSnapType: "x proximity",
-          paddingLeft: SCROLLER_EDGE_PADDING,
-          paddingRight: SCROLLER_EDGE_PADDING,
+          paddingLeft: needsScroll ? SCROLLER_EDGE_PADDING : "1.5rem",
+          paddingRight: needsScroll ? SCROLLER_EDGE_PADDING : "1.5rem",
           // Without this, the snap algorithm measures "start" against the scrollport's
           // border edge and ignores the padding above — the row then loads pre-scrolled
           // past its own left gutter, clipping the first card before anyone's touched it.
-          scrollPaddingLeft: SCROLLER_EDGE_PADDING,
-          scrollPaddingRight: SCROLLER_EDGE_PADDING,
+          scrollPaddingLeft: needsScroll ? SCROLLER_EDGE_PADDING : "1.5rem",
+          scrollPaddingRight: needsScroll ? SCROLLER_EDGE_PADDING : "1.5rem",
+          // A row whose cards already fit gets no scroll capability at all — otherwise
+          // the wide edge padding above (sized for a row with more to reveal) would
+          // still make the strip draggable into pure empty padding on either side.
+          overflowX: needsScroll ? "auto" : "hidden",
         }}
       >
         {children}
       </ul>
 
-      {itemCount > 1 ? (
+      {itemCount > 1 && needsScroll ? (
         <>
           <ScrollArrow direction="left" onClick={() => scrollByCard(-1)} />
           <ScrollArrow direction="right" onClick={() => scrollByCard(1)} />

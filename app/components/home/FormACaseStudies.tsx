@@ -7,13 +7,51 @@ import FramedPrint from "./FramedPrint";
 import ImageLightbox from "./ImageLightbox";
 import SwipeGallery from "./SwipeGallery";
 import { useIsDesktop } from "./useIsDesktop";
-import { FORM_A_CASE_STUDIES, formAUrl } from "@/lib/formACaseStudies";
+import { FORM_A_CASE_STUDIES, formAUrl, type FormACaseStudy } from "@/lib/formACaseStudies";
 
 const INK = "#1e2b18";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 
 type OpenImage = { src: string; alt: string };
+
+/** Surname, archive link, location and blurb — kept as one piece so it can sit glued
+ *  directly under the Form A image on both mobile and desktop, rather than drifting
+ *  loose in whichever grid cell it happened to land in. */
+function CaptionText({ study }: { study: FormACaseStudy }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3
+          style={{
+            fontFamily: "var(--font-cormorant)",
+            fontSize: "1.4rem",
+            color: INK,
+          }}
+        >
+          {study.surname}
+        </h3>
+        <a
+          href={formAUrl(study.naiId)}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[12.5px] underline underline-offset-4"
+          style={{ color: MUTED }}
+        >
+          View on nationalarchives.ie ↗
+        </a>
+      </div>
+
+      <p className="mt-1 text-sm" style={{ color: MUTED, fontWeight: 300 }}>
+        {study.location}
+      </p>
+
+      <p className="mt-4 text-[15px] leading-relaxed" style={{ color: INK, fontWeight: 300 }}>
+        {study.blurb}
+      </p>
+    </div>
+  );
+}
 
 /**
  * Pairs each finished print with the real scanned Form A it was drawn from — proof
@@ -26,6 +64,9 @@ type OpenImage = { src: string; alt: string };
  * Both the artwork and the scan open in the same click-to-zoom lightbox the homepage
  * Gallery uses (ImageLightbox, desktop-only via useIsDesktop) — one shared piece of
  * state here rather than one per image, since only one can be open at a time.
+ *
+ * Desktop alternates which side the Form A sits on (print/scan, then scan/print, ...)
+ * so a long run of examples doesn't read as one repeating template.
  */
 export default function FormACaseStudies() {
   const isDesktop = useIsDesktop();
@@ -49,43 +90,12 @@ export default function FormACaseStudies() {
         scanned sheet beside the print it became.
       </p>
 
-      <div className="mt-12 space-y-16">
-        {FORM_A_CASE_STUDIES.map((study) => (
-          <article key={study.naiId} className="sm:grid sm:grid-cols-2 sm:gap-x-12">
-            {/* Mobile: swipe between the print and the scan instead of stacking both
-                (a long vertical scroll on a small screen) — same two images, desktop
-                just shows them side by side further down instead. */}
-            <div className="sm:hidden">
-              <SwipeGallery
-                labels={[`${study.surname} print`, `${study.surname} Form A scan`]}
-                slides={[
-                  <div key="artwork" className="mx-auto w-full max-w-sm">
-                    <FramedPrint
-                      src={study.artworkSrc}
-                      alt={`${study.surname} family print, ${study.censusYear} Irish census`}
-                      matPadding="0"
-                      frameWidth="10px"
-                    />
-                  </div>,
-                  <div
-                    key="scan"
-                    className="overflow-hidden rounded-md border"
-                    style={{ borderColor: RULE }}
-                  >
-                    <Image
-                      src={study.scanSrc}
-                      alt={`Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`}
-                      width={study.scanWidth}
-                      height={study.scanHeight}
-                      unoptimized
-                      className="h-auto w-full"
-                    />
-                  </div>,
-                ]}
-              />
-            </div>
+      <div className="mt-12">
+        {FORM_A_CASE_STUDIES.map((study, index) => {
+          const formAFirst = index % 2 === 1;
 
-            <div className="mx-auto hidden w-full max-w-sm sm:block">
+          const artwork = (
+            <div className="mx-auto w-full max-w-sm sm:mx-0">
               <button
                 type="button"
                 onClick={() =>
@@ -106,8 +116,10 @@ export default function FormACaseStudies() {
                 />
               </button>
             </div>
+          );
 
-            <div className="hidden sm:block">
+          const formA = (
+            <div>
               <button
                 type="button"
                 onClick={() =>
@@ -131,43 +143,78 @@ export default function FormACaseStudies() {
                   />
                 </div>
               </button>
-            </div>
 
-            {/* Sits below the swipe pair on mobile (plain document flow, no grid active
-                below `sm`); on desktop `sm:col-start-2` places it under the scan column
-                specifically, same spot the original single-column layout nested it in. */}
-            <div className="mt-6 sm:col-start-2 sm:mt-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <h3
-                  style={{
-                    fontFamily: "var(--font-cormorant)",
-                    fontSize: "1.4rem",
-                    color: INK,
-                  }}
-                >
-                  {study.surname}
-                </h3>
-                <a
-                  href={formAUrl(study.naiId)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[12.5px] underline underline-offset-4"
-                  style={{ color: MUTED }}
-                >
-                  View on nationalarchives.ie ↗
-                </a>
+              {/* Glued directly under its own image, not a separate grid item — so it
+                  stays close to the Form A scan it's captioning wherever that scan
+                  lands (see formAFirst above). */}
+              <div className="mt-3">
+                <CaptionText study={study} />
               </div>
-
-              <p className="mt-1 text-sm" style={{ color: MUTED, fontWeight: 300 }}>
-                {study.location}
-              </p>
-
-              <p className="mt-4 text-[15px] leading-relaxed" style={{ color: INK, fontWeight: 300 }}>
-                {study.blurb}
-              </p>
             </div>
-          </article>
-        ))}
+          );
+
+          return (
+            <div key={study.naiId}>
+              {index > 0 && (
+                <hr className="my-12 border-0" style={{ borderTop: `1px solid ${RULE}` }} />
+              )}
+
+              <article>
+                {/* Mobile: swipe between the print and the scan instead of stacking
+                    both (a long vertical scroll on a small screen), with the caption
+                    once underneath. Order stays print-then-scan regardless of the
+                    desktop alternation above — a swipe is a sequence, not a pair of
+                    columns, so there's no "which side" to alternate. */}
+                <div className="sm:hidden">
+                  <SwipeGallery
+                    labels={[`${study.surname} print`, `${study.surname} Form A scan`]}
+                    slides={[
+                      <div key="artwork" className="mx-auto w-full max-w-sm">
+                        <FramedPrint
+                          src={study.artworkSrc}
+                          alt={`${study.surname} family print, ${study.censusYear} Irish census`}
+                          matPadding="0"
+                          frameWidth="10px"
+                        />
+                      </div>,
+                      <div
+                        key="scan"
+                        className="overflow-hidden rounded-md border"
+                        style={{ borderColor: RULE }}
+                      >
+                        <Image
+                          src={study.scanSrc}
+                          alt={`Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`}
+                          width={study.scanWidth}
+                          height={study.scanHeight}
+                          unoptimized
+                          className="h-auto w-full"
+                        />
+                      </div>,
+                    ]}
+                  />
+                  <div className="mt-6">
+                    <CaptionText study={study} />
+                  </div>
+                </div>
+
+                <div className="hidden sm:grid sm:grid-cols-2 sm:gap-x-12">
+                  {formAFirst ? (
+                    <>
+                      {formA}
+                      {artwork}
+                    </>
+                  ) : (
+                    <>
+                      {artwork}
+                      {formA}
+                    </>
+                  )}
+                </div>
+              </article>
+            </div>
+          );
+        })}
       </div>
 
       {isDesktop && openImage ? (
