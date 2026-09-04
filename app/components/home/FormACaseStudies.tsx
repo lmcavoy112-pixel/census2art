@@ -95,7 +95,11 @@ export default function FormACaseStudies() {
           const formAFirst = index % 2 === 1;
 
           const artwork = (
-            <div className="mx-auto w-full max-w-sm sm:mx-0">
+            <div
+              className={`mx-auto w-full max-w-sm ${
+                formAFirst ? "sm:mr-0 sm:ml-auto" : "sm:ml-0 sm:mr-auto"
+              }`}
+            >
               <button
                 type="button"
                 onClick={() =>
