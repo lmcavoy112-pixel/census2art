@@ -4,6 +4,7 @@ import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
 import CensusBlock from "../components/home/CensusBlock";
 import Gallery from "../components/home/Gallery";
+import DiscoverHistory from "../components/home/DiscoverHistory";
 import { siteFontVars } from "../fonts";
 import { IRISH_CENSUS } from "@/lib/censusEditions";
 
@@ -17,8 +18,9 @@ const INK = "#1e2b18";
 
 /**
  * Landing page for ad traffic (Instagram/Meta): the artwork example, surname
- * search, and a print gallery, with none of the homepage's other sections
- * competing for attention. Reuses CensusBlock/Gallery as-is.
+ * search, a print gallery, and the live surname-preview banner, with none of the
+ * homepage's other sections competing for attention. Reuses CensusBlock/Gallery/
+ * DiscoverHistory as-is.
  */
 export default function DiscoverPage() {
   return (
@@ -38,6 +40,7 @@ export default function DiscoverPage() {
       <main style={{ flex: 1 }}>
         <CensusBlock collection={IRISH_CENSUS} />
         <Gallery />
+        <DiscoverHistory />
       </main>
 
       <SiteFooter />

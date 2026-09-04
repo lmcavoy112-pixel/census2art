@@ -25,7 +25,7 @@ const SECTIONS = [
     heading: "Privacy",
     body: [
       "Census to Art searches historic census records that are already published by national archives. Searching a surname does not create an account and does not require you to tell us who you are.",
-      "When you place an order we hold the details needed to fulfil it — your name, delivery address, contact email and the artwork you designed — and we share the delivery details with the print partner who makes and posts your print.",
+      "When you place an order we hold the details needed to fulfil it (your name, delivery address, contact email and the artwork you designed), and we share the delivery details with the print partner who makes and posts your print.",
       "A full privacy notice, including how long order data is kept and how to request its deletion, is being finalised.",
     ],
   },

@@ -1595,7 +1595,7 @@ function ModernDesignContent() {
     const dpi = effectiveDpi(capture.width, mapWidthInches);
     setExportNote(
       capture.pixelRatio < posterScale - 0.01
-        ? `Map rendered at ${dpi}dpi — your device could not hold a full-resolution buffer.`
+        ? `Map rendered at ${dpi}dpi. Your device could not hold a full-resolution buffer.`
         : `Map rendered at ${dpi}dpi.`
     );
 
@@ -1923,7 +1923,7 @@ function ModernDesignContent() {
         </div>
         <HelpText>
           {template === "historic"
-            ? "Historic prints use the county only — these aren't editable for this template."
+            ? "Historic prints use the county only, so these aren't editable for this template."
             : "Greyed-out fields weren't part of your search, or aren't shown at the current map extent."}
         </HelpText>
 
@@ -2066,7 +2066,7 @@ function ModernDesignContent() {
               >
                 <HelpText>
                   {polygonColourId === NO_BORDER_COLOUR_ID
-                    ? "No fill — the district border alone."
+                    ? "No fill, just the district border."
                     : "Districts are shaded by how many of your name lived there."}
                 </HelpText>
               </PolygonSwatchRow>
@@ -2220,7 +2220,7 @@ function ModernDesignContent() {
                 }
               />
               <p className="mt-1 text-[12px] text-stone-600">
-                {pinSource === "geocoder" && `Found from the ${censusYear} address. Please confirm the location — drag it on the map to adjust.`}
+                {pinSource === "geocoder" && `Found from the ${censusYear} address. Please confirm the location, or drag it on the map to adjust.`}
                 {pinSource === "centroid" && "This is the middle of the district, not the house. Please drag it to the right place."}
                 {pinSource === "manual" && "Placed by hand. Drag it on the map to adjust."}
                 {!pinSource && "Drag it on the map to place it."}
@@ -2246,13 +2246,13 @@ function ModernDesignContent() {
             )}
             {geocodeState === "not-found" && (
               <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[12.5px] leading-relaxed text-amber-900">
-                Couldn&apos;t find the property from the {censusYear} address — place it manually by
+                Couldn&apos;t find the property from the {censusYear} address. Place it manually by
                 dragging the marker on the map.
               </p>
             )}
             {geocodeState === "found" && (
               <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[12.5px] leading-relaxed text-emerald-900">
-                Found a likely match. Please confirm the location before ordering — {censusYear}
+                Found a likely match. Please confirm the location before ordering, since {censusYear}
                 addresses are approximate.
               </p>
             )}
@@ -2338,8 +2338,8 @@ function ModernDesignContent() {
       : "Choose a size to see the price";
     const deliveryText =
       fulfilment === "digital"
-        ? "Delivered by email within minutes — nothing shipped"
-        : "Made to order — typically 5–8 working days";
+        ? "Delivered by email within minutes, nothing shipped"
+        : "Made to order, typically 5–8 working days";
 
     const button = (
       <button
@@ -2546,7 +2546,7 @@ function ModernDesignContent() {
           />
           {isSquare && (
             <HelpText>
-              Square prints are drawn with Celtic Spirals only — the finer borders need a
+              Square prints are drawn with Celtic Spirals only. The finer borders need a
               portrait plate.
             </HelpText>
           )}
@@ -2975,7 +2975,7 @@ function ModernDesignContent() {
                         className="mt-1 text-center"
                         style={{ fontSize: householdTableFontPx, color: inkHex, opacity: 0.5 }}
                       >
-                        +{visibleHousehold.length - householdMaxRows} more — hide members in Family to print them
+                        +{visibleHousehold.length - householdMaxRows} more (hide members in Family to print them)
                       </p>
                     )}
                   </div>

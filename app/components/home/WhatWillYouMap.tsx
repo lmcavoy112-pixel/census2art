@@ -8,7 +8,7 @@ const SCALES: { label: string; src: string; description: string }[] = [
   {
     label: "House",
     src: "/examples/what-will-you-map/house.png",
-    description: "See one household in full — who lived there, their ages and occupations.",
+    description: "See one household in full: who lived there, their ages and occupations.",
   },
   {
     label: "Townland",

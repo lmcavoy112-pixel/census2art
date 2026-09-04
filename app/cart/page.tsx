@@ -45,7 +45,7 @@ export default function CartPage() {
         </div>
 
         <p className="mt-8 text-xs sm:mt-10" style={{ color: "#8a8070" }}>
-          Map data © OpenStreetMap contributors, elevation from Terrain Tiles — see{" "}
+          Map data © OpenStreetMap contributors, elevation from Terrain Tiles, see{" "}
           <Link href="/legal#map-data" className="underline underline-offset-2">
             full attribution
           </Link>

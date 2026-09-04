@@ -12,7 +12,7 @@ const STEPS = [
   {
     icon: SearchIcon,
     title: "Search your surname",
-    body: "Search within various counties, districts and townlands for your people. Mark the household — totally optional.",
+    body: "Search within various counties, districts and townlands for your people. Marking the household is totally optional.",
   },
   {
     icon: PaletteIcon,

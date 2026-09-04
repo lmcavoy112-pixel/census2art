@@ -43,7 +43,7 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     censusYear: "1911",
     location: "Co. Antrim, Ballymoney – Union Street · House No. 52",
     blurb:
-      "Samuel Hammond baked for a living on Union Street in Ballymoney, Co. Antrim; he, his wife Martha, and their four children — from an infant son to a nine-year-old daughter already at school — filled out the return with three slightly different labels for their shared Protestant faith: Church of Ireland, Protestant, and Episcopalian.",
+      "Samuel Hammond baked for a living on Union Street in Ballymoney, Co. Antrim. He, his wife Martha, and their four children (an infant son up to a nine-year-old daughter already at school) filled out the return with three slightly different labels for their shared Protestant faith: Church of Ireland, Protestant, and Episcopalian.",
     scanSrc: "/examples/form a examples/scans/Hammond_nai001377255.jpg",
     scanWidth: 2600,
     scanHeight: 1767,
@@ -91,7 +91,7 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     censusYear: "1901",
     location: "Co. Galway, Knockboy – Letterard · House No. 16",
     blurb:
-      "Pat and Margaret Jennings raised ten children on their farm on the Galway coast; not one of them, parents included, could yet read — rural Connemara schooling hadn't caught up.",
+      "Pat and Margaret Jennings raised ten children on their farm on the Galway coast. Not one of them, parents included, could yet read; rural Connemara schooling hadn't caught up.",
     scanSrc: "/examples/form a examples/scans/Jennings_nai000805431.jpg",
     scanWidth: 2600,
     scanHeight: 1696,

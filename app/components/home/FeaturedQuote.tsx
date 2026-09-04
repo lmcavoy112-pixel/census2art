@@ -20,8 +20,8 @@ export default function FeaturedQuote() {
             color: RAISED,
           }}
         >
-          &ldquo;Long-lost heritage, now found — it sits as a conversation piece in our
-          hallway. Everyone who visits asks about it.&rdquo;
+          &ldquo;Long-lost heritage, now found. It sits as a conversation piece in our
+          hallway, and everyone who visits asks about it.&rdquo;
         </p>
         <p
           className="mt-3"

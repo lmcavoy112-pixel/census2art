@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 
 import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
-import DiscoverHistory from "../components/home/DiscoverHistory";
 import FormACaseStudies from "../components/home/FormACaseStudies";
 import { siteFontVars } from "../fonts";
 
@@ -31,7 +30,6 @@ export default function ExamplesPage() {
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-16 sm:py-20">
         <FormACaseStudies />
-        <DiscoverHistory />
       </main>
 
       <SiteFooter />

@@ -42,9 +42,9 @@ type PreviewState =
  * straight into the designer with that surname and the Historic template pre-picked,
  * skipping the county/DED/townland/house browsing Historic never needed anyway.
  *
- * Lives on the examples page (under the Irish Census group) rather than the homepage
- * now, so it has no outer `max-w-6xl`/`px-6` of its own — that page's `<main>` already
- * constrains the width; a second one here would double up.
+ * Lives on the Discover page, below Gallery, rather than on the homepage — its own
+ * `mx-auto max-w-6xl px-6` matches the pattern CensusBlock/Gallery already use there,
+ * since that page's `<main>` carries no width constraint of its own.
  */
 export default function DiscoverHistory() {
   const [censusYear, setCensusYear] = useState<YearId>("1901");
@@ -98,8 +98,8 @@ export default function DiscoverHistory() {
       : null;
 
   return (
-    <section className="py-14 sm:py-16">
-      <div className="grid gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
+    <section className="px-6 py-14 sm:py-16">
+      <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
         <div className="relative mx-auto aspect-[210/297] w-full max-w-sm overflow-hidden">
           {preview.status === "ready" ? (
             <HistoricPoster
@@ -125,7 +125,7 @@ export default function DiscoverHistory() {
               <p className="text-sm leading-relaxed">
                 {preview.status === "empty"
                   ? `No ${censusYear} records found for "${preview.surnameDisplay}". Try another spelling or year.`
-                  : "Something went wrong loading that preview — please try again."}
+                  : "Something went wrong loading that preview. Please try again."}
               </p>
             </div>
           ) : (

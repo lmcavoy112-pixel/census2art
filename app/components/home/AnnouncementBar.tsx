@@ -26,7 +26,7 @@ export default function AnnouncementBar() {
     >
       <span className="sm:hidden">Free delivery, worldwide</span>
       <span className="hidden sm:inline">
-        Free delivery on every order — shipping to the UK, USA, Europe, Canada &amp; beyond
+        Free delivery on every order, shipping to the UK, USA, Europe, Canada &amp; beyond
       </span>
     </div>
   );

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import FramedPrint from "./FramedPrint";
 import ImageLightbox from "./ImageLightbox";
+import SwipeGallery from "./SwipeGallery";
 import { useIsDesktop } from "./useIsDesktop";
 import { FORM_A_CASE_STUDIES, formAUrl } from "@/lib/formACaseStudies";
 
@@ -50,8 +51,41 @@ export default function FormACaseStudies() {
 
       <div className="mt-12 space-y-16">
         {FORM_A_CASE_STUDIES.map((study) => (
-          <article key={study.naiId} className="grid gap-8 sm:grid-cols-2 sm:gap-12">
-            <div className="mx-auto w-full max-w-sm">
+          <article key={study.naiId} className="sm:grid sm:grid-cols-2 sm:gap-x-12">
+            {/* Mobile: swipe between the print and the scan instead of stacking both
+                (a long vertical scroll on a small screen) — same two images, desktop
+                just shows them side by side further down instead. */}
+            <div className="sm:hidden">
+              <SwipeGallery
+                labels={[`${study.surname} print`, `${study.surname} Form A scan`]}
+                slides={[
+                  <div key="artwork" className="mx-auto w-full max-w-sm">
+                    <FramedPrint
+                      src={study.artworkSrc}
+                      alt={`${study.surname} family print, ${study.censusYear} Irish census`}
+                      matPadding="0"
+                      frameWidth="10px"
+                    />
+                  </div>,
+                  <div
+                    key="scan"
+                    className="overflow-hidden rounded-md border"
+                    style={{ borderColor: RULE }}
+                  >
+                    <Image
+                      src={study.scanSrc}
+                      alt={`Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`}
+                      width={study.scanWidth}
+                      height={study.scanHeight}
+                      unoptimized
+                      className="h-auto w-full"
+                    />
+                  </div>,
+                ]}
+              />
+            </div>
+
+            <div className="mx-auto hidden w-full max-w-sm sm:block">
               <button
                 type="button"
                 onClick={() =>
@@ -73,7 +107,7 @@ export default function FormACaseStudies() {
               </button>
             </div>
 
-            <div className="flex flex-col">
+            <div className="hidden sm:block">
               <button
                 type="button"
                 onClick={() =>
@@ -97,8 +131,13 @@ export default function FormACaseStudies() {
                   />
                 </div>
               </button>
+            </div>
 
-              <div className="mt-3 flex items-baseline justify-between gap-3">
+            {/* Sits below the swipe pair on mobile (plain document flow, no grid active
+                below `sm`); on desktop `sm:col-start-2` places it under the scan column
+                specifically, same spot the original single-column layout nested it in. */}
+            <div className="mt-6 sm:col-start-2 sm:mt-3">
+              <div className="flex items-baseline justify-between gap-3">
                 <h3
                   style={{
                     fontFamily: "var(--font-cormorant)",

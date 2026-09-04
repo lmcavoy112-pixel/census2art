@@ -971,7 +971,7 @@ function CensusLanding() {
       finishAt("townland");
     } catch (err) {
       console.error(err);
-      setError("Could not fully restore your last search — carry on from the step that loaded.");
+      setError("Could not fully restore your last search. Carry on from the step that loaded.");
       setLoadingMessage("");
     }
   }
@@ -1244,7 +1244,7 @@ function CensusLanding() {
               Also search for
             </p>
             <p className="mb-2 text-[12.5px] leading-relaxed text-stone-500">
-              The census recorded spelling inconsistently — include a likely variant to
+              The census recorded spelling inconsistently. Include a likely variant to
               search it alongside &ldquo;{surnameTitle}&rdquo;. The artwork will still
               say &ldquo;{surnameTitle}&rdquo;.
             </p>
@@ -1284,7 +1284,7 @@ function CensusLanding() {
             </div>
             {activeSurnameSearches.length >= MAX_SURNAMES && (
               <p className="mt-1.5 text-[12px] text-stone-500">
-                Included limit reached ({MAX_SURNAMES} surnames) — remove one to add another.
+                Included limit reached ({MAX_SURNAMES} surnames). Remove one to add another.
               </p>
             )}
           </div>
@@ -1351,7 +1351,7 @@ function CensusLanding() {
       />
     ) : (
       <EmptyNote>
-        Pick a county — or click one on the map — to see its district electoral
+        Pick a county, or click one on the map, to see its district electoral
         divisions.
       </EmptyNote>
     ),
@@ -1487,7 +1487,7 @@ function CensusLanding() {
                             {(!pinSource || pinSource === "centroid") && "Marker placed"}
                           </p>
                           <p className="text-[12px] text-white/75">
-                            Confirm location — drag marker if needed.
+                            Confirm location. Drag marker if needed.
                           </p>
                         </div>
                         <button

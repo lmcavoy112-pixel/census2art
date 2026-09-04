@@ -27,14 +27,14 @@ const TESTIMONIALS: Testimonial[] = [
   },
   {
     quote:
-      "Ordered this for my dad's birthday. He grew up hearing stories about a place he'd never seen — now it's hanging in his hallway.",
+      "Ordered this for my dad's birthday. He grew up hearing stories about a place he'd never seen, and now it's hanging in his hallway.",
     name: "Michael R.",
     location: "Boston, USA",
     rating: 5,
   },
   {
     quote:
-      "Long-lost heritage, now found — it sits as a conversation piece in our hallway. Everyone who visits asks about it.",
+      "Long-lost heritage, now found. It sits as a conversation piece in our hallway, and everyone who visits asks about it.",
     name: "John D.",
     location: "United States",
     rating: 5,

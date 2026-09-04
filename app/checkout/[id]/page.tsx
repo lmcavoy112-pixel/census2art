@@ -206,7 +206,7 @@ export default function CheckoutPage() {
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:border-neutral-900"
                 />
                 <span className="mt-1 block text-xs text-neutral-400">
-                  Recommended — helps with customs on international orders.
+                  Recommended, helps with customs on international orders.
                 </span>
               </label>
               <label className="block">
@@ -314,7 +314,7 @@ export default function CheckoutPage() {
             <p className="text-sm font-medium text-neutral-900">
               {order.price_gbp != null ? `£${order.price_gbp.toFixed(2)}` : order.sku}
             </p>
-            <p className="text-xs text-amber-700">Test order — no payment is taken yet.</p>
+            <p className="text-xs text-amber-700">Test order, no payment is taken yet.</p>
             {submitError && <p className="mt-1 text-sm text-red-700">{submitError}</p>}
           </div>
           <button
