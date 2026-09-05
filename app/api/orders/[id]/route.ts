@@ -4,6 +4,7 @@ import { createOrder, ProdigiApiError, type ProdigiRecipient } from "../../../..
 import { isValidCountryCode, STATE_REQUIRED_COUNTRY_CODES } from "../../../../lib/countries";
 import { requireAdmin } from "../../../../lib/admin-auth";
 import { submitOrderSchema } from "../../../../lib/validation";
+import { buildPackingSlipUrl } from "../../../../lib/packingSlip";
 
 /**
  * Order read and submit.
@@ -114,7 +115,7 @@ export async function POST(
     })
     .eq("id", id)
     .eq("status", "pending")
-    .select("id, status, sku, copies, attributes, image_url, price_gbp")
+    .select("id, status, sku, copies, attributes, image_url, price_gbp, product, surname, county")
     .maybeSingle();
 
   if (claimError) {
@@ -144,6 +145,18 @@ export async function POST(
       shippingMethod,
       recipient,
       callbackUrl: `${siteUrl}/api/prodigi/webhook/${webhookSecret}`,
+      branding: {
+        packing_slip_bw: {
+          url: buildPackingSlipUrl(siteUrl, {
+            ref: order.id,
+            recipient: recipient.name,
+            product: order.product || "Print",
+            surname: order.surname ?? undefined,
+            county: order.county ?? undefined,
+            qty: order.copies,
+          }),
+        },
+      },
       items: [
         {
           sku: order.sku,

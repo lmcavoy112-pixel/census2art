@@ -6,6 +6,7 @@ import { isAllowedPrintAssetUrl } from "@/lib/print-asset";
 import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
 import { isProductKind } from "@/lib/design/catalogue";
 import { sendDigitalDownloadEmail, type DigitalDownloadLine } from "@/lib/email";
+import { buildPackingSlipUrl } from "@/lib/packingSlip";
 
 // Named to match .env.local and scripts/get-shopify-access-token.ts. This previously read
 // SHOPIFY_API_SECRET, which is defined nowhere — so the secret resolved to "", every
@@ -447,6 +448,18 @@ export async function POST(request: NextRequest) {
         shippingMethod: "Standard",
         recipient,
         callbackUrl: `${siteUrl}/api/prodigi/webhook/${prodigiWebhookSecret}`,
+        branding: {
+          packing_slip_bw: {
+            url: buildPackingSlipUrl(siteUrl, {
+              ref: order.name ?? `#${order.id}`,
+              recipient: recipient.name,
+              product: line.title || "Print",
+              surname: attrs["Surname"],
+              county: attrs["County"],
+              qty: line.quantity,
+            }),
+          },
+        },
         items: [
           {
             sku: line.sku,

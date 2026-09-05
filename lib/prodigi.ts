@@ -44,6 +44,14 @@ export type CreateProdigiOrderRequest = {
   idempotencyKey?: string;
   callbackUrl?: string;
   metadata?: Record<string, unknown>;
+  // Per-order branded inserts. Only the free black & white packing slip is used today —
+  // see app/api/prodigi/packing-slip/route.ts for what it renders. Snake_case matches
+  // Prodigi's documented shape for this object specifically, unlike the rest of this
+  // camelCase request body — confirmed against their published API reference, but worth
+  // re-checking against a live order if Prodigi ever rejects it as an unknown field.
+  branding?: {
+    packing_slip_bw?: { url: string };
+  };
 };
 
 export class ProdigiApiError extends Error {
