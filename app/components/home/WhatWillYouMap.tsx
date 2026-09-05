@@ -1,5 +1,11 @@
+"use client";
+
+import { useState } from "react";
+
 import FramedPrint from "./FramedPrint";
 import HorizontalScroller from "./HorizontalScroller";
+import ImageLightbox from "./ImageLightbox";
+import { useIsDesktop } from "./useIsDesktop";
 
 const INK = "#1e2b18";
 const MUTED = "#6b5f4a";
@@ -37,9 +43,12 @@ const SCALES: { label: string; src: string; description: string }[] = [
  * HorizontalScroller.tsx.
  */
 export default function WhatWillYouMap() {
+  const isDesktop = useIsDesktop();
+  const [openImage, setOpenImage] = useState<{ src: string; alt: string } | null>(null);
+
   return (
     <section className="py-14 sm:py-16" style={{ background: "#fdfaf5" }}>
-      <div className="mx-auto max-w-6xl px-6">
+      <div className="mx-auto max-w-6xl px-6 text-left sm:text-center">
         <h2
           style={{
             fontFamily: "var(--font-cormorant)",
@@ -72,12 +81,22 @@ export default function WhatWillYouMap() {
             </p>
 
             <div className="mt-3">
-              <FramedPrint
-                src={scale.src}
-                alt={`${scale.label} example print`}
-                matPadding="0"
-                frameWidth="6px"
-              />
+              <button
+                type="button"
+                onClick={() =>
+                  isDesktop &&
+                  setOpenImage({ src: scale.src, alt: `${scale.label} example print` })
+                }
+                aria-label={`View a larger preview of the ${scale.label} example`}
+                className="block w-full cursor-default border-0 bg-transparent p-0 text-left sm:cursor-zoom-in"
+              >
+                <FramedPrint
+                  src={scale.src}
+                  alt={`${scale.label} example print`}
+                  matPadding="0"
+                  frameWidth="6px"
+                />
+              </button>
             </div>
 
             <p
@@ -89,6 +108,14 @@ export default function WhatWillYouMap() {
           </li>
         ))}
       </HorizontalScroller>
+
+      {isDesktop && openImage ? (
+        <ImageLightbox
+          src={openImage.src}
+          alt={openImage.alt}
+          onClose={() => setOpenImage(null)}
+        />
+      ) : null}
     </section>
   );
 }

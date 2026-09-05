@@ -19,8 +19,13 @@ const INK = "#1e2b18";
 /**
  * Landing page for ad traffic (Instagram/Meta): the artwork example, surname
  * search, a print gallery, and the live surname-preview banner, with none of the
- * homepage's other sections competing for attention. Reuses CensusBlock/Gallery/
- * DiscoverHistory as-is.
+ * homepage's other sections competing for attention.
+ *
+ * Two personas, two pitches: CensusBlock (+ its own "modern" gallery strip) is for
+ * visitors who roughly know where their family's from and want to find the exact
+ * house; DiscoverHistory (+ its "historic" strip) is for visitors who just want to
+ * see their surname on a map of Ireland with no research required. Gallery is split
+ * by `only` rather than shown once, neutrally, between the two.
  */
 export default function DiscoverPage() {
   return (
@@ -38,9 +43,10 @@ export default function DiscoverPage() {
       <SiteHeader />
 
       <main style={{ flex: 1 }}>
-        <CensusBlock collection={IRISH_CENSUS} />
-        <Gallery />
+        <CensusBlock collection={IRISH_CENSUS} eyebrow="Down to the house" />
+        <Gallery only="modern" />
         <DiscoverHistory />
+        <Gallery only="historic" />
       </main>
 
       <SiteFooter />

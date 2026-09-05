@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import SurnameSearch from "./SurnameSearch";
+import YearToggle from "./YearToggle";
 import HistoricPoster, { DEFAULT_HOTSPOT_COLOUR } from "@/app/components/historic/HistoricPoster";
 import { buildUrl, fetchJson, normaliseDedRows, readArray, type DedRow } from "@/lib/design/fetching";
 import { getAccentById, DEFAULT_ACCENT_ID } from "@/lib/design/appearance";
@@ -13,7 +14,6 @@ import { DEFAULT_HOTSPOT_INTENSITY } from "@/lib/hotspotStyle";
 const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
 const MUTED = "#6b5f4a";
-const GOLD = "#b8902a";
 const RULE = "#ddd6c4";
 
 // Same accent + Historic style defaults design/page.tsx itself opens with (see
@@ -98,7 +98,7 @@ export default function DiscoverHistory() {
       : null;
 
   return (
-    <section className="px-6 py-14 sm:py-16">
+    <section id="discover-historic" className="scroll-mt-24 px-6 py-14 sm:py-16">
       <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
         <div className="relative mx-auto aspect-[210/297] w-full max-w-sm overflow-hidden">
           {preview.status === "ready" ? (
@@ -161,63 +161,38 @@ export default function DiscoverHistory() {
               color: INK,
             }}
           >
-            Discover your Irish history.
+            Not sure exactly where your family's from?
           </h2>
           <p className="mt-4 max-w-md text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
-            Whether you live in Ireland or abroad, bring a piece of your history into your
-            home for all to see. Search your surname below and see it mapped, right here.
+            Search your surname and see everywhere it appears across Ireland, right here.
+            No records to dig through, no townland to track down.
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-3" role="group" aria-label="Census year">
-            {(["1901", "1911"] as const).map((year) => {
-              const active = year === censusYear;
-              return (
-                <button
-                  key={year}
-                  type="button"
-                  onClick={() => setCensusYear(year)}
-                  aria-pressed={active}
-                  className="rounded-full px-6 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{
-                    fontFamily: "var(--font-plex-mono)",
-                    letterSpacing: "0.08em",
-                    background: active ? INK : "transparent",
-                    color: active ? GROUND : INK,
-                    border: `1px solid ${active ? INK : RULE}`,
-                    outlineColor: GOLD,
-                  }}
-                >
-                  {year}
-                </button>
-              );
-            })}
+          <div className="mt-6">
+            <YearToggle
+              options={[{ value: "1901" }, { value: "1911" }]}
+              active={censusYear}
+              onChange={(value) => setCensusYear(value as YearId)}
+            />
           </div>
 
           <div className="mt-5 max-w-xl">
             <SurnameSearch
               censusYear={censusYear}
               onSelect={(surname) => setActiveSurname(surname)}
+              helperText="Select a surname from the list. The sample artwork will update to preview your selection."
+              actionSlot={
+                customiseHref ? (
+                  <Link
+                    href={customiseHref}
+                    className="inline-block shrink-0 rounded-xl px-7 py-4 text-center text-sm font-semibold transition-opacity hover:opacity-90"
+                    style={{ background: INK, color: GROUND, letterSpacing: "0.03em" }}
+                  >
+                    Customise
+                  </Link>
+                ) : undefined
+              }
             />
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-4">
-            <Link
-              href="/irish-census"
-              className="inline-block rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: INK, color: GROUND, letterSpacing: "0.03em" }}
-            >
-              Start Designing
-            </Link>
-
-            {customiseHref ? (
-              <Link
-                href={customiseHref}
-                className="inline-block rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: "transparent", color: INK, border: `1.5px solid ${INK}`, letterSpacing: "0.03em" }}
-              >
-                Customise
-              </Link>
-            ) : null}
           </div>
         </div>
       </div>

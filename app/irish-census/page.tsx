@@ -54,7 +54,6 @@ import {
 import {
   ArrowRightIcon,
   CountyIcon,
-  DistrictIcon,
   HouseholdIcon,
   ReviewIcon,
   SurnameIcon,
@@ -68,7 +67,7 @@ const IrelandMap = dynamic(() => import("../components/IrelandMap"), {
 });
 
 /** The narrowing steps, in the order the records themselves nest. */
-type SectionId = "surname" | "county" | "ded" | "townland" | "review";
+type SectionId = "surname" | "county" | "townland" | "review";
 
 /** Primary surname plus opted-in spelling variants — matches safeSurnameList()'s own
  *  cap in lib/validation.ts, which every multi-surname route enforces server-side
@@ -657,7 +656,6 @@ function CensusLanding() {
     setSelectedCounty(countyName);
     resetBelowCounty();
     setError("");
-    setOpenSection(countyName ? "ded" : "county");
 
     if (!countyName) {
       if (activeSurnameSearches.length > 0) {
@@ -912,7 +910,7 @@ function CensusLanding() {
 
       const ded = dedRows.find((item) => item.ded_id === target.dedId) ?? null;
       if (!ded) {
-        finishAt("ded");
+        finishAt("county");
         return;
       }
       setSelectedDed(ded);
@@ -1173,16 +1171,17 @@ function CensusLanding() {
   }
 
   /* ── Rail sections ───────────────────────────────────────────────────
-     Five steps that nest the way the records themselves do: a surname, then the
-     county it appears in, the division inside that, the townland inside that, and
-     finally one household. Each section's summary shows the current pick, so the
-     collapsed rail doubles as a breadcrumb of the search so far. */
+     Four steps that nest the way the records themselves do: a surname, then the
+     county and district it appears in, the townland and household inside that, and
+     finally a review before designing. Each section's summary shows the current
+     pick, so the collapsed rail doubles as a breadcrumb of the search so far. */
 
   const surnameSection: DesignerSection = {
     id: "surname",
     title: "Surname",
+    complete: Boolean(surnameTitle),
     summary: surnameTitle
-      ? `${surnameTitle}${counties.length ? ` · ${counties.length} counties` : ""}${
+      ? `${surnameTitle}${
           includedSurnames.size > 0
             ? ` +${includedSurnames.size} variant${includedSurnames.size > 1 ? "s" : ""}`
             : ""
@@ -1309,51 +1308,59 @@ function CensusLanding() {
 
   const countySection: DesignerSection = {
     id: "county",
-    title: "County",
-    summary: selectedCounty || (counties.length ? `All ${counties.length} counties` : "—"),
+    title: "County and District",
+    summary: selectedDed?.ded_display || selectedCounty || "—",
     note: surnameTitle ? undefined : "search a surname first",
+    disabled: !surnameTitle,
+    complete: Boolean(selectedDed),
     icon: <CountyIcon />,
-    body: counties.length ? (
-      <PickSelect
-        value={selectedCounty}
-        onChange={(value) => void handleSelectCounty(value)}
-        allLabel={`All ${counties.length} counties`}
-        options={counties.map((county) => ({
-          value: county.county_display,
-          label: county.county_display,
-          count: county.person_count,
-        }))}
-      />
-    ) : (
-      <EmptyNote>Search a surname to see the counties it appears in.</EmptyNote>
-    ),
-  };
+    body: (
+      <div className="space-y-4">
+        <div>
+          <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-[0.08em] text-stone-500">
+            County
+          </p>
+          {counties.length ? (
+            <PickSelect
+              value={selectedCounty}
+              onChange={(value) => void handleSelectCounty(value)}
+              allLabel={`All ${counties.length} counties`}
+              options={counties.map((county) => ({
+                value: county.county_display,
+                label: county.county_display,
+                count: county.person_count,
+              }))}
+            />
+          ) : (
+            <EmptyNote>Search a surname to see the counties it appears in.</EmptyNote>
+          )}
+        </div>
 
-  const dedSection: DesignerSection = {
-    id: "ded",
-    title: "District",
-    summary: selectedDed?.ded_display || (deds.length ? `${deds.length} divisions` : "—"),
-    note: selectedCounty ? undefined : "pick a county first",
-    icon: <DistrictIcon />,
-    body: deds.length ? (
-      <PickSelect
-        value={selectedDed?.ded_id ?? ""}
-        placeholder="Choose a district…"
-        onChange={(value) => {
-          const ded = deds.find((item) => item.ded_id === value);
-          if (ded) void handleSelectDed(ded);
-        }}
-        options={deds.map((ded) => ({
-          value: ded.ded_id,
-          label: ded.ded_display,
-          count: ded.person_count,
-        }))}
-      />
-    ) : (
-      <EmptyNote>
-        Pick a county, or click one on the map, to see its district electoral
-        divisions.
-      </EmptyNote>
+        {selectedCounty && (
+          <div className="border-t border-stone-200 pt-4">
+            <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-[0.08em] text-stone-500">
+              District
+            </p>
+            {deds.length ? (
+              <PickSelect
+                value={selectedDed?.ded_id ?? ""}
+                placeholder="Choose a district…"
+                onChange={(value) => {
+                  const ded = deds.find((item) => item.ded_id === value);
+                  if (ded) void handleSelectDed(ded);
+                }}
+                options={deds.map((ded) => ({
+                  value: ded.ded_id,
+                  label: ded.ded_display,
+                  count: ded.person_count,
+                }))}
+              />
+            ) : (
+              <EmptyNote>Fetching this county&apos;s district electoral divisions…</EmptyNote>
+            )}
+          </div>
+        )}
+      </div>
     ),
   };
 
@@ -1373,6 +1380,8 @@ function CensusLanding() {
           ? `${houseGroups.length} households`
           : "—",
     note: selectedDed ? undefined : "pick a district first",
+    disabled: !selectedDed,
+    complete: Boolean(selectedHouse),
     icon: <HouseholdIcon />,
     body: houseGroups.length ? (
       <div className="space-y-3">
@@ -1460,11 +1469,11 @@ function CensusLanding() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setFormAEnlarged(true)}
-                        disabled={formAUrls.length === 0}
+                        onClick={placeMarkerManually}
+                        disabled={!selectedPolygon?.geojson && !selectedDed?.geojson}
                         className="flex-1 rounded-md border border-white/40 px-3 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        View Form A
+                        Place it myself
                       </button>
                     </div>
 
@@ -1504,17 +1513,6 @@ function CensusLanding() {
                       <p className="text-[13px] font-medium text-white">No match found</p>
                     )}
 
-                    {!pin && (
-                      <button
-                        type="button"
-                        onClick={placeMarkerManually}
-                        disabled={!selectedPolygon?.geojson && !selectedDed?.geojson}
-                        className="w-full rounded-md border border-white/40 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Place it myself
-                      </button>
-                    )}
-
                     {!canPlaceMarker && (
                       <p className="text-[12.5px] leading-relaxed text-white/75">
                         The map is still loading this district&apos;s boundary. Once it
@@ -1537,11 +1535,16 @@ function CensusLanding() {
   // to the designer. Also where the household table and Form A access now live — they
   // aren't a choice either, so they belong here rather than permanently on screen
   // below every other tab regardless of what's being picked.
+  const allStepsComplete = Boolean(surnameTitle) && Boolean(selectedDed) && Boolean(selectedHouse);
+
   const reviewSection: DesignerSection = {
     id: "review",
     title: "Review Details",
     summary: surnameTitle ? "Check everything before designing." : "—",
     note: surnameTitle ? undefined : "search a surname first",
+    disabled: false,
+    complete: allStepsComplete,
+    incomplete: Boolean(surnameTitle) && !allStepsComplete,
     icon: <ReviewIcon />,
     body: surnameTitle ? (
       <div className="space-y-5">
@@ -1576,6 +1579,19 @@ function CensusLanding() {
                 <span className="font-medium text-stone-900">{row.value}</span>
               </div>
             ))}
+        </div>
+
+        {/* Right after the details, above the household table and Form A preview —
+            the hand-off is the point of this step, so it shouldn't take scrolling past
+            both of those to find. Desktop only: mobile already has this always on
+            screen via the fixed bottom bar (rendered outside this panel), so repeating
+            it here too would just be a second copy of the same button. */}
+        <div className="hidden border-t border-stone-200 pt-4 lg:block">
+          <CreateArtworkButton
+            variant="pane"
+            onClick={handleContinueToDesign}
+            disabled={Boolean(loadingMessage)}
+          />
         </div>
 
         {household.length > 0 && (
@@ -1673,20 +1689,10 @@ function CensusLanding() {
           </div>
         )}
 
-        <div className="border-t border-stone-200 pt-4">
-          {/* Desktop keeps the enlarged CTA inline, at the foot of the panel it
-              belongs to. Mobile relies on the fixed bar rendered below instead — this
-              spacer just reserves the room it would otherwise cover, so the table/
-              Form A preview above never sits underneath it. */}
-          <div className="hidden lg:block">
-            <CreateArtworkButton
-              variant="pane"
-              onClick={handleContinueToDesign}
-              disabled={Boolean(loadingMessage)}
-            />
-          </div>
-          <div aria-hidden="true" className="h-24 lg:hidden" />
-        </div>
+        {/* Mobile-only: reserves the room the fixed bottom bar (rendered outside this
+            panel) would otherwise cover, so the household table / Form A preview above
+            never sits underneath it. */}
+        <div aria-hidden="true" className="h-24 lg:hidden" />
       </div>
     ) : (
       <EmptyNote>Search a surname to get started.</EmptyNote>
@@ -1696,7 +1702,6 @@ function CensusLanding() {
   const sections: DesignerSection[] = [
     surnameSection,
     countySection,
-    dedSection,
     townlandSection,
     reviewSection,
   ];

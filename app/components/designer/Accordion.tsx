@@ -9,6 +9,7 @@
 // than decoration.
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { CompleteBadge, IncompleteBadge } from "./icons";
 
 export type DesignerSection = {
   id: string;
@@ -20,6 +21,12 @@ export type DesignerSection = {
   note?: string;
   icon: ReactNode;
   body: ReactNode;
+  /** Greyed out and inert in the rail/tabs until its prerequisite step is done. */
+  disabled?: boolean;
+  /** Draws a small green tick badge on the icon — this step is done. */
+  complete?: boolean;
+  /** Draws a small amber dot badge on the icon instead — reachable, but something's still missing. */
+  incomplete?: boolean;
 };
 
 export function SectionRail({
@@ -45,12 +52,25 @@ export function SectionRail({
             key={section.id}
             type="button"
             onClick={() => onSelect(section.id)}
+            disabled={section.disabled}
             aria-current={active ? "step" : undefined}
-            className={`flex flex-col items-center gap-1 border-b border-stone-100 px-1 py-3 transition-colors ${
+            className={`flex flex-col items-center gap-1 border-b border-stone-100 px-1 py-3 transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
               active ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:bg-stone-50"
             }`}
           >
-            <span aria-hidden="true">{section.icon}</span>
+            <span aria-hidden="true" className="relative inline-flex">
+              {section.icon}
+              {section.complete && (
+                <span className="absolute -right-1 -top-1">
+                  <CompleteBadge />
+                </span>
+              )}
+              {section.incomplete && (
+                <span className="absolute -right-1 -top-1">
+                  <IncompleteBadge />
+                </span>
+              )}
+            </span>
             <span className="text-center text-[10.5px] leading-tight">{section.title}</span>
           </button>
         );
@@ -90,12 +110,25 @@ export function SectionTabsHorizontal({
             key={section.id}
             type="button"
             onClick={() => onSelect(section.id)}
+            disabled={section.disabled}
             aria-current={active ? "step" : undefined}
-            className={`flex shrink-0 flex-col items-center gap-1 rounded-lg px-3 py-1.5 transition-colors ${
+            className={`flex shrink-0 flex-col items-center gap-1 rounded-lg px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               active ? "bg-stone-100 text-stone-900" : "text-stone-500"
             }`}
           >
-            <span aria-hidden="true">{section.icon}</span>
+            <span aria-hidden="true" className="relative inline-flex">
+              {section.icon}
+              {section.complete && (
+                <span className="absolute -right-1 -top-1">
+                  <CompleteBadge />
+                </span>
+              )}
+              {section.incomplete && (
+                <span className="absolute -right-1 -top-1">
+                  <IncompleteBadge />
+                </span>
+              )}
+            </span>
             <span className="whitespace-nowrap text-[10.5px] leading-tight">{section.title}</span>
           </button>
         );

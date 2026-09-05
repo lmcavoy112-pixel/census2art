@@ -10,19 +10,21 @@ import path from "path";
  * them shuffled. Two filename conventions are understood, both optional:
  *   - "Surname - County.png" shows a county line.
  *   - "Surname_house.png" / "Surname_district.png" / "Surname_townland.png" /
- *     "Surname_county.png" — an extent suffix (the actual naming the first real
- *     batch of samples used), stripped from the caption entirely rather than
- *     printed as a fake county name. "_"/"-"/space are all accepted as the
- *     separator before the extent word.
+ *     "Surname_county.png" / "Surname_historic.png" — an extent suffix (the actual
+ *     naming the first real batch of samples used), stripped from the caption
+ *     entirely rather than printed as a fake county name, and returned as `extent`
+ *     so callers (Gallery's `only` filter) can tell Modern-template samples
+ *     (house/district/townland/county) apart from Historic-template ones. "_"/"-"/
+ *     space are all accepted as the separator before the extent word.
  */
 const SAMPLES_DIR = path.join(process.cwd(), "public", "examples", "gallery");
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg"]);
 // The homepage's scroller shows the whole pool now — this is just a cap so a folder
 // with hundreds of files doesn't ship a huge response, not a meaningful limit today.
 const RESULT_LIMIT = 24;
-const EXTENT_WORDS = new Set(["house", "district", "townland", "county"]);
+const EXTENT_WORDS = new Set(["house", "district", "townland", "county", "historic"]);
 
-function parseFilename(filename: string): { surname: string; county?: string } {
+function parseFilename(filename: string): { surname: string; county?: string; extent?: string } {
   const stem = filename.replace(/\.[^.]+$/, "");
 
   if (stem.includes(" - ")) {
@@ -33,8 +35,10 @@ function parseFilename(filename: string): { surname: string; county?: string } {
   }
 
   const tokens = stem.split(/[_\s-]+/).filter(Boolean);
-  if (tokens.length > 1 && EXTENT_WORDS.has(tokens[tokens.length - 1].toLowerCase())) {
+  const lastToken = tokens[tokens.length - 1]?.toLowerCase();
+  if (tokens.length > 1 && lastToken && EXTENT_WORDS.has(lastToken)) {
     tokens.pop();
+    return { surname: tokens.join(" ").trim() || stem, extent: lastToken };
   }
   return { surname: tokens.join(" ").trim() || stem };
 }

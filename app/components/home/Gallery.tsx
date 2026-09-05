@@ -7,7 +7,10 @@ import HorizontalScroller from "./HorizontalScroller";
 import ImageLightbox from "./ImageLightbox";
 import { useIsDesktop } from "./useIsDesktop";
 
-type GalleryPrint = { img: string; surname: string; county?: string };
+type GalleryPrint = { img: string; surname: string; county?: string; extent?: string };
+
+const HISTORIC_EXTENTS = new Set(["historic"]);
+const MODERN_EXTENTS = new Set(["house", "district", "townland", "county"]);
 
 /**
  * Sample prints (GET /api/recent-purchase-samples), a shuffled pool read from
@@ -42,11 +45,26 @@ const GOLD = "#b8902a";
 /**
  * A horizontal strip of sample prints — no caption underneath, since the surname
  * and county are already printed on the artwork itself.
+ *
+ * `only` narrows the pool by the extent word in each filename (see
+ * /api/recent-purchase-samples): "modern" for house/district/townland/county
+ * samples, "historic" for country-wide Historic-template samples. Omit it to show
+ * the whole pool unfiltered (the homepage's call) — samples with no extent word at
+ * all (the "Surname - County.png" convention) only ever show up unfiltered, since
+ * there's no extent to classify them by.
  */
-export default function Gallery() {
-  const prints = useGalleryPrints();
+export default function Gallery({ only }: { only?: "modern" | "historic" } = {}) {
+  const allPrints = useGalleryPrints();
   const isDesktop = useIsDesktop();
   const [openPrint, setOpenPrint] = useState<GalleryPrint | null>(null);
+
+  const prints = !only
+    ? allPrints
+    : allPrints.filter((print) =>
+        only === "historic"
+          ? HISTORIC_EXTENTS.has(print.extent ?? "")
+          : MODERN_EXTENTS.has(print.extent ?? "")
+      );
 
   if (prints.length === 0) return null;
 

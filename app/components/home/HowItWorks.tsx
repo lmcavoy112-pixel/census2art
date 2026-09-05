@@ -87,7 +87,7 @@ export default function HowItWorks() {
         </div>
 
         <Link
-          href="/irish-census"
+          href="/discover"
           className="mt-10 inline-block rounded-full px-8 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
           style={{ background: RAISED, color: INK, letterSpacing: "0.03em" }}
         >

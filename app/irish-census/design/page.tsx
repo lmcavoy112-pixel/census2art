@@ -1832,46 +1832,33 @@ function ModernDesignContent() {
           </div>
         )}
 
-        <div className="border-t border-stone-200 pt-4">
-          <FieldLabel>Map extent</FieldLabel>
-          {template === "historic" ? (
-            <>
-              <ChoiceCards
-                columns={2}
-                ariaLabel="Map extent"
-                value="county"
-                onChange={() => {}}
-                options={[{ id: "county", label: "County" }]}
-              />
-              <HelpText>Historic prints are drawn from the whole county.</HelpText>
-            </>
-          ) : (
-            <>
-              <ChoiceCards
-                columns={3}
-                ariaLabel="Map extent"
-                value={level}
-                onChange={changeLevel}
-                options={availableLevels(deepestLevel).map((l) => ({
-                  id: l,
-                  label: MODERN_PRESETS[l].label,
-                }))}
-              />
-              {/* Townland and House are the two presets that behave differently
-                  (Townland frames tighter with no household record; House adds the
-                  household record and marker) — Country/County/District are
-                  self-explanatory from their names alone. */}
-              {(level === "street" || level === "townland") && (
-                <HelpText>{preset.description}</HelpText>
-              )}
-            </>
-          )}
-          {template === "modern" && !preset.allowsPin && pin && (
-            <p className="mt-2 rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
-              Your marker is kept but not shown at this extent.
-            </p>
-          )}
-        </div>
+        {template === "modern" && (
+          <div className="border-t border-stone-200 pt-4">
+            <FieldLabel>Map extent</FieldLabel>
+            <ChoiceCards
+              columns={3}
+              ariaLabel="Map extent"
+              value={level}
+              onChange={changeLevel}
+              options={availableLevels(deepestLevel).map((l) => ({
+                id: l,
+                label: MODERN_PRESETS[l].label,
+              }))}
+            />
+            {/* Townland and House are the two presets that behave differently
+                (Townland frames tighter with no household record; House adds the
+                household record and marker) — Country/County/District are
+                self-explanatory from their names alone. */}
+            {(level === "street" || level === "townland") && (
+              <HelpText>{preset.description}</HelpText>
+            )}
+            {!preset.allowsPin && pin && (
+              <p className="mt-2 rounded-md bg-stone-100 px-3 py-2 text-[12.5px] leading-relaxed text-stone-600">
+                Your marker is kept but not shown at this extent.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     ),
   };
@@ -2832,7 +2819,19 @@ function ModernDesignContent() {
                 hotspotIntensity={hotspotIntensity}
                 shadingOpacity={shadingOpacity}
                 hotspotColour={hotspotColour}
-                emptyMessage={mapError || "Loading the Ireland-wide surname map…"}
+                emptyMessage={
+                  mapError ||
+                  // No surname was carried in (e.g. a blank "start from scratch" entry
+                  // into Historic) — nothing is actually loading, so saying so forever
+                  // would be misleading. The Surname field in the Information tab only
+                  // edits this printed heading, not this state, so it can't fill the map
+                  // in from here — a surname has to be picked before entering the
+                  // designer (via "Back to search"), which is why the message points
+                  // there rather than at the field on this page.
+                  (surnameSearch
+                    ? "Loading the Ireland-wide surname map…"
+                    : "No surname selected yet. Go back to search and pick one to map it here.")
+                }
               />
               </div>
             ) : (

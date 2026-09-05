@@ -153,16 +153,6 @@ export function CountyIcon(props: IconProps) {
   );
 }
 
-/** A subdivided parcel — the district electoral division. */
-export function DistrictIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M4 4h16v16H4z" />
-      <path d="M4 12h9M13 4v16" />
-    </Svg>
-  );
-}
-
 /** A field boundary with a tree — the townland, the smallest land division. */
 export function TownlandIcon(props: IconProps) {
   return (
@@ -195,6 +185,32 @@ export function ReviewIcon(props: IconProps) {
       <path d="M8.5 9.5l1.3 1.3L12.5 8" />
       <path d="M9 15h6" />
     </Svg>
+  );
+}
+
+/** Corner badge for a rail/tab icon — a filled green check, this step is done. */
+export function CompleteBadge({ size = 9 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="12" fill="#16a34a" />
+      <path
+        d="M7 12.5l3.2 3.2L17 8.5"
+        fill="none"
+        stroke="white"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Corner badge for a rail/tab icon — a small amber dot, some data's still missing. */
+export function IncompleteBadge({ size = 9 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="12" fill="#b8902a" />
+    </svg>
   );
 }
 

@@ -95,6 +95,10 @@ export default function HorizontalScroller({
 
     function onWheel(event: WheelEvent) {
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      // Nothing to scroll to (e.g. WhatWillYouMap's four cards already fit on a wide
+      // viewport) — let the wheel event fall through to the page's normal vertical
+      // scroll instead of swallowing it for a row that can't move.
+      if (el!.scrollWidth <= el!.clientWidth) return;
       event.preventDefault();
       el!.scrollBy({ left: event.deltaY, behavior: "auto" });
     }

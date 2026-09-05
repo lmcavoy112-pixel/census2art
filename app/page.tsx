@@ -4,6 +4,7 @@ import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
 import CensusBlock from "./components/home/CensusBlock";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
+import AncestryKnowledge from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
 import Testimonials from "./components/home/Testimonials";
@@ -70,7 +71,7 @@ export default function Home() {
 
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
-                  href="/irish-census"
+                  href="/discover"
                   className="rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
                 >
@@ -90,13 +91,16 @@ export default function Home() {
           </div>
         </section>
 
+        <FeaturedQuote />
+
+        <WhatWillYouMap />
+
         {/* ── BLOCK 2 · IRISH CENSUS ───────────────────────────────────────────
             One block per country. England and the rest follow this same shape, which
             is why it is a component fed by lib/censusEditions.ts rather than markup. */}
-        <FeaturedQuote />
         <CensusBlock collection={IRISH_CENSUS} />
+        <AncestryKnowledge />
 
-        <WhatWillYouMap />
         <HowItWorks />
         <Gallery />
         <Testimonials />

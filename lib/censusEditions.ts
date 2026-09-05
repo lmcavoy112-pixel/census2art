@@ -52,7 +52,7 @@ export const IRISH_CENSUS: CensusCollection = {
       // wraps to a different number of lines would shove the search box and
       // everything below it up or down the page.
       blurb:
-        "Every household in Ireland was recorded on the census of 1901: names, ages, occupations and where each person was born, taken down townland by townland.",
+        "Search your surname and follow it down to the county, the townland, even the house your family lived in — every name, age and occupation as recorded in 1901.",
       recentPurchases: [
         { img: "/examples/Irish Census/1901/eg1.svg", surname: "Clare" },
         { img: "/examples/Irish Census/1901/eg2.svg", surname: "King" },
@@ -66,7 +66,7 @@ export const IRISH_CENSUS: CensusCollection = {
       href: "/irish-census",
       available: true,
       blurb:
-        "Every household in Ireland was recorded on the census of 1911: names, ages, occupations and where each person was born, taken down townland by townland.",
+        "Search your surname and follow it down to the county, the townland, even the house your family lived in — every name, age and occupation as recorded in 1911.",
       // No 1911-specific sample art exists yet (the 1901 samples under
       // public/examples/Irish Census/1901/ have "1901" drawn directly into the
       // artwork, so reusing them here would print a wrong date) — left empty rather

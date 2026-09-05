@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import SurnameSearch from "./SurnameSearch";
+import YearToggle, { type YearToggleOption } from "./YearToggle";
+import { buildUrl } from "@/lib/design/fetching";
 import type { CensusCollection } from "@/lib/censusEditions";
 
 const RAISED = "#fdfaf5";
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
-const RULE = "#ddd6c4";
 const CARD_SHADOW = "0 30px 60px -24px rgba(30,43,24,0.4), 0 3px 10px rgba(30,43,24,0.1)";
 
 /**
@@ -20,9 +22,15 @@ const CARD_SHADOW = "0 30px 60px -24px rgba(30,43,24,0.4), 0 3px 10px rgba(30,43
  */
 export default function CensusBlock({
   collection,
+  eyebrow,
 }: {
   collection: CensusCollection;
+  /** Small caps label above the heading — signals who this section is for before
+   *  the visitor reads the blurb. Optional so the homepage's call (no eyebrow)
+   *  is unaffected by copy written for /discover. */
+  eyebrow?: string;
 }) {
+  const router = useRouter();
   const [selectedYear, setSelectedYear] = useState(
     // Default to the first year whose records are actually loaded.
     collection.editions.find((edition) => edition.available)?.year ??
@@ -35,6 +43,20 @@ export default function CensusBlock({
 
   const sectionId = collection.label.toLowerCase().replace(/\s+/g, "-");
 
+  // Picking a surname here hands off to the /irish-census county/DED/townland/house
+  // browser, landing on its first step (Surname) with the pick already searched — the
+  // same deep link the browser itself supports (see its `?surname=` handling) — so the
+  // spelling-variant list ("Also search for") is right there rather than skipping
+  // straight into the designer with no chance to widen or narrow the search first.
+  function handleSelect(picked: { display: string; search: string }) {
+    router.push(
+      buildUrl("/irish-census", {
+        surname: picked.search,
+        year: selectedYear,
+      })
+    );
+  }
+
   return (
     <section
       id={sectionId}
@@ -44,6 +66,20 @@ export default function CensusBlock({
       {/* max-w-6xl so this block's left edge lines up with the one above it. */}
       <div className="mx-auto grid max-w-6xl gap-10 sm:grid-cols-2 sm:items-center sm:gap-12">
         <div>
+          {eyebrow ? (
+            <p
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                fontSize: "0.7rem",
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: GOLD,
+                marginBottom: "0.5rem",
+              }}
+            >
+              {eyebrow}
+            </p>
+          ) : null}
           <h2
             style={{
               fontFamily: "var(--font-cormorant)",
@@ -54,36 +90,22 @@ export default function CensusBlock({
             {collection.label}
           </h2>
 
-          {/* Year selector */}
-          <div className="mt-6 flex flex-wrap gap-3" role="group" aria-label="Census year">
-            {collection.editions.map((option) => {
-              const active = option.year === selectedYear;
-              return (
-                <button
-                  key={option.year}
-                  type="button"
-                  onClick={() => setSelectedYear(option.year)}
-                  aria-pressed={active}
-                  className="rounded-full px-6 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{
-                    fontFamily: "var(--font-plex-mono)",
-                    letterSpacing: "0.08em",
-                    background: active ? INK : "transparent",
-                    color: active ? RAISED : option.available ? INK : MUTED,
-                    border: `1px solid ${active ? INK : RULE}`,
-                    outlineColor: GOLD,
-                    opacity: option.available ? 1 : 0.65,
-                  }}
-                >
-                  {option.year}
-                  {option.available ? null : (
-                    <span className="ml-2 text-[0.62rem]" style={{ letterSpacing: "0.1em" }}>
-                      SOON
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          {/* Year selector — a true binary switch, since IRISH_CENSUS (the only
+              collection actually rendered through this component today) always has
+              exactly two editions. */}
+          <div className="mt-6">
+            <YearToggle
+              options={
+                collection.editions
+                  .slice(0, 2)
+                  .map((e) => ({ value: e.year, available: e.available })) as [
+                  YearToggleOption,
+                  YearToggleOption,
+                ]
+              }
+              active={selectedYear}
+              onChange={setSelectedYear}
+            />
           </div>
 
           {/* minHeight covers two lines at this text size — the 1901/1911 blurbs in
@@ -99,12 +121,13 @@ export default function CensusBlock({
 
           <div className="mt-6 max-w-xl">
             <SurnameSearch
-              targetHref={edition.href ?? "#"}
+              onSelect={handleSelect}
               disabled={!edition.available || !edition.href}
               disabledNote={`The ${edition.year} records are not searchable yet. Pick ${
                 collection.editions.find((e) => e.available)?.year ?? "another year"
               } to search now.`}
               censusYear={edition.year === "1911" ? "1911" : "1901"}
+              helperText="Select a surname from the list to search where it appears."
             />
           </div>
         </div>

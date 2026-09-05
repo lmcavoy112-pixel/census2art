@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { buildUrl, fetchJson, normaliseSurnameSearch } from "@/lib/design/fetching";
 
@@ -10,7 +9,6 @@ const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 const RAISED = "#fdfaf5";
-const GROUND = "#fdfaf5";
 /** GROUND is now nearly indistinguishable from RAISED (both whitened), so the two
  *  spots below that need to show up *against* a RAISED surface — the disabled-state
  *  box and the dropdown's hovered row — use this slightly deeper neutral instead. */
@@ -25,34 +23,45 @@ type SurnameOption = {
 /**
  * The same surname lookup the census landing page runs — same `/api/surnames/list`
  * endpoint, same record counts in the dropdown — but instead of searching in place
- * it hands the chosen surname to the edition's page, which picks the search back up
- * from the `surname` query parameter and skips straight to the results.
+ * it hands the chosen surname back to the caller via `onSelect`.
+ *
+ * Selection is dropdown-only: `/api/surnames/list` (this box) does a broad prefix
+ * match, but every destination a caller sends a chosen name to (a live preview, the
+ * designer) resolves it with an *exact* match against `surname_search` — so free-typed
+ * text that isn't actually picked from the list is, at best, redundant with what the
+ * list already showed and, at worst, a guaranteed dead end. There is deliberately no
+ * submit button; Enter picks whichever row is highlighted (the top match by default,
+ * or one moved to with the arrow keys), and a caller wanting an explicit CTA renders
+ * one itself via `actionSlot`, in the same row as the input.
  */
 export default function SurnameSearch({
-  targetHref,
   disabled = false,
   disabledNote,
   censusYear = "1901",
   onSelect,
+  helperText = "Select a surname from the list.",
+  actionSlot,
 }: {
-  targetHref?: string;
   disabled?: boolean;
   disabledNote?: string;
-  /** Which census edition the autocomplete list and the target page's search should
-   *  scope to — CensusBlock passes its selected year's tab through here. */
+  /** Which census edition the autocomplete list should scope to — CensusBlock passes
+   *  its selected year's tab through here. */
   censusYear?: "1901" | "1911";
-  /** When set, a chosen surname is handed back here instead of navigating to
-   *  `targetHref` — used by the Examples page's live preview, which wants to render
-   *  the surname in place rather than send the visitor off to the designer. */
-  onSelect?: (surname: { display: string; search: string }) => void;
+  /** Called with the surname picked from the dropdown. */
+  onSelect: (surname: { display: string; search: string }) => void;
+  /** Small print under the input explaining that a button-less search box only
+   *  responds to a picked row — callers override the default wording to describe
+   *  what picking one actually does for them. */
+  helperText?: string;
+  /** Rendered in the same flex row as the input, where the old submit button used to
+   *  sit — a caller-owned call to action (e.g. DiscoverHistory's "Customise" link),
+   *  shown once it actually has somewhere to send the visitor. */
+  actionSlot?: ReactNode;
 }) {
-  const router = useRouter();
-
   const [surname, setSurname] = useState("");
   const [options, setOptions] = useState<SurnameOption[]>([]);
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
-  const [submitting, setSubmitting] = useState(false);
 
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -76,8 +85,12 @@ export default function SurnameSearch({
       fetchJson(buildUrl("/api/surnames/list", { q: query, census_year: censusYear }))
         .then((res) => {
           if (cancelled) return;
-          setOptions(Array.isArray(res?.surnames) ? res.surnames : []);
-          setHighlighted(-1);
+          const list: SurnameOption[] = Array.isArray(res?.surnames) ? res.surnames : [];
+          setOptions(list);
+          // Defaults to the top match rather than nothing highlighted, so Enter
+          // submits the obvious choice without first requiring an arrow-key press —
+          // still a dropdown pick, just the list's own top row instead of a manual one.
+          setHighlighted(list.length > 0 ? 0 : -1);
         })
         .catch(() => {});
     }, 160);
@@ -88,27 +101,21 @@ export default function SurnameSearch({
     };
   }, [surname, disabled, censusYear]);
 
-  function go(value: string, surnameSearch?: string) {
-    const trimmed = value.trim();
+  function go(display: string, surnameSearch?: string) {
+    const trimmed = display.trim();
     if (!trimmed || disabled) return;
     setOpen(false);
-
-    if (onSelect) {
-      onSelect({ display: trimmed, search: surnameSearch || normaliseSurnameSearch(trimmed) });
-      return;
-    }
-
-    setSubmitting(true);
-    // buildUrl, not string interpolation — targetHref is a bare path today, but
-    // appending "?surname=..." directly would double up the "?" the moment a caller
-    // passes one that already carries its own query string.
-    router.push(buildUrl(targetHref || "#", { surname: trimmed, year: censusYear }));
+    // Completes the box to the picked name — without this, picking "Murph" from the
+    // list for "Murphy" left the input showing whatever partial text was typed.
+    setSurname(trimmed);
+    onSelect({ display: trimmed, search: surnameSearch || normaliseSurnameSearch(trimmed) });
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const chosen = highlighted >= 0 ? options[highlighted] : null;
-    go(chosen?.surname_display ?? surname, chosen?.surname_search);
+    if (highlighted < 0) return;
+    const chosen = options[highlighted];
+    go(chosen.surname_display, chosen.surname_search);
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -165,15 +172,12 @@ export default function SurnameSearch({
             }}
           />
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
-          style={{ background: INK, color: GROUND, letterSpacing: "0.03em" }}
-        >
-          {submitting ? "Searching…" : "Search surname"}
-        </button>
+        {actionSlot}
       </form>
+
+      <p className="mt-2 text-xs" style={{ color: MUTED }}>
+        {helperText}
+      </p>
 
       {open && options.length > 0 ? (
         <ul
