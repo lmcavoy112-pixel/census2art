@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import FramedPrint from "./FramedPrint";
+
 const INK = "#1e2b18";
 const GOLD = "#b8902a";
 const MUTED = "#6b5f4a";
@@ -9,6 +11,8 @@ type Route = {
   heading: string;
   body: string;
   href: string;
+  preview: string;
+  previewAlt: string;
 };
 
 const ROUTES: Route[] = [
@@ -16,6 +20,10 @@ const ROUTES: Route[] = [
     heading: "I know the house or townland, or have a rough idea",
     body: "Search a surname above and drill down to the exact address inside the designer.",
     href: "#irish-census",
+    // Modern template: a precise street-level map, since this path needs a real
+    // address to search down to.
+    preview: "/examples/irish-census-1901-example.png",
+    previewAlt: "A Modern-template sample print: a street-level map pinned to one house",
   },
   {
     heading: "I only know the surname, or not even that",
@@ -24,6 +32,9 @@ const ROUTES: Route[] = [
     // flow this points at) only exists on /discover, so this is a real cross-page link,
     // not an in-page anchor like the card above.
     href: "/discover#discover-historic",
+    // Historic template: the nationwide, ornate distribution map — no address needed.
+    preview: "/examples/discover-history-placeholder.png",
+    previewAlt: "A Historic-template sample print: a nationwide surname distribution map",
   },
 ];
 
@@ -87,6 +98,9 @@ export default function AncestryKnowledge() {
               <p className="mt-2 text-sm leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
                 {route.body}
               </p>
+              <div className="mt-5 w-32">
+                <FramedPrint src={route.preview} alt={route.previewAlt} matPadding="0" frameWidth="6px" />
+              </div>
             </Link>
           ))}
         </div>

@@ -112,9 +112,9 @@ export default function DiscoverHistory() {
               basemapId={BASEMAP_ID}
               borderStyle={BORDER_STYLE}
               symbolChoice={SYMBOL_CHOICE}
-              hotspotStyle
+              hotspotStyle={false}
               hotspotIntensity={DEFAULT_HOTSPOT_INTENSITY}
-              shadingOpacity={0.5}
+              shadingOpacity={0.8}
               hotspotColour={DEFAULT_HOTSPOT_COLOUR}
             />
           ) : preview.status === "empty" || preview.status === "error" ? (

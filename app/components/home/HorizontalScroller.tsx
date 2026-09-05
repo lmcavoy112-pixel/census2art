@@ -188,7 +188,9 @@ export default function HorizontalScroller({
     <div className="relative mt-6">
       <ul
         ref={scrollerRef}
-        className="horizontal-scroller flex scroll-smooth gap-5 overflow-x-auto pt-3 pb-5 sm:gap-7"
+        className={`horizontal-scroller flex scroll-smooth gap-5 overflow-x-auto pt-3 pb-5 sm:gap-7 ${
+          needsScroll ? "" : "justify-center"
+        }`}
         style={{
           // Real value ("mandatory" in paging mode) is set imperatively in the
           // layout effect above — see the comment there for why.

@@ -132,7 +132,6 @@ import {
   MapStyleIcon,
   ResizeIcon,
   SaveIcon,
-  SymbolIcon,
   TemplateIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -154,7 +153,7 @@ import {
   isAccentId,
   type AccentId,
 } from "@/lib/design/appearance";
-import { DEFAULT_HOTSPOT_INTENSITY, type HotspotIntensity } from "@/lib/hotspotStyle";
+import { DEFAULT_HOTSPOT_INTENSITY } from "@/lib/hotspotStyle";
 
 const ModernMapCanvas = dynamic(() => import("@/app/components/modern/ModernMapCanvas"), {
   ssr: false,
@@ -444,11 +443,7 @@ function ModernDesignContent() {
   const [historicBorder, setHistoricBorder] = useState<string | null>("Celtic Spirals");
   const [historicSymbol, setHistoricSymbol] = useState("Celtic Harp");
   const [accentId, setAccentId] = useState<AccentId>(DEFAULT_ACCENT_ID);
-  const [hotspotStyle, setHotspotStyle] = useState(true);
-  const [hotspotIntensity, setHotspotIntensity] = useState<HotspotIntensity>(
-    DEFAULT_HOTSPOT_INTENSITY
-  );
-  const [shadingOpacity, setShadingOpacity] = useState(0.5);
+  const [shadingOpacity, setShadingOpacity] = useState(0.8);
   const [hotspotColour, setHotspotColour] = useState(DEFAULT_HOTSPOT_COLOUR);
 
   // ── Detail fields — how deep the selection drilled ─────────────────
@@ -1695,8 +1690,6 @@ function ModernDesignContent() {
                   borderStyle: effectiveBorder,
                   symbol: isSquare ? null : historicSymbol,
                   accent: accentId,
-                  hotspotStyle,
-                  hotspotIntensity,
                   shadingOpacity,
                   hotspotColour,
                 }
@@ -2486,7 +2479,8 @@ function ModernDesignContent() {
   const historicMapStyleSection: DesignerSection = {
     id: "historic-map",
     title: "Map style",
-    summary: "Choose the basemap and the border around it.",
+    summary: "Choose the basemap, border and symbol.",
+    note: isSquare ? "Symbol unavailable on Square" : undefined,
     icon: <MapStyleIcon />,
     body: (
       <div className="space-y-4">
@@ -2519,6 +2513,43 @@ function ModernDesignContent() {
               portrait plate.
             </HelpText>
           )}
+        </div>
+
+        <div className="border-t border-stone-200 pt-5">
+          <GroupLabel>Symbol</GroupLabel>
+          {isSquare && (
+            <p className="mb-3 rounded-md bg-stone-100 px-3 py-2.5 text-[13px] leading-relaxed text-stone-600">
+              Square prints have no room for the symbol divider between the map and the
+              surname. Choose the Portrait shape in Template to print one.
+            </p>
+          )}
+          <div
+            className={`grid grid-cols-2 gap-2 ${isSquare ? "pointer-events-none opacity-40" : ""}`}
+            aria-disabled={isSquare}
+          >
+            {HISTORIC_SYMBOLS.map((option) => {
+              const selected = !isSquare && historicSymbol === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={isSquare}
+                  aria-pressed={selected}
+                  onClick={() => setHistoricSymbol(option.id)}
+                  className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                    selected
+                      ? "border-stone-900 bg-white ring-1 ring-stone-900"
+                      : "border-stone-300 bg-white hover:bg-stone-50"
+                  }`}
+                >
+                  <HistoricSymbolGlyph symbol={option.id} size={20} colour={historicAccent.accent} />
+                  <span className="min-w-0 flex-1 text-[13px] font-medium leading-tight text-stone-900">
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     ),
@@ -2554,42 +2585,6 @@ function ModernDesignContent() {
           <GroupLabel>District shading</GroupLabel>
 
           <div className="mb-5">
-            <FieldLabel>Style</FieldLabel>
-            <ChoiceCards
-              columns={2}
-              ariaLabel="Shading style"
-              value={hotspotStyle ? "hotspot" : "flat"}
-              onChange={(id) => setHotspotStyle(id === "hotspot")}
-              options={[
-                { id: "hotspot", label: "Hotspots", detail: "Soft glow per district" },
-                { id: "flat", label: "Districts", detail: "Filled shapes" },
-              ]}
-            />
-          </div>
-
-          {hotspotStyle ? (
-            <Stepper
-              label="Hotspot intensity"
-              valueLabel={`${hotspotIntensity} / 5`}
-              index={hotspotIntensity - 1}
-              count={5}
-              onIndexChange={(i) => setHotspotIntensity((i + 1) as HotspotIntensity)}
-              minLabel="Subtle"
-              maxLabel="Strong"
-            />
-          ) : (
-            <Stepper
-              label="Shading strength"
-              valueLabel={`${Math.round(shadingOpacity * 100)}%`}
-              index={Math.round((shadingOpacity - 0.1) / 0.1)}
-              count={10}
-              onIndexChange={(i) => setShadingOpacity(0.1 + i * 0.1)}
-              minLabel="Light"
-              maxLabel="Solid"
-            />
-          )}
-
-          <div className="mt-5">
             <FieldLabel>Shading colour</FieldLabel>
             <div className="flex flex-wrap items-start gap-2">
               {HOTSPOT_COLOURS.map((option) => (
@@ -2612,53 +2607,16 @@ function ModernDesignContent() {
               />
             </div>
           </div>
-        </div>
-      </div>
-    ),
-  };
 
-  const historicSymbolSection: DesignerSection = {
-    id: "historic-symbol",
-    title: "Symbol",
-    summary: "Choose the emblem printed above your surname.",
-    // Square is shown greyed rather than hidden, so the choice a customer loses by
-    // picking Square is visible where they'd look for it — not silently absent.
-    note: isSquare ? "Only available on ISO sizes" : undefined,
-    icon: <SymbolIcon />,
-    body: (
-      <div className="space-y-3">
-        {isSquare && (
-          <p className="rounded-md bg-stone-100 px-3 py-2.5 text-[13px] leading-relaxed text-stone-600">
-            Square prints have no room for the symbol divider between the map and the
-            surname. Choose the Portrait shape in Template to print one.
-          </p>
-        )}
-        <div
-          className={`grid grid-cols-2 gap-2 ${isSquare ? "pointer-events-none opacity-40" : ""}`}
-          aria-disabled={isSquare}
-        >
-          {HISTORIC_SYMBOLS.map((option) => {
-            const selected = !isSquare && historicSymbol === option.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                disabled={isSquare}
-                aria-pressed={selected}
-                onClick={() => setHistoricSymbol(option.id)}
-                className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors ${
-                  selected
-                    ? "border-stone-900 bg-white ring-1 ring-stone-900"
-                    : "border-stone-300 bg-white hover:bg-stone-50"
-                }`}
-              >
-                <HistoricSymbolGlyph symbol={option.id} size={20} colour={historicAccent.accent} />
-                <span className="min-w-0 flex-1 text-[13px] font-medium leading-tight text-stone-900">
-                  {option.label}
-                </span>
-              </button>
-            );
-          })}
+          <Stepper
+            label="Shading strength"
+            valueLabel={`${Math.round(shadingOpacity * 100)}%`}
+            index={Math.round((shadingOpacity - 0.1) / 0.1)}
+            count={10}
+            onIndexChange={(i) => setShadingOpacity(0.1 + i * 0.1)}
+            minLabel="Light"
+            maxLabel="Solid"
+          />
         </div>
       </div>
     ),
@@ -2678,7 +2636,6 @@ function ModernDesignContent() {
           familySection,
           historicMapStyleSection,
           historicColourSection,
-          historicSymbolSection,
           sizeSection,
         ];
 
@@ -2815,8 +2772,8 @@ function ModernDesignContent() {
                 basemapId={historicBasemap}
                 borderStyle={effectiveBorder}
                 symbolChoice={historicSymbol}
-                hotspotStyle={hotspotStyle}
-                hotspotIntensity={hotspotIntensity}
+                hotspotStyle={false}
+                hotspotIntensity={DEFAULT_HOTSPOT_INTENSITY}
                 shadingOpacity={shadingOpacity}
                 hotspotColour={hotspotColour}
                 emptyMessage={
