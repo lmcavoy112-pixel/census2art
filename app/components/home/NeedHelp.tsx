@@ -26,7 +26,7 @@ export default function NeedHelp() {
         </p>
         <Link
           href="/contact"
-          className="mt-6 inline-block rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
+          className="mt-6 inline-block rounded-xl px-7 py-3 text-sm font-semibold transition-opacity hover:opacity-90 sm:py-4"
           style={{ background: INK, color: GROUND, letterSpacing: "0.03em" }}
         >
           Get in touch

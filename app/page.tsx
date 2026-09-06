@@ -6,6 +6,7 @@ import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import { AncestryKnowledgeModern, AncestryKnowledgeHistoric } from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
+import SectionDivider from "./components/home/SectionDivider";
 import Testimonials from "./components/home/Testimonials";
 import NeedHelp from "./components/home/NeedHelp";
 import HeroLedgerMap from "./components/home/HeroLedgerMap";
@@ -70,14 +71,14 @@ export default function Home() {
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link
                   href="/discover"
-                  className="rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
+                  className="rounded-xl px-7 py-3 text-sm font-semibold transition-opacity hover:opacity-90 sm:py-4"
                   style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
                 >
                   Find your family
                 </Link>
                 <Link
                   href="/examples"
-                  className="rounded-xl px-7 py-4 text-sm font-semibold transition-colors hover:bg-black/[0.03]"
+                  className="rounded-xl px-7 py-3 text-sm font-semibold transition-colors hover:bg-black/[0.03] sm:py-4"
                   style={{ border: `1px solid ${RULE}`, color: INK, letterSpacing: "0.03em" }}
                 >
                   See examples
@@ -92,6 +93,7 @@ export default function Home() {
         <FeaturedQuote />
 
         <WhatWillYouMap />
+        <SectionDivider />
 
         {/* Each persona's pitch sits right above its own matching examples — a
             house-level gallery for "know the surname and place", a nationwide
@@ -99,6 +101,7 @@ export default function Home() {
             gallery shared between both further down the page. */}
         <AncestryKnowledgeModern />
         <Gallery only="modern" />
+        <SectionDivider />
         <AncestryKnowledgeHistoric />
         <Gallery only="historic" />
 

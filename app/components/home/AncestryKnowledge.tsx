@@ -30,11 +30,12 @@ const HISTORIC_PITCH: Pitch = {
 
 function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: string }) {
   return (
-    // Bottom padding shrinks on mobile only — the title-less Gallery strip right
-    // after this already carries its own (also shrunk) top padding, and the two were
-    // stacking into a much bigger gap than intended between the button and the
-    // examples below it. Desktop is unaffected (sm:py-16 restores the symmetric pad).
-    <section className="px-6 pt-14 pb-4 sm:py-16">
+    // Top and bottom padding both shrink on mobile only — a SectionDivider now
+    // marks this block's own top border (see page.tsx), and the title-less Gallery
+    // strip right after already carries its own (also shrunk) top padding, so
+    // neither edge needs to do all the separating on its own with whitespace alone.
+    // Desktop is unaffected (sm:py-16 restores the original symmetric pad).
+    <section className="px-6 pt-8 pb-4 sm:py-16">
       <div className="mx-auto max-w-6xl">
         {sectionHeading ? (
           <h2
@@ -65,7 +66,7 @@ function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: 
           </p>
           <Link
             href={pitch.buttonHref}
-            className="mt-6 inline-block rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
+            className="mt-6 inline-block rounded-xl px-7 py-3 text-sm font-semibold transition-opacity hover:opacity-90 sm:py-4"
             style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
           >
             {pitch.buttonLabel}
