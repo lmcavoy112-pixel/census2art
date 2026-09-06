@@ -6,9 +6,9 @@ import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import {
   AncestryKnowledgeBanner,
   AncestryKnowledgeModernHeading,
-  AncestryKnowledgeModernBody,
+  AncestryKnowledgeModernButton,
   AncestryKnowledgeHistoricHeading,
-  AncestryKnowledgeHistoricBody,
+  AncestryKnowledgeHistoricButton,
 } from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
@@ -101,17 +101,17 @@ export default function Home() {
         <WhatWillYouMap />
         <AncestryKnowledgeBanner />
 
-        {/* Each persona reads heading -> its own matching examples -> pitch copy ->
-            CTA — a house-level gallery for "know the surname and place", a nationwide
-            historic gallery for "only know the surname" — proof right under the
-            question, before the ask. */}
+        {/* Each persona reads heading+subtext -> its own matching examples -> CTA —
+            a house-level gallery for "know the surname and place", a nationwide
+            historic gallery for "only know the surname" — proof between the pitch
+            and the button, right below the examples it's backing up. */}
         <AncestryKnowledgeModernHeading />
         <Gallery only="modern" />
-        <AncestryKnowledgeModernBody />
+        <AncestryKnowledgeModernButton />
         <SectionDivider />
         <AncestryKnowledgeHistoricHeading />
         <Gallery only="historic" />
-        <AncestryKnowledgeHistoricBody />
+        <AncestryKnowledgeHistoricButton />
 
         <HowItWorks />
         <Testimonials />
