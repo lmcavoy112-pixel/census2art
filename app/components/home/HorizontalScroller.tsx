@@ -217,7 +217,7 @@ export default function HorizontalScroller({
           <ScrollArrow direction="right" onClick={() => scrollByCard(1)} />
 
           {pagingOnMobile ? (
-            <div className="mt-3 flex items-center justify-center gap-2 sm:hidden">
+            <div className="mt-1 flex items-center justify-center gap-2 sm:hidden">
               {Array.from({ length: itemCount }).map((_, index) => (
                 <span
                   key={index}
@@ -238,7 +238,7 @@ export default function HorizontalScroller({
               screen instead of reading as this one row's own control. Hidden on mobile
               in paging mode, where the dots above take over. */}
           <div
-            className={`mx-auto mt-3 h-1 w-24 overflow-hidden rounded-full ${
+            className={`mx-auto mt-1 h-1 w-24 overflow-hidden rounded-full ${
               pagingOnMobile ? "hidden sm:block" : ""
             }`}
             style={{ background: RULE }}

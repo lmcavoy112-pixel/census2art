@@ -28,12 +28,14 @@ const HISTORIC_PITCH: Pitch = {
   buttonHref: "/discover#discover-historic",
 };
 
-/** Heading + subtext together, tight against each other — a persona's own examples
- *  (the matching `<Gallery>` strip) sit right below this, so the bottom edge relies on
- *  Gallery's own (shrunk-for-this-case) top padding rather than adding more here. */
-function PitchHeading({ pitch }: { pitch: Pitch }) {
+/** Heading, subtext and CTA together again — back above the persona's Gallery strip
+ *  (a brief detour had the button living below it centred; that only made sense in
+ *  isolation, and reads as inconsistent once it's grouped back with left-aligned copy).
+ *  Bottom padding is minimal: Gallery's own (already-shrunk) top padding does almost
+ *  all of the separating, so the button sits tight against its examples. */
+function PitchBlock({ pitch }: { pitch: Pitch }) {
   return (
-    <section className="px-6 pt-8 sm:pt-16">
+    <section className="px-6 pt-8 pb-1 sm:pt-16 sm:pb-2">
       <div className="mx-auto max-w-6xl">
         <div className="max-w-2xl">
           <h3
@@ -49,28 +51,14 @@ function PitchHeading({ pitch }: { pitch: Pitch }) {
           <p className="mt-3 text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
             {pitch.body}
           </p>
+          <Link
+            href={pitch.buttonHref}
+            className="mt-6 inline-block rounded-xl px-7 py-3 text-sm font-semibold transition-opacity hover:opacity-90 sm:py-4"
+            style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
+          >
+            {pitch.buttonLabel}
+          </Link>
         </div>
-      </div>
-    </section>
-  );
-}
-
-/** Just the CTA, right below the persona's Gallery strip — no top padding of its own,
- *  same reasoning as PitchHeading's bottom edge: Gallery's own (shrunk) bottom padding
- *  does the separating. Centred, not left-aligned like the heading/subtext above it —
- *  with no text left to line up against, a left-aligned button under a full-width,
- *  visually centred gallery strip just reads as adrift rather than intentional. */
-function PitchButton({ pitch }: { pitch: Pitch }) {
-  return (
-    <section className="px-6 pb-2 text-center sm:pb-16">
-      <div className="mx-auto max-w-6xl">
-        <Link
-          href={pitch.buttonHref}
-          className="inline-block rounded-xl px-7 py-3 text-sm font-semibold transition-opacity hover:opacity-90 sm:py-4"
-          style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
-        >
-          {pitch.buttonLabel}
-        </Link>
       </div>
     </section>
   );
@@ -102,31 +90,22 @@ export function AncestryKnowledgeBanner() {
 }
 
 /**
- * The homepage's first fork. Each persona now reads heading+subtext -> examples ->
- * CTA (the heading/subtext pair and the button split into their own components so the
- * matching `<Gallery only="modern|historic" />` strip can sit between them on the
- * homepage) — proof between the pitch and the ask, rather than after both. Gallery is
- * a full-bleed horizontal scroller sized off the real viewport width (see
- * HorizontalScroller's SCROLLER_EDGE_PADDING), so it can't be squeezed into a grid
- * column; every piece here is consequently full-width too, not a two-column layout.
+ * The homepage's first fork, one section per persona: heading, subtext and CTA, each
+ * immediately followed by its own filtered `<Gallery only="modern|historic" />` strip
+ * on the homepage itself. Gallery is a full-bleed horizontal scroller sized off the
+ * real viewport width (see HorizontalScroller's SCROLLER_EDGE_PADDING), so it can't be
+ * squeezed into a grid column the way a single static preview image could — this is
+ * consequently full-width too, not a two-column layout.
  *
  * Originally had a third option for "know nothing at all", linking straight into a
  * blank designer — dropped because everyone knows their own surname, so that persona
  * doesn't really exist; both real personas resolve to a surname search, just at two
  * different depths.
  */
-export function AncestryKnowledgeModernHeading() {
-  return <PitchHeading pitch={MODERN_PITCH} />;
+export function AncestryKnowledgeModern() {
+  return <PitchBlock pitch={MODERN_PITCH} />;
 }
 
-export function AncestryKnowledgeModernButton() {
-  return <PitchButton pitch={MODERN_PITCH} />;
-}
-
-export function AncestryKnowledgeHistoricHeading() {
-  return <PitchHeading pitch={HISTORIC_PITCH} />;
-}
-
-export function AncestryKnowledgeHistoricButton() {
-  return <PitchButton pitch={HISTORIC_PITCH} />;
+export function AncestryKnowledgeHistoric() {
+  return <PitchBlock pitch={HISTORIC_PITCH} />;
 }
