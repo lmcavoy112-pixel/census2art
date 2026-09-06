@@ -5,6 +5,7 @@ import SiteFooter from "../components/home/SiteFooter";
 import CensusBlock from "../components/home/CensusBlock";
 import Gallery from "../components/home/Gallery";
 import DiscoverHistory from "../components/home/DiscoverHistory";
+import SectionDivider from "../components/home/SectionDivider";
 import HashScrollFix from "../components/home/HashScrollFix";
 import { siteFontVars } from "../fonts";
 import { IRISH_CENSUS } from "@/lib/censusEditions";
@@ -47,6 +48,7 @@ export default function DiscoverPage() {
       <main style={{ flex: 1 }}>
         <CensusBlock collection={IRISH_CENSUS} heading="Know the surname and place?" />
         <Gallery only="modern" title="Modern Examples" />
+        <SectionDivider />
         <DiscoverHistory />
         <Gallery only="historic" title="Historic Examples" />
       </main>

@@ -85,7 +85,7 @@ export default function Gallery({
   if (prints.length === 0) return null;
 
   return (
-    <section className={`${title ? "pt-14 pb-14" : "pt-3 pb-8"} sm:pt-16 sm:pb-16`}>
+    <section className={`${title ? "pt-8 pb-8" : "pt-3 pb-8"} sm:pt-16 sm:pb-16`}>
       {title ? (
         <div className="mx-auto max-w-6xl px-6">
           <h2

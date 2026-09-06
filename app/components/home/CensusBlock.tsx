@@ -67,7 +67,10 @@ export default function CensusBlock({
   return (
     <section
       id={sectionId}
-      className="scroll-mt-24 px-6 pt-10 pb-20 sm:pt-12 sm:pb-24"
+      // Bottom padding shrinks on mobile only — the Gallery strip right after this
+      // already carries its own top padding, and the two were stacking into a much
+      // bigger gap than intended. Desktop unaffected (sm:pb-24 stays as it was).
+      className="scroll-mt-24 px-6 pt-10 pb-8 sm:pt-12 sm:pb-24"
       style={{ background: RAISED }}
     >
       {/* max-w-6xl so this block's left edge lines up with the one above it. */}

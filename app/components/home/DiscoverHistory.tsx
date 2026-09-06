@@ -98,7 +98,11 @@ export default function DiscoverHistory() {
       : null;
 
   return (
-    <section id="discover-historic" className="scroll-mt-24 px-6 py-14 sm:py-16">
+    // Top and bottom padding both shrink on mobile only — a SectionDivider marks
+    // this section's own top border (see /discover's page.tsx), and the Gallery
+    // strip right after already carries its own top padding too. Desktop unaffected
+    // (sm:py-16 restores the original symmetric pad).
+    <section id="discover-historic" className="scroll-mt-24 px-6 pt-6 pb-6 sm:py-16">
       <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
         {/* order-2 keeps the heading/search stacked above the image on mobile;
             sm:order-1 restores the image-left desktop layout below. */}
