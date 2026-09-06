@@ -3,7 +3,7 @@ import Link from "next/link";
 import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
-import AncestryKnowledge from "./components/home/AncestryKnowledge";
+import { AncestryKnowledgeModern, AncestryKnowledgeHistoric } from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
 import Testimonials from "./components/home/Testimonials";
@@ -92,9 +92,16 @@ export default function Home() {
         <FeaturedQuote />
 
         <WhatWillYouMap />
-        <AncestryKnowledge />
 
-        <Gallery />
+        {/* Each persona's pitch sits right above its own matching examples — a
+            house-level gallery for "know the surname and place", a nationwide
+            historic gallery for "only know the surname" — rather than one neutral
+            gallery shared between both further down the page. */}
+        <AncestryKnowledgeModern />
+        <Gallery only="modern" title="Modern Examples" />
+        <AncestryKnowledgeHistoric />
+        <Gallery only="historic" title="Historic Examples" />
+
         <HowItWorks />
         <Testimonials />
         <NeedHelp />
