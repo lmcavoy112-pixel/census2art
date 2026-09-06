@@ -85,7 +85,7 @@ export default function FormACaseStudies() {
         From the archive to the wall
       </h1>
       <p className="mt-4 max-w-2xl text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
-        Every print starts life as a household's own return, filled in by hand over a
+        Every print starts life as a household&apos;s own return, filled in by hand over a
         century ago. Here are {FORM_A_CASE_STUDIES.length} real families, the original
         scanned sheet beside the print it became.
       </p>
