@@ -5,8 +5,10 @@ import SiteFooter from "./components/home/SiteFooter";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import {
   AncestryKnowledgeBanner,
-  AncestryKnowledgeModern,
-  AncestryKnowledgeHistoric,
+  AncestryKnowledgeModernHeading,
+  AncestryKnowledgeModernBody,
+  AncestryKnowledgeHistoricHeading,
+  AncestryKnowledgeHistoricBody,
 } from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
@@ -99,15 +101,17 @@ export default function Home() {
         <WhatWillYouMap />
         <AncestryKnowledgeBanner />
 
-        {/* Each persona's pitch sits right above its own matching examples — a
-            house-level gallery for "know the surname and place", a nationwide
-            historic gallery for "only know the surname" — rather than one neutral
-            gallery shared between both further down the page. */}
-        <AncestryKnowledgeModern />
+        {/* Each persona reads heading -> its own matching examples -> pitch copy ->
+            CTA — a house-level gallery for "know the surname and place", a nationwide
+            historic gallery for "only know the surname" — proof right under the
+            question, before the ask. */}
+        <AncestryKnowledgeModernHeading />
         <Gallery only="modern" />
+        <AncestryKnowledgeModernBody />
         <SectionDivider />
-        <AncestryKnowledgeHistoric />
+        <AncestryKnowledgeHistoricHeading />
         <Gallery only="historic" />
+        <AncestryKnowledgeHistoricBody />
 
         <HowItWorks />
         <Testimonials />

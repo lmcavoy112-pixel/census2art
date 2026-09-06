@@ -13,7 +13,7 @@ type Pitch = {
 
 const MODERN_PITCH: Pitch = {
   heading: "I know the surname and place",
-  body: "Found through ancestry research or a DNA test? Mark the exact location and display the family details on the artwork.",
+  body: "We mark the exact house and print your family's real household record.",
   buttonLabel: "Find my ancestors",
   // CensusBlock is the first thing in /discover's <main>, so a plain link lands
   // right on it — no anchor needed.
@@ -22,33 +22,43 @@ const MODERN_PITCH: Pitch = {
 
 const HISTORIC_PITCH: Pitch = {
   heading: "I only know the surname",
-  body: "Display the total count and the distribution of your family across Ireland with a heritage symbol of your choice.",
+  body: "See your surname's spread across Ireland, with its total count and a heritage symbol.",
   buttonLabel: "Show my ancestors",
   // DiscoverHistory's own section id — further down /discover.
   buttonHref: "/discover#discover-historic",
 };
 
-function PitchBlock({ pitch }: { pitch: Pitch }) {
+/** Heading only — a persona's own examples (the matching `<Gallery>` strip) sit
+ *  between this and PitchBody now, so the two can no longer share one section. */
+function PitchHeading({ pitch }: { pitch: Pitch }) {
   return (
-    // Bottom padding shrinks hard on mobile only — the title-less Gallery strip
-    // right after this carries its own (also shrunk) top padding, and the two
-    // still read as one paired unit rather than two sections, so the gap between
-    // button and examples should be barely more than the button's own margin.
-    // Desktop is unaffected (sm:py-16 restores the original symmetric pad).
-    <section className="px-6 pt-8 pb-2 sm:py-16">
+    <section className="px-6 pt-8 sm:pt-16">
+      <div className="mx-auto max-w-6xl">
+        <h3
+          className="max-w-2xl"
+          style={{
+            fontFamily: "var(--font-cormorant)",
+            fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
+            fontWeight: 500,
+            color: INK,
+          }}
+        >
+          {pitch.heading}
+        </h3>
+      </div>
+    </section>
+  );
+}
+
+/** Body copy + CTA, below the persona's Gallery strip. No top padding of its own —
+ *  the title-less Gallery right above already carries a (shrunk-on-mobile) bottom
+ *  pad, same reasoning PitchHeading's bottom edge relies on Gallery's top pad. */
+function PitchBody({ pitch }: { pitch: Pitch }) {
+  return (
+    <section className="px-6 pb-2 sm:pb-16">
       <div className="mx-auto max-w-6xl">
         <div className="max-w-2xl">
-          <h3
-            style={{
-              fontFamily: "var(--font-cormorant)",
-              fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
-              fontWeight: 500,
-              color: INK,
-            }}
-          >
-            {pitch.heading}
-          </h3>
-          <p className="mt-3 text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
+          <p className="text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
             {pitch.body}
           </p>
           <Link
@@ -65,11 +75,10 @@ function PitchBlock({ pitch }: { pitch: Pitch }) {
 }
 
 /**
- * The umbrella question, promoted out of PitchBlock into its own dark full-width
- * band — same treatment as FeaturedQuote right after the hero, rather than sharing
- * the first persona's light background the way it used to. Slim padding (matching
- * FeaturedQuote's, not a full content section's) since it holds one line, not a
- * block of copy.
+ * The umbrella question, promoted out of the first persona's pitch into its own dark
+ * full-width band — same treatment as FeaturedQuote right after the hero, rather than
+ * sharing that persona's light background. Slim padding (matching FeaturedQuote's,
+ * not a full content section's) since it holds one line, not a block of copy.
  */
 export function AncestryKnowledgeBanner() {
   return (
@@ -91,25 +100,31 @@ export function AncestryKnowledgeBanner() {
 }
 
 /**
- * The homepage's first fork, split into two standalone sections (one per persona)
- * rather than one component — each is immediately followed by its own filtered
- * `<Gallery only="modern|historic" />` strip on the homepage itself, and Gallery is a
- * full-bleed horizontal scroller sized off the real viewport width (see
+ * The homepage's first fork. Each persona now reads heading -> examples -> pitch copy
+ * -> CTA (heading and copy split into their own components so the matching
+ * `<Gallery only="modern|historic" />` strip can sit between them on the homepage) —
+ * proof before the ask, rather than the ask immediately under the heading. Gallery is
+ * a full-bleed horizontal scroller sized off the real viewport width (see
  * HorizontalScroller's SCROLLER_EDGE_PADDING), so it can't be squeezed into a grid
- * column the way the single static preview image it replaced could. This mirrors
- * /discover's own CensusBlock → Gallery("modern") → DiscoverHistory → Gallery("historic")
- * layout exactly, just for the homepage's simpler "pick a path" pitch rather than a
- * live search.
+ * column; every piece here is consequently full-width too, not a two-column layout.
  *
  * Originally had a third option for "know nothing at all", linking straight into a
  * blank designer — dropped because everyone knows their own surname, so that persona
  * doesn't really exist; both real personas resolve to a surname search, just at two
  * different depths.
  */
-export function AncestryKnowledgeModern() {
-  return <PitchBlock pitch={MODERN_PITCH} />;
+export function AncestryKnowledgeModernHeading() {
+  return <PitchHeading pitch={MODERN_PITCH} />;
 }
 
-export function AncestryKnowledgeHistoric() {
-  return <PitchBlock pitch={HISTORIC_PITCH} />;
+export function AncestryKnowledgeModernBody() {
+  return <PitchBody pitch={MODERN_PITCH} />;
+}
+
+export function AncestryKnowledgeHistoricHeading() {
+  return <PitchHeading pitch={HISTORIC_PITCH} />;
+}
+
+export function AncestryKnowledgeHistoricBody() {
+  return <PitchBody pitch={HISTORIC_PITCH} />;
 }
