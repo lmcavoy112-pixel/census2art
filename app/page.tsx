@@ -98,9 +98,9 @@ export default function Home() {
             historic gallery for "only know the surname" — rather than one neutral
             gallery shared between both further down the page. */}
         <AncestryKnowledgeModern />
-        <Gallery only="modern" title="Modern Examples" />
+        <Gallery only="modern" />
         <AncestryKnowledgeHistoric />
-        <Gallery only="historic" title="Historic Examples" />
+        <Gallery only="historic" />
 
         <HowItWorks />
         <Testimonials />

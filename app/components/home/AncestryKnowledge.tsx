@@ -30,7 +30,11 @@ const HISTORIC_PITCH: Pitch = {
 
 function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: string }) {
   return (
-    <section className="px-6 py-14 sm:py-16">
+    // Bottom padding shrinks on mobile only — the title-less Gallery strip right
+    // after this already carries its own (also shrunk) top padding, and the two were
+    // stacking into a much bigger gap than intended between the button and the
+    // examples below it. Desktop is unaffected (sm:py-16 restores the symmetric pad).
+    <section className="px-6 pt-14 pb-4 sm:py-16">
       <div className="mx-auto max-w-6xl">
         {sectionHeading ? (
           <h2

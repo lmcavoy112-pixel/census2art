@@ -59,9 +59,15 @@ const INK = "#1e2b18";
  */
 export default function Gallery({
   only,
-  title = "Gallery",
+  title,
 }: {
   only?: "modern" | "historic";
+  /** Omit where the surrounding section already makes the pool obvious (the
+   *  homepage's per-persona pitch immediately above) — a repeated "Modern
+   *  Examples"/"Historic Examples" label there was pure redundancy, and dropping
+   *  it also lets the section's own top padding shrink instead of reserving room
+   *  for a heading that isn't there. /discover still passes one, since its two
+   *  strips aren't paired with as specific a lead-in. */
   title?: string;
 } = {}) {
   const allPrints = useGalleryPrints();
@@ -79,25 +85,27 @@ export default function Gallery({
   if (prints.length === 0) return null;
 
   return (
-    <section className="py-14 sm:py-16">
-      <div className="mx-auto max-w-6xl px-6">
-        <h2
-          style={{
-            fontFamily: "var(--font-cormorant)",
-            fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
-            fontWeight: 500,
-            color: INK,
-          }}
-        >
-          {title}
-        </h2>
-      </div>
+    <section className={`${title ? "pt-14" : "pt-3"} pb-14 sm:pt-16 sm:pb-16`}>
+      {title ? (
+        <div className="mx-auto max-w-6xl px-6">
+          <h2
+            style={{
+              fontFamily: "var(--font-cormorant)",
+              fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+              fontWeight: 500,
+              color: INK,
+            }}
+          >
+            {title}
+          </h2>
+        </div>
+      ) : null}
 
       <HorizontalScroller itemCount={prints.length}>
         {prints.map((print) => (
           <li
             key={print.img}
-            className="w-[68vw] shrink-0 sm:w-72"
+            className="w-[52vw] shrink-0 sm:w-72"
             style={{ scrollSnapAlign: "start" }}
           >
             <button
