@@ -2478,7 +2478,7 @@ function ModernDesignContent() {
 
   const historicMapStyleSection: DesignerSection = {
     id: "historic-map",
-    title: "Map style",
+    title: "Map Features",
     summary: "Choose the basemap, border and symbol.",
     note: isSquare ? "Symbol unavailable on Square" : undefined,
     icon: <MapStyleIcon />,
@@ -2634,8 +2634,8 @@ function ModernDesignContent() {
       : [
           templateSection,
           familySection,
-          historicMapStyleSection,
           historicColourSection,
+          historicMapStyleSection,
           sizeSection,
         ];
 

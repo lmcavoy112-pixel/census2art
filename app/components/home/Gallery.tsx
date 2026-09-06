@@ -14,8 +14,8 @@ const MODERN_EXTENTS = new Set(["house", "district", "townland", "county"]);
 
 /**
  * Sample prints (GET /api/recent-purchase-samples), a shuffled pool read from
- * public/examples/gallery/ rather than a fixed array, so growing the pool is
- * "drop a file in", not a code change.
+ * public/examples/gallery-modern/ and public/examples/gallery-historic/ rather
+ * than a fixed array, so growing the pool is "drop a file in", not a code change.
  */
 function useGalleryPrints(): GalleryPrint[] {
   const [prints, setPrints] = useState<GalleryPrint[]>([]);
@@ -46,12 +46,12 @@ const GOLD = "#b8902a";
  * A horizontal strip of sample prints — no caption underneath, since the surname
  * and county are already printed on the artwork itself.
  *
- * `only` narrows the pool by the extent word in each filename (see
- * /api/recent-purchase-samples): "modern" for house/district/townland/county
- * samples, "historic" for country-wide Historic-template samples. Omit it to show
- * the whole pool unfiltered (the homepage's call) — samples with no extent word at
- * all (the "Surname - County.png" convention) only ever show up unfiltered, since
- * there's no extent to classify them by.
+ * `only` narrows the pool by source folder (see /api/recent-purchase-samples):
+ * "modern" for gallery-modern/ (tagged by the extent word in the filename —
+ * house/district/townland/county), "historic" for everything in gallery-historic/.
+ * Omit it to show the whole pool unfiltered (the homepage's call) — samples with no
+ * extent word at all (the "Surname - County.png" convention) only ever show up
+ * unfiltered, since there's no extent to classify them by.
  */
 export default function Gallery({ only }: { only?: "modern" | "historic" } = {}) {
   const allPrints = useGalleryPrints();

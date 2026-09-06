@@ -66,13 +66,21 @@ export const HISTORIC_SYMBOLS: { id: string; label: string }[] = [
 
 // Curated to read clearly against all three basemaps (green sea, land ranging from
 // Terrain's moss-green through Hybrid's khaki to Sepia's cream) rather than any one.
+// Ordered around the hue wheel (neutral, then warm through to red) rather than by
+// when each was added, so the swatch row reads as a deliberate spread of colour.
 export const DEFAULT_HOTSPOT_COLOUR = "#2a1904";
 export const HOTSPOT_COLOURS: { id: string; label: string; hex: string }[] = [
-  { id: "espresso", label: "Espresso", hex: "#2a1904" },
-  { id: "moss", label: "Deep Moss", hex: "#0d3d1e" },
-  { id: "oxblood", label: "Oxblood", hex: "#6b1220" },
-  { id: "indigo", label: "Deep Indigo", hex: "#1c2b4a" },
+  { id: "charcoal", label: "Charcoal", hex: "#262626" },
   { id: "terracotta", label: "Terracotta", hex: "#a8462c" },
+  { id: "bronze", label: "Bronze", hex: "#5a3a1e" },
+  { id: "espresso", label: "Espresso", hex: "#2a1904" },
+  { id: "ochre", label: "Ochre", hex: "#6b4a12" },
+  { id: "moss", label: "Deep Moss", hex: "#0d3d1e" },
+  { id: "petrol", label: "Petrol", hex: "#0f3d3d" },
+  { id: "slate", label: "Slate", hex: "#35495e" },
+  { id: "indigo", label: "Deep Indigo", hex: "#1c2b4a" },
+  { id: "aubergine", label: "Aubergine", hex: "#3b1f3b" },
+  { id: "oxblood", label: "Oxblood", hex: "#6b1220" },
 ];
 
 /* ── Calibrated layout ──────────────────────────────────────────────── */
