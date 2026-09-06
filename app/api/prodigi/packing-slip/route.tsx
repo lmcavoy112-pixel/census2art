@@ -12,16 +12,20 @@ import QRCode from "qrcode";
 // DB lookup racing the local `orders` row, which for the webhook path is only updated
 // *after* the Prodigi call this URL is attached to has already succeeded.
 //
-// Same brand tokens as lib/email.ts, and the same three faces the site itself uses
-// (app/fonts.ts: Cormorant Garamond, Jost, IBM Plex Mono for "record data, eyebrows and
-// years"). Loaded from local .woff files (fetched once from Google Fonts) rather than
-// over the network at request time — this runs on every physical order, so it can't
-// depend on Google Fonts being reachable at print-fulfilment time.
-const INK = "#1e2b18";
-const GOLD = "#b8902a";
-const MUTED = "#6b5f4a";
-const RULE = "#ddd6c4";
-const GROUND = "#f2ece0";
+// Same three faces the site itself uses (app/fonts.ts: Cormorant Garamond, Jost, IBM
+// Plex Mono for "record data, eyebrows and years"). Loaded from local .woff files
+// (fetched once from Google Fonts) rather than over the network at request time — this
+// runs on every physical order, so it can't depend on Google Fonts being reachable at
+// print-fulfilment time.
+//
+// True neutral grays only (R=G=B) — this is Prodigi's free packing_slip_bw insert, not
+// packing_slip_color (a paid extra). lib/email.ts's brand palette (a dark green ink, a
+// gold accent, a cream ground) is deliberately NOT reused here: any hue risks the asset
+// failing Prodigi's b&w validation, or printing as a muddy tint on a mono print line.
+const INK = "#111111";
+const MUTED = "#6b6b6b";
+const RULE = "#d9d9d9";
+const GROUND = "#ffffff";
 
 const SERIF = "Cormorant Garamond";
 const SANS = "Jost";
@@ -140,7 +144,7 @@ export async function GET(request: NextRequest) {
         >
           <div style={{ display: "flex", justifyContent: "center" }}>
             <span style={{ fontFamily: SERIF, fontSize: 52, fontWeight: 600, letterSpacing: 14, color: INK }}>
-              CENSUS <span style={{ color: GOLD }}>to</span> ART
+              CENSUS <span style={{ color: MUTED }}>to</span> ART
             </span>
           </div>
 
@@ -210,7 +214,7 @@ export async function GET(request: NextRequest) {
                 borderRadius: 4,
               }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 22, letterSpacing: 5, color: GOLD }}>
+              <span style={{ fontFamily: MONO, fontSize: 22, letterSpacing: 5, color: MUTED }}>
                 FOR THIS FAMILY
               </span>
 
