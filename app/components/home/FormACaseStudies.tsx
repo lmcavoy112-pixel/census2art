@@ -73,7 +73,12 @@ export default function FormACaseStudies() {
   const [openImage, setOpenImage] = useState<OpenImage | null>(null);
 
   return (
-    <section className="py-14 sm:py-16">
+    // No padding of its own — /examples's <main> (py-16 sm:py-20) already gives this,
+    // its only caller, the same top/bottom breathing room contact/background/legal give
+    // their own <h1> directly. The extra py-14 sm:py-16 that used to be here stacked on
+    // top of that and pushed this page's first heading noticeably further from the
+    // header than every other page's.
+    <section>
       <h1
         style={{
           fontFamily: "var(--font-cormorant)",
