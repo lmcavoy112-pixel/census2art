@@ -5,6 +5,7 @@ import { isValidCountryCode, STATE_REQUIRED_COUNTRY_CODES } from "../../../../li
 import { requireAdmin } from "../../../../lib/admin-auth";
 import { submitOrderSchema } from "../../../../lib/validation";
 import { buildPackingSlipUrl } from "../../../../lib/packingSlip";
+import { formatMoney } from "../../../../lib/currency";
 
 /**
  * Order read and submit.
@@ -115,7 +116,9 @@ export async function POST(
     })
     .eq("id", id)
     .eq("status", "pending")
-    .select("id, status, sku, copies, attributes, image_url, price_gbp, product, surname, county")
+    .select(
+      "id, status, sku, copies, attributes, image_url, price_gbp, product, surname, county, district, townland, template, size_label, created_at"
+    )
     .maybeSingle();
 
   if (claimError) {
@@ -138,6 +141,15 @@ export async function POST(
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
   const webhookSecret = process.env.PRODIGI_WEBHOOK_SECRET!;
 
+  // Purely for the packing slip's own receipt line — this path assumes GBP, matching
+  // every other GBP-only assumption already on this admin-submit route.
+  const lineTotal = order.price_gbp != null ? Number(order.price_gbp) : null;
+  const orderDate = order.created_at
+    ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(
+        new Date(order.created_at)
+      )
+    : undefined;
+
   try {
     const result = await createOrder({
       merchantReference: order.id,
@@ -149,11 +161,17 @@ export async function POST(
         packing_slip_bw: {
           url: buildPackingSlipUrl(siteUrl, {
             ref: order.id,
+            date: orderDate,
             recipient: recipient.name,
             product: order.product || "Print",
+            style: [order.template, order.size_label].filter(Boolean).join(" · "),
+            qty: order.copies,
+            unitPrice: lineTotal != null ? formatMoney(lineTotal / order.copies, "GBP") : undefined,
+            lineTotal: lineTotal != null ? formatMoney(lineTotal, "GBP") : undefined,
             surname: order.surname ?? undefined,
             county: order.county ?? undefined,
-            qty: order.copies,
+            district: order.district ?? undefined,
+            townland: order.townland ?? undefined,
           }),
         },
       },

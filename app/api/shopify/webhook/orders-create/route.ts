@@ -7,6 +7,7 @@ import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
 import { isProductKind } from "@/lib/design/catalogue";
 import { sendDigitalDownloadEmail, type DigitalDownloadLine } from "@/lib/email";
 import { buildPackingSlipUrl } from "@/lib/packingSlip";
+import { formatMoney, isCurrencyCode } from "@/lib/currency";
 
 // Named to match .env.local and scripts/get-shopify-access-token.ts. This previously read
 // SHOPIFY_API_SECRET, which is defined nowhere — so the secret resolved to "", every
@@ -90,6 +91,14 @@ function attributesToMap(
 }
 
 const ORDER_ID_IN_IMAGE_PATH = /\/orders\/([0-9a-f-]{36})\//i;
+
+/** "6 September 2026" — the packing slip's own date line, not a machine format. */
+function formatOrderDate(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(date);
+}
 
 /**
  * Recovers the Supabase `orders` row id for a line item's print asset.
@@ -275,6 +284,8 @@ type ShopifyLineItem = {
   quantity: number;
   properties?: Array<{ name: string; value: string }>;
   title?: string;
+  /** Unit price, before discounts — the packing slip's own receipt line, not Prodigi's. */
+  price?: string;
 };
 
 type ShopifyOrder = {
@@ -284,6 +295,8 @@ type ShopifyOrder = {
   shipping_address?: ShopifyAddress;
   customer?: ShopifyCustomer;
   line_items: ShopifyLineItem[];
+  created_at?: string;
+  currency?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -441,6 +454,12 @@ export async function POST(request: NextRequest) {
 
     const lineReference = `shopify-${order.id}-${index}-${line.sku}`;
 
+    // Purely for the packing slip's own receipt line — never sent to Prodigi as
+    // recipientCost, and never assumed to equal what Prodigi charges this store.
+    const currency = isCurrencyCode(order.currency) ? order.currency : "GBP";
+    const unitPriceNum = Number(line.price);
+    const styleParts = [attrs["Style"] ? `${attrs["Style"]} style` : "", attrs["Size"]].filter(Boolean);
+
     try {
       const result = await createOrder({
         merchantReference: lineReference,
@@ -452,11 +471,20 @@ export async function POST(request: NextRequest) {
           packing_slip_bw: {
             url: buildPackingSlipUrl(siteUrl, {
               ref: order.name ?? `#${order.id}`,
+              date: formatOrderDate(order.created_at),
               recipient: recipient.name,
               product: line.title || "Print",
+              style: styleParts.join(" · "),
+              qty: line.quantity,
+              unitPrice: Number.isFinite(unitPriceNum) ? formatMoney(unitPriceNum, currency) : undefined,
+              lineTotal: Number.isFinite(unitPriceNum)
+                ? formatMoney(unitPriceNum * line.quantity, currency)
+                : undefined,
               surname: attrs["Surname"],
               county: attrs["County"],
-              qty: line.quantity,
+              district: attrs["District"],
+              townland: attrs["Townland"],
+              house: attrs["House"],
             }),
           },
         },
