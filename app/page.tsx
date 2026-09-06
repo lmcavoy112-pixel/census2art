@@ -3,7 +3,11 @@ import Link from "next/link";
 import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
-import { AncestryKnowledgeModern, AncestryKnowledgeHistoric } from "./components/home/AncestryKnowledge";
+import {
+  AncestryKnowledgeBanner,
+  AncestryKnowledgeModern,
+  AncestryKnowledgeHistoric,
+} from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
 import SectionDivider from "./components/home/SectionDivider";
@@ -93,7 +97,7 @@ export default function Home() {
         <FeaturedQuote />
 
         <WhatWillYouMap />
-        <SectionDivider />
+        <AncestryKnowledgeBanner />
 
         {/* Each persona's pitch sits right above its own matching examples — a
             house-level gallery for "know the surname and place", a nationwide

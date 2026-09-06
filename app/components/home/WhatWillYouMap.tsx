@@ -47,9 +47,9 @@ export default function WhatWillYouMap() {
   const [openImage, setOpenImage] = useState<{ src: string; alt: string } | null>(null);
 
   return (
-    // Bottom padding shrinks on mobile only — a divider now marks this section's
-    // border with AncestryKnowledge right below it, so the gap doesn't need to do
-    // all the separating on its own. Desktop unaffected (sm:py-16 stays symmetric).
+    // Bottom padding shrinks on mobile only — the dark AncestryKnowledgeBanner right
+    // below already breaks from this section by colour alone, so the gap doesn't need
+    // to do all the separating on its own. Desktop unaffected (sm:py-16 stays symmetric).
     <section className="pt-14 pb-8 sm:py-16" style={{ background: "#fdfaf5" }}>
       <div className="mx-auto max-w-6xl px-6">
         <h2

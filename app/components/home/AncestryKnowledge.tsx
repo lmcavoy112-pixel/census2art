@@ -28,29 +28,16 @@ const HISTORIC_PITCH: Pitch = {
   buttonHref: "/discover#discover-historic",
 };
 
-function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: string }) {
+function PitchBlock({ pitch }: { pitch: Pitch }) {
   return (
-    // Top and bottom padding both shrink on mobile only — a SectionDivider now
-    // marks this block's own top border (see page.tsx), and the title-less Gallery
-    // strip right after already carries its own (also shrunk) top padding, so
-    // neither edge needs to do all the separating on its own with whitespace alone.
+    // Bottom padding shrinks hard on mobile only — the title-less Gallery strip
+    // right after this carries its own (also shrunk) top padding, and the two
+    // still read as one paired unit rather than two sections, so the gap between
+    // button and examples should be barely more than the button's own margin.
     // Desktop is unaffected (sm:py-16 restores the original symmetric pad).
-    <section className="px-6 pt-8 pb-4 sm:py-16">
+    <section className="px-6 pt-8 pb-2 sm:py-16">
       <div className="mx-auto max-w-6xl">
-        {sectionHeading ? (
-          <h2
-            style={{
-              fontFamily: "var(--font-cormorant)",
-              fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
-              fontWeight: 500,
-              color: INK,
-            }}
-          >
-            {sectionHeading}
-          </h2>
-        ) : null}
-
-        <div className={sectionHeading ? "mt-10 max-w-2xl" : "max-w-2xl"}>
+        <div className="max-w-2xl">
           <h3
             style={{
               fontFamily: "var(--font-cormorant)",
@@ -78,6 +65,32 @@ function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: 
 }
 
 /**
+ * The umbrella question, promoted out of PitchBlock into its own dark full-width
+ * band — same treatment as FeaturedQuote right after the hero, rather than sharing
+ * the first persona's light background the way it used to. Slim padding (matching
+ * FeaturedQuote's, not a full content section's) since it holds one line, not a
+ * block of copy.
+ */
+export function AncestryKnowledgeBanner() {
+  return (
+    <section className="px-6 py-8 sm:py-10" style={{ background: INK }}>
+      <div className="mx-auto max-w-6xl text-center">
+        <h2
+          style={{
+            fontFamily: "var(--font-cormorant)",
+            fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+            fontWeight: 500,
+            color: RAISED,
+          }}
+        >
+          What best describes your ancestry knowledge?
+        </h2>
+      </div>
+    </section>
+  );
+}
+
+/**
  * The homepage's first fork, split into two standalone sections (one per persona)
  * rather than one component — each is immediately followed by its own filtered
  * `<Gallery only="modern|historic" />` strip on the homepage itself, and Gallery is a
@@ -94,9 +107,7 @@ function PitchBlock({ pitch, sectionHeading }: { pitch: Pitch; sectionHeading?: 
  * different depths.
  */
 export function AncestryKnowledgeModern() {
-  return (
-    <PitchBlock pitch={MODERN_PITCH} sectionHeading="What best describes your ancestry knowledge?" />
-  );
+  return <PitchBlock pitch={MODERN_PITCH} />;
 }
 
 export function AncestryKnowledgeHistoric() {
