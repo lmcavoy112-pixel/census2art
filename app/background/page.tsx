@@ -84,7 +84,7 @@ export default function BackgroundPage() {
             <h2
               style={{
                 fontFamily: "var(--font-cormorant)",
-                fontSize: "1.75rem",
+                fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
                 fontWeight: 500,
               }}
             >
@@ -108,7 +108,7 @@ export default function BackgroundPage() {
           <h2
             style={{
               fontFamily: "var(--font-cormorant)",
-              fontSize: "1.75rem",
+              fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
               fontWeight: 500,
             }}
           >

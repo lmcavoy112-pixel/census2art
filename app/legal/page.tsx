@@ -96,7 +96,7 @@ export default function LegalPage() {
             <h2
               style={{
                 fontFamily: "var(--font-cormorant)",
-                fontSize: "1.75rem",
+                fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
                 fontWeight: 500,
               }}
             >

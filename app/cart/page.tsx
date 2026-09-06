@@ -33,7 +33,7 @@ export default function CartPage() {
         <h1
           style={{
             fontFamily: "var(--font-cormorant)",
-            fontSize: "clamp(2rem, 4.5vw, 2.75rem)",
+            fontSize: "clamp(2.2rem, 5vw, 3.2rem)",
             fontWeight: 500,
           }}
         >

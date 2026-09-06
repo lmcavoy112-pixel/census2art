@@ -48,7 +48,7 @@ export default function Home() {
               <h1
                 style={{
                   fontFamily: "var(--font-cormorant)",
-                  fontSize: "clamp(1.95rem, 4.2vw, 2.9rem)",
+                  fontSize: "clamp(2.2rem, 5vw, 3.2rem)",
                   lineHeight: 1.1,
                   fontWeight: 500,
                 }}

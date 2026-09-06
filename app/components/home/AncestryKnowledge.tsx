@@ -41,7 +41,7 @@ function PitchBlock({ pitch }: { pitch: Pitch }) {
           <h3
             style={{
               fontFamily: "var(--font-cormorant)",
-              fontSize: "1.6rem",
+              fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
               fontWeight: 500,
               color: INK,
             }}
