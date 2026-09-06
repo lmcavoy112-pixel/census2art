@@ -250,6 +250,18 @@ export function SaveIcon(props: IconProps) {
   );
 }
 
+/** Three linked nodes — sharing a link to this design. */
+export function ShareIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="18" cy="5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="19" r="2.5" />
+      <path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4" />
+    </Svg>
+  );
+}
+
 /** A rightward arrow — moving on to the next stage. */
 export function ArrowRightIcon(props: IconProps) {
   return (
@@ -265,6 +277,23 @@ export function HelpIcon(props: IconProps) {
       <circle cx="12" cy="12" r="9" />
       <path d="M9.5 9.5a2.5 2.5 0 113 2.5v1.5" />
       <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Four corner arrows pointing outward — enlarging a preview to fill the screen. */
+export function ExpandIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+    </Svg>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
     </Svg>
   );
 }

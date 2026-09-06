@@ -100,7 +100,9 @@ export default function DiscoverHistory() {
   return (
     <section id="discover-historic" className="scroll-mt-24 px-6 py-14 sm:py-16">
       <div className="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
-        <div className="relative mx-auto aspect-[210/297] w-full max-w-sm overflow-hidden">
+        {/* order-2 keeps the heading/search stacked above the image on mobile;
+            sm:order-1 restores the image-left desktop layout below. */}
+        <div className="relative order-2 mx-auto aspect-[210/297] w-full max-w-sm overflow-hidden sm:order-1">
           {preview.status === "ready" ? (
             <HistoricPoster
               format="ISO"
@@ -152,7 +154,7 @@ export default function DiscoverHistory() {
           )}
         </div>
 
-        <div>
+        <div className="order-1 sm:order-2">
           <h2
             style={{
               fontFamily: "var(--font-cormorant)",
@@ -180,6 +182,10 @@ export default function DiscoverHistory() {
             <SurnameSearch
               censusYear={censusYear}
               onSelect={(surname) => setActiveSurname(surname)}
+              onReset={() => {
+                setActiveSurname(null);
+                setPreview({ status: "idle" });
+              }}
               helperText="Select a surname from the list. The sample artwork will update to preview your selection."
               actionSlot={
                 customiseHref ? (

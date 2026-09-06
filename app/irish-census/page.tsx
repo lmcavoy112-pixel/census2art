@@ -1465,7 +1465,7 @@ function CensusLanding() {
                         disabled={geocodeState === "searching" || !canPlaceMarker}
                         className="flex-1 rounded-md bg-white px-3 py-2.5 text-[13px] font-semibold text-stone-900 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        {geocodeState === "searching" ? "Searching…" : "Attempt Property Find"}
+                        {geocodeState === "searching" ? "Searching…" : "Find this house"}
                       </button>
                       <button
                         type="button"
@@ -1599,7 +1599,11 @@ function CensusLanding() {
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-stone-700">
               Inhabitants
             </h2>
-            <div className="mt-2 overflow-x-auto rounded-md border border-stone-200">
+            {/* Full record on lg+ — the 6-column table fits comfortably at that width.
+                Below lg, the same min-w-[520px] table forced a horizontal scroll with no
+                visible affordance, so mobile gets its own compact Name/Age/Sex rows
+                instead of a scroll hint. */}
+            <div className="mt-2 hidden overflow-x-auto rounded-md border border-stone-200 lg:block">
               <table className="w-full min-w-[520px] text-[12.5px]">
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50 text-left">
@@ -1650,6 +1654,33 @@ function CensusLanding() {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            <div className="mt-2 rounded-md border border-stone-200 lg:hidden">
+              {household.map((person, index) => {
+                const highlight =
+                  Boolean(person.surname_search) &&
+                  activeSurnameSearches.includes(person.surname_search || "");
+                return (
+                  <div
+                    key={`${person.full_name || "person"}-${index}`}
+                    className={`flex items-center justify-between gap-3 border-b border-stone-100 px-3 py-1.5 last:border-b-0 ${
+                      highlight ? "bg-amber-50" : ""
+                    }`}
+                  >
+                    <span
+                      className={`truncate font-medium ${
+                        highlight ? "text-amber-800" : "text-stone-900"
+                      }`}
+                    >
+                      {person.full_name || ""}
+                    </span>
+                    <span className="flex-none text-stone-600">
+                      {[person.age, person.sex].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             {formAUrls.length > 0 && (
@@ -1771,12 +1802,18 @@ function CensusLanding() {
             {(loadingMessage || error) && (
               <div className="pointer-events-none absolute left-1/2 top-2 z-[500] -translate-x-1/2 sm:top-4">
                 <p
-                  className={`rounded-md px-2.5 py-1.5 text-[12px] shadow-sm sm:px-3 sm:py-2 sm:text-[13px] ${
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] shadow-sm sm:px-3 sm:py-2 sm:text-[13px] ${
                     error
                       ? "bg-red-50 text-red-800"
                       : "bg-white/90 text-stone-700 backdrop-blur-sm"
                   }`}
                 >
+                  {!error && (
+                    <span
+                      aria-hidden="true"
+                      className="h-3 w-3 flex-none animate-spin rounded-full border-2 border-stone-300 border-t-stone-600"
+                    />
+                  )}
                   {error || loadingMessage}
                 </p>
               </div>
@@ -1911,7 +1948,7 @@ function CensusLanding() {
               >
                 <span className="font-medium text-stone-900">{opt.surname_display}</span>
                 <span className="text-[12px] text-stone-500">
-                  {opt.count.toLocaleString()} records
+                  {opt.count.toLocaleString()} {opt.count === 1 ? "record" : "records"}
                 </span>
               </button>
             ))}

@@ -58,6 +58,13 @@ import {
   type HouseholdPerson,
 } from "@/lib/design/snapshot";
 import {
+  buildShareableDesign,
+  loadShareableDesign,
+  saveShareableDesign,
+  shareableDesignToState,
+  type ShareableDesign,
+} from "@/lib/design/shareableDesign";
+import {
   MODERN_PRESETS,
   availableLevels,
   detectModernLevel,
@@ -126,12 +133,15 @@ import {
 } from "@/app/components/designer/Controls";
 import {
   ColourIcon,
+  CloseIcon,
+  ExpandIcon,
   InformationIcon,
   FrameIcon,
   HelpIcon,
   MapStyleIcon,
   ResizeIcon,
   SaveIcon,
+  ShareIcon,
   TemplateIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -404,6 +414,18 @@ function ModernDesignContent() {
   const [houseUid, setHouseUid] = useState("");
   const [loaded, setLoaded] = useState(false);
 
+  // ── "Save & Share" permanent design link ─────────────────────────────
+  // Set when this design was itself opened from a ?snapshot=<id> link, so a later Save &
+  // Share can record the lineage via forkedFrom — see lib/design/shareableDesign.ts on
+  // why re-saving always mints a new id rather than overwriting this one.
+  const [incomingSnapshotId, setIncomingSnapshotId] = useState<string | null>(null);
+  const [loadSnapshotError, setLoadSnapshotError] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareError, setShareError] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
+
   // ── Which template is being designed ───────────────────────────────
   const [template, setTemplate] = useState<PrintTemplate>("modern");
 
@@ -478,6 +500,12 @@ function ModernDesignContent() {
   // ── Panel state ────────────────────────────────────────────────────
   const [openSection, setOpenSection] = useState("template");
   const [showHelp, setShowHelp] = useState(false);
+  // Mobile-only: the preview stage is a fraction of the screen there, too small to
+  // read the household table's names/ages before ordering. Fullscreen reuses the same
+  // stage element (see stageRef below) rather than mounting a second poster, so the
+  // one live map/WebGL context is never duplicated — its own ResizeObserver picks up
+  // the new, larger box size on its own.
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
 
   // ── Export / order ─────────────────────────────────────────────────
   const posterRef = useRef<HTMLDivElement | null>(null);
@@ -546,8 +574,131 @@ function ModernDesignContent() {
     viewRef.current = view;
   }, [view]);
 
+  // Applies a loaded ShareableDesign onto every piece of live state it covers. A
+  // snapshot is self-sufficient (it carries surname/county/district/house itself), so
+  // this is the only restore path used when `?snapshot=` is present — see the mount
+  // effect below, which skips the designKey/query-param path entirely in that case.
+  function applySnapshot(design: ShareableDesign) {
+    const mapped = shareableDesignToState(design);
+
+    setSurnameSearch(mapped.surnameSearch);
+    setIncludedSurnames(mapped.includedSurnames);
+    setCensusYear(mapped.censusYear);
+    setCounty(mapped.county);
+    setCountyDisplayText(mapped.countyDisplayText);
+    setDedId(mapped.dedId);
+    setDedDisplayText(mapped.dedDisplayText);
+    setTownlandId(mapped.townlandId);
+    setTownlandText(mapped.townlandText);
+    setHouseUid(mapped.houseUid);
+    setHouseNoText(mapped.houseNoText);
+    setHousehold(mapped.household);
+    setHouseholdDisplayMode(mapped.householdDisplayMode);
+
+    const knownHouseholdFields = new Set(HOUSEHOLD_FIELD_OPTIONS.map((option) => option.id));
+    setVisibleHouseholdFields(
+      new Set(
+        Array.from(mapped.visibleHouseholdFields).filter((field): field is HouseholdField =>
+          knownHouseholdFields.has(field as HouseholdField)
+        )
+      )
+    );
+    setHiddenHouseholdIndices(
+      new Set(
+        Array.from(mapped.hiddenHouseholdIndices).filter(
+          (index) => index >= 0 && index < mapped.household.length
+        )
+      )
+    );
+
+    setHeadingText(mapped.headingText);
+    setFormat(mapped.format);
+    setTemplate(mapped.template);
+
+    // Re-derived from the identity fields rather than trusted from the stored value —
+    // defends against a hand-edited or replayed link claiming a deeper level than its
+    // own county/district/townland/house selection actually supports.
+    const deepest = detectModernLevel({
+      county: mapped.county,
+      dedId: mapped.dedId,
+      townland: mapped.townlandText,
+      houseNo: mapped.houseNoText,
+    });
+    setDeepestLevel(deepest);
+
+    if (mapped.template === "modern" && mapped.modern) {
+      const modern = mapped.modern;
+      const allowed = availableLevels(deepest);
+      const nextLevel = allowed.includes(modern.level) ? modern.level : deepest;
+      setLevel(nextLevel);
+
+      const allowedBasemaps = MODERN_PRESETS[nextLevel].basemaps;
+      setBasemap(allowedBasemaps.includes(modern.basemap) ? modern.basemap : allowedBasemaps[0]);
+      setMapLayers(modern.mapLayers);
+      setElevationUnit(modern.elevationUnit);
+      setContourDensity(modern.contourDensity as ContourDensity);
+      setPaletteId(modern.paletteId);
+      setPolygonColourId(modern.polygonColourId);
+      setBorderColourId(modern.borderColourId);
+      setBorderWidthIndex(Math.min(Math.max(modern.borderWidthIndex, 0), BORDER_WIDTHS.length - 1));
+      setView(modern.view);
+      setPin(modern.pin);
+      setPinSource(modern.pinSource);
+      setMarkerShape(modern.markerShape);
+      setMarkerSizeIndex(Math.min(Math.max(modern.markerSizeIndex, 0), MARKER_SIZES.length - 1));
+    } else {
+      setLevel(deepest);
+      setBasemap(MODERN_PRESETS[deepest].basemaps[0]);
+      setMapLayers({
+        ...DEFAULT_LAYER_TOGGLES,
+        placeNames: MODERN_PRESETS[deepest].defaultPlaceLabels,
+      });
+    }
+
+    if (mapped.template === "historic" && mapped.historic) {
+      const historic = mapped.historic;
+      setHistoricBasemap(historic.basemap);
+      setHistoricBorder(historic.border);
+      setHistoricSymbol(historic.symbol);
+      if (isAccentId(historic.accentId)) {
+        setAccentId(historic.accentId);
+        setHotspotColour(historic.hotspotColour);
+      }
+      setShadingOpacity(historic.shadingOpacity);
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
+    const incomingSnapshotId = getParam(params, "snapshot");
+
+    // A snapshot link is complete and self-sufficient — mixing it with a designKey/
+    // query-param handoff would silently blend a full saved state with today's
+    // designer defaults for whatever the older handoff doesn't carry. It wins outright.
+    if (incomingSnapshotId) {
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const design = await loadShareableDesign(incomingSnapshotId);
+          if (cancelled) return;
+          applySnapshot(design);
+          setIncomingSnapshotId(incomingSnapshotId);
+          setLoadSnapshotError("");
+        } catch {
+          if (!cancelled) {
+            setLoadSnapshotError("This shared design link couldn't be found.");
+          }
+        } finally {
+          if (!cancelled) setLoaded(true);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const incomingDesignKey = getParam(params, "designKey");
     const saved = readDesignSnapshot(incomingDesignKey);
 
@@ -1672,49 +1823,67 @@ function ModernDesignContent() {
             selectedSku.product === "Classic Frame" ? frameColour : null
           ),
           design: {
+            ...buildShareableDesign({
+              surnameSearch,
+              includedSurnames,
+              censusYear,
+              county,
+              countyDisplayText,
+              dedId,
+              dedDisplayText,
+              townlandId,
+              townlandText,
+              houseUid,
+              houseNoText,
+              household,
+              householdDisplayMode,
+              visibleHouseholdFields,
+              hiddenHouseholdIndices,
+              template,
+              format,
+              headingText,
+              modern:
+                template === "modern"
+                  ? {
+                      level,
+                      basemap,
+                      mapLayers,
+                      elevationUnit,
+                      contourDensity,
+                      paletteId,
+                      polygonColourId,
+                      borderColourId,
+                      borderWidthIndex,
+                      view: viewRef.current ?? { center: centre, zoom: preset.fallbackZoom },
+                      pin,
+                      pinSource,
+                      markerShape,
+                      markerSizeIndex,
+                    }
+                  : undefined,
+              historic:
+                template === "historic"
+                  ? {
+                      basemap: historicBasemap,
+                      border: effectiveBorder,
+                      symbol: historicSymbol,
+                      accentId,
+                      shadingOpacity,
+                      hotspotColour,
+                    }
+                  : undefined,
+            }),
+            // Order-only extras layered on top: `surname`/capitalised `template` are the
+            // legacy keys the checkout page and orders table's denormalized columns
+            // already read (app/checkout/[id]/page.tsx, app/api/orders/route.ts) —
+            // kept so this refactor doesn't change what an order record looks like.
             surname: headingText,
-            county,
-            countyDisplay: countyDisplayText,
-            dedDisplay: dedDisplayText,
-            product: selectedSku.product,
             template: template === "historic" ? "Historic" : "Modern",
+            product: selectedSku.product,
             sizeLabel: selectedSku.size_label,
             frameColour: selectedSku.product === "Classic Frame" ? frameColour : null,
-            headingText,
-            dedDisplayText,
-            townlandText,
-            houseNoText,
             exportPixelWidth: canvas.width,
             exportPixelHeight: canvas.height,
-            // Only the settings the chosen template actually used. Recording both sets
-            // would leave every order carrying a camera position for a map that was
-            // never drawn, with nothing to say which half is authoritative.
-            ...(template === "historic"
-              ? {
-                  basemapStyle: historicBasemap,
-                  borderStyle: effectiveBorder,
-                  symbol: isSquare ? null : historicSymbol,
-                  accent: accentId,
-                  shadingOpacity,
-                  hotspotColour,
-                }
-              : {
-                  level,
-                  basemap,
-                  contourDensity,
-                  mapLayers,
-                  elevationUnit,
-                  palette: paletteId,
-                  polygonColour: polygonColourId,
-                  borderColour: borderColourId,
-                  borderWidth,
-                  centre: viewRef.current?.center ?? centre,
-                  zoom: viewRef.current?.zoom ?? preset.fallbackZoom,
-                  pin,
-                  markerShape,
-                  markerColour,
-                  markerSize,
-                }),
           },
         });
         return { imageUrl: result.imageUrl, previewUrl: result.previewUrl };
@@ -1767,6 +1936,84 @@ function ModernDesignContent() {
       setBusy("");
       setOrderStage("");
     }
+  }
+
+  /** Saves the current live state as a permanent, shareable design link. Always mints a
+   *  new id (see lib/design/shareableDesign.ts's module comment) — `incomingSnapshotId`
+   *  is passed through only as an advisory `forkedFrom` lineage marker, never to update
+   *  a link in place. */
+  async function saveAndShare() {
+    setShareOpen(true);
+    setShareBusy(true);
+    setShareError("");
+    setShareCopied(false);
+
+    try {
+      const design = buildShareableDesign({
+        surnameSearch,
+        includedSurnames,
+        censusYear,
+        county,
+        countyDisplayText,
+        dedId,
+        dedDisplayText,
+        townlandId,
+        townlandText,
+        houseUid,
+        houseNoText,
+        household,
+        householdDisplayMode,
+        visibleHouseholdFields,
+        hiddenHouseholdIndices,
+        template,
+        format,
+        headingText,
+        modern:
+          template === "modern"
+            ? {
+                level,
+                basemap,
+                mapLayers,
+                elevationUnit,
+                contourDensity,
+                paletteId,
+                polygonColourId,
+                borderColourId,
+                borderWidthIndex,
+                view: viewRef.current ?? { center: centre, zoom: preset.fallbackZoom },
+                pin,
+                pinSource,
+                markerShape,
+                markerSizeIndex,
+              }
+            : undefined,
+        historic:
+          template === "historic"
+            ? {
+                basemap: historicBasemap,
+                border: effectiveBorder,
+                symbol: historicSymbol,
+                accentId,
+                shadingOpacity,
+                hotspotColour,
+              }
+            : undefined,
+      });
+
+      const id = await saveShareableDesign(design, incomingSnapshotId ?? undefined);
+      setShareUrl(`${window.location.origin}/irish-census/design?snapshot=${id}`);
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "Could not save your design.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  function closeShareModal() {
+    setShareOpen(false);
+    setShareUrl(null);
+    setShareError("");
+    setShareCopied(false);
   }
 
   // ── Panel sections ─────────────────────────────────────────────────
@@ -2208,7 +2455,7 @@ function ModernDesignContent() {
                 disabled={geocodeState === "searching" || !selectedPolygon}
                 className="w-full rounded-md bg-stone-800 px-4 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {geocodeState === "searching" ? "Searching…" : "Attempt to find property"}
+                {geocodeState === "searching" ? "Searching…" : "Find this house"}
               </button>
             )}
             {geocodeState === "not-found" && (
@@ -2670,12 +2917,16 @@ function ModernDesignContent() {
             label: "Zoom in",
             icon: <ZoomInIcon size={18} />,
             onClick: () => zoomBy(0.6),
+            // Pinch-to-zoom already covers this on a touch screen, and the small
+            // toolbar has no room to spare next to the already-cramped mobile preview.
+            hideOnMobile: true,
           },
           {
             id: "zoom-out",
             label: "Zoom out",
             icon: <ZoomOutIcon size={18} />,
             onClick: () => zoomBy(-0.6),
+            hideOnMobile: true,
           },
           {
             id: "refit",
@@ -2685,6 +2936,7 @@ function ModernDesignContent() {
               setView(null);
               setRefitNonce((n) => n + 1);
             },
+            hideOnMobile: false,
           },
         ]
       : []),
@@ -2693,6 +2945,14 @@ function ModernDesignContent() {
       label: busy === "export" ? "Saving…" : "Save",
       icon: <SaveIcon size={18} />,
       onClick: () => void downloadPrintFile(),
+      hideOnMobile: false,
+    },
+    {
+      id: "share",
+      label: "Save & Share",
+      icon: <ShareIcon size={18} />,
+      onClick: () => void saveAndShare(),
+      hideOnMobile: false,
     },
   ];
 
@@ -2716,18 +2976,40 @@ function ModernDesignContent() {
     // 100dvh inner one leaves a gap the size of that bar as blank space beneath the pinned
     // price bar until the page scrolls — see the same fix on /irish-census.
     <div className={`${posterFont.className} flex min-h-dvh flex-col bg-[#F5F4F1] text-stone-900`}>
+      {/* Rendered above SiteHeader, not below it: SiteHeader is `sticky top-0`, and its
+          own visible nav row paints over any plain in-flow sibling placed after it
+          (positioned content always paints above non-positioned content in the same
+          stacking context, regardless of DOM order) — a banner inserted between
+          SiteHeader and `main` was invisible, covered by the header itself. Placing it
+          first avoids that entirely: it's not sticky, so it simply occupies its own
+          flow space above the header. */}
+      {loadSnapshotError && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-900">
+          {loadSnapshotError}
+        </div>
+      )}
+
       {/* Replaces this page's old bespoke masthead — its only interactive element was
           "Back to search", which is now SiteHeader's `back` slot; the eyebrow/heading it
           used to show are decorative and section 1 of the rail already names what's
           being designed, so nothing is lost folding the two into one bar. Two stacked
           bars would eat a third of a phone viewport for no added information. */}
-      <SiteHeader
-        back={{
-          href: backToSearchHref(),
-          label: "Back to search",
-          onClick: patchPinBeforeLeaving,
-        }}
-      />
+      {/* Hidden (not just covered) while the mobile fullscreen preview is open: SiteHeader
+          is `sticky`, which — like `fixed` — always opens its own stacking context, and a
+          sticky descendant of one has been observed painting above a later, higher
+          z-index `fixed` sibling in this app's headless screenshot pipeline despite
+          hit-testing correctly reporting the fixed element on top. Actually hiding it
+          removes the ambiguity rather than trusting z-index math against a sticky
+          ancestor. */}
+      <div className={previewFullscreen ? "hidden" : undefined}>
+        <SiteHeader
+          back={{
+            href: backToSearchHref(),
+            label: "Back to search",
+            onClick: patchPinBeforeLeaving,
+          }}
+        />
+      </div>
 
       <main
         ref={mobileMapSheetRef}
@@ -2736,11 +3018,31 @@ function ModernDesignContent() {
       >
         {/* ── Poster stage ──
             Height is drag-resizable below lg via useMobileMapSheet; from lg it's back
-            to a fixed-width rail beside a full-height stage. */}
+            to a fixed-width rail beside a full-height stage. Below lg it can also go
+            fullscreen (previewFullscreen) — the lg: rules here always win at that
+            breakpoint regardless of the flag, so there's no way to get stuck fixed on
+            desktop. */}
         <section
           ref={stageRef}
-          className="relative flex h-[var(--mobile-map-pct)] min-h-0 shrink-0 items-center justify-center overflow-auto p-6 pr-24 lg:h-auto lg:flex-1 lg:p-10 lg:pr-28"
+          className={`flex min-h-0 shrink-0 items-center justify-center overflow-auto lg:relative lg:inset-auto lg:z-auto lg:h-auto lg:flex-1 lg:bg-transparent lg:p-10 lg:pr-28 ${
+            previewFullscreen
+              ? "fixed inset-0 z-[9990] h-auto bg-stone-900/95 p-4"
+              : "relative h-[var(--mobile-map-pct)] p-6 pr-24"
+          }`}
         >
+          {/* Mobile-only: the stage is a fraction of the screen there, too small to read
+              the household table before ordering. Toggling this reuses the same stage
+              element (fullscreen above) rather than mounting a second poster — the one
+              live map/WebGL context is never duplicated. */}
+          <button
+            type="button"
+            onClick={() => setPreviewFullscreen((v) => !v)}
+            title={previewFullscreen ? "Close fullscreen preview" : "View fullscreen"}
+            className="absolute left-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-md border border-stone-200 bg-white/90 text-stone-700 shadow-sm backdrop-blur-sm lg:hidden"
+          >
+            {previewFullscreen ? <CloseIcon size={16} /> : <ExpandIcon size={16} />}
+          </button>
+
           {/* Sized in JS (frameSize, from the measured stage box) rather than pure CSS —
               a flex item sized only by aspect-ratio + max-width/max-height (both axes
               "auto") never grows to meet those maxima without something pushing it, so
@@ -2960,7 +3262,9 @@ function ModernDesignContent() {
                 onClick={tool.onClick}
                 disabled={busy !== ""}
                 title={tool.label}
-                className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-md border border-stone-200 bg-white text-stone-700 shadow-sm transition-colors hover:bg-stone-50 disabled:opacity-40"
+                className={`h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-md border border-stone-200 bg-white text-stone-700 shadow-sm transition-colors hover:bg-stone-50 disabled:opacity-40 ${
+                  tool.hideOnMobile ? "hidden lg:flex" : "flex"
+                }`}
               >
                 {tool.icon}
                 <span className="text-[9px] font-medium uppercase tracking-wide">{tool.label}</span>
@@ -3002,7 +3306,11 @@ function ModernDesignContent() {
         </section>
 
         {/* ── Control rail ── */}
-        <aside className="flex min-h-0 w-full flex-1 flex-col border-t border-stone-200 bg-white lg:w-[560px] lg:flex-none lg:flex-row lg:border-t-0 lg:border-l">
+        <aside
+          className={`min-h-0 w-full flex-1 flex-col border-t border-stone-200 bg-white lg:flex lg:w-[560px] lg:flex-none lg:flex-row lg:border-t-0 lg:border-l ${
+            previewFullscreen ? "hidden" : "flex"
+          }`}
+        >
           <MapSheetHandle {...mobileMapSheet.handleProps} className="lg:hidden" />
           <SectionTabsHorizontal
             sections={sections}
@@ -3036,6 +3344,67 @@ function ModernDesignContent() {
       {activeSection === "size" && (
         <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
           {renderCartSummaryBar("bar")}
+        </div>
+      )}
+
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-6"
+          onClick={closeShareModal}
+        >
+          <div
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-[15px] font-semibold text-stone-900">Save &amp; Share</h2>
+
+            {shareBusy && (
+              <p className="mt-3 text-[13px] text-stone-600">Saving your design…</p>
+            )}
+
+            {!shareBusy && shareError && (
+              <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                {shareError}
+              </p>
+            )}
+
+            {!shareBusy && shareUrl && (
+              <>
+                <p className="mt-2 text-[13px] text-stone-600">
+                  Anyone with this link can open, adjust and order this exact design — nothing
+                  is charged until they add it to cart.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={shareUrl}
+                    onFocus={(event) => event.currentTarget.select()}
+                    className="min-w-0 flex-1 rounded-md border border-stone-300 bg-stone-50 px-3 py-2 text-[13px] text-stone-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(shareUrl)
+                        .then(() => setShareCopied(true))
+                        .catch(() => {});
+                    }}
+                    className="flex-none rounded-md bg-stone-900 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-stone-700"
+                  >
+                    {shareCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={closeShareModal}
+              className="mt-5 text-[13px] font-medium text-stone-500 hover:text-stone-700"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>

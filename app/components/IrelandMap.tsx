@@ -517,7 +517,7 @@ export default function IrelandMap({
 
       <MapContainer
         center={[53.4, -7.9]}
-        zoom={6}
+        zoom={7}
         scrollWheelZoom={interactive}
         dragging={interactive}
         doubleClickZoom={interactive}

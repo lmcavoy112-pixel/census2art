@@ -91,6 +91,16 @@ const BUDGETS: Budget[] = [
   // Public form, no account behind it — tight budget on top of the honeypot/timing
   // checks in the route itself, since either alone is easy for a script to miss.
   { prefix: "/api/contact", windows: [{ limit: 5, windowMs: 10 * 60_000 }] },
+  // Writes a jsonb row per call, no storage write (no image) so lighter than /api/orders,
+  // but still a PII-bearing write. GET (opening a shared link) shares this same budget
+  // key — sized generously enough for a customer sharing one link with several relatives.
+  {
+    prefix: "/api/design-snapshots",
+    windows: [
+      { limit: 15, windowMs: 60_000 },
+      { limit: 80, windowMs: 24 * 60 * 60_000 },
+    ],
+  },
   // Guards a single static shared secret (see lib/admin-auth.ts) — the constant-time
   // compare stops timing attacks, not guessing, so brute force has to be stopped here.
   { prefix: "/api/admin/login", windows: [{ limit: 8, windowMs: 15 * 60_000 }] },

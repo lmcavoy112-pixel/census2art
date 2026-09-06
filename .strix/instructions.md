@@ -156,3 +156,35 @@ Added in the commit that introduced Shopify customer sign-in: `app/api/auth/logi
   in section 1, and that the token (kept in the browser's `localStorage` by
   `app/admin/orders/page.tsx`, key `census2art_admin_token`) isn't reachable via XSS anywhere
   else on the site.
+
+## 7. Design snapshots — "Save & Share" (new)
+
+`app/api/design-snapshots` (POST, create) and `app/api/design-snapshots/[id]` (GET,
+restore), backing the designer's "Save & Share" button
+(`app/irish-census/design/page.tsx`). Same PII class as section 3: a snapshot's `design`
+jsonb holds the same surname/county/district/townland/house/household fields covered
+there, captured pre-purchase.
+
+- **Table posture**: `design_snapshots` (migration `0013`) has RLS enabled with **no
+  policy** — same as `contact_submissions` and `orders` — so only the service-role key
+  (`supabaseAdmin`, used by both routes) can read or write it; the anon key gets nothing.
+  Confirm this holds (an anon-key query against the table should return zero rows, not an
+  error that leaks structure).
+- **GET is public, unauthenticated, id-as-capability-token** — same reasoning as
+  `GET /api/orders/[id]`: the UUID itself is what keeps one customer's saved design from
+  being another's to read. Confirm ids are genuinely unguessable (v4 UUID, generated
+  server-side via `crypto.randomUUID()`, never derived from anything predictable), and
+  that a missing row and a malformed id both return the identical `404 { error: "Design
+  not found." }` (this was found and fixed: an unvalidated non-UUID string reaching
+  `.eq("id", id)` against a `uuid` column caused Postgres to reject it, surfacing as a 500
+  instead of the 404 a genuine miss gets — re-verify the `UUID_RE` guard in the route
+  still catches this).
+- **Retention is intentionally indefinite** — no cleanup cron, unlike `cleanup-abandoned-
+  orders`. This is a real, deliberate tradeoff (the feature's purpose is long-lived support
+  links) rather than an oversight; still worth confirming the table can't be mass-enumerated
+  or scraped given rows are never pruned.
+- **POST validates the whole payload** against `shareableDesignSchema`
+  (`lib/design/shareableDesign.ts`) before insert, with explicit length caps (strings at
+  200 chars, household at 60 rows, `includedSurnames` at 5) rather than trusting the
+  shape alone — confirm a request that exceeds any of those is rejected with 400, not
+  silently truncated or accepted.

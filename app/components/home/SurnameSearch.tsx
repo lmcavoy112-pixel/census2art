@@ -39,6 +39,7 @@ export default function SurnameSearch({
   disabledNote,
   censusYear = "1901",
   onSelect,
+  onReset,
   helperText = "Select a surname from the list.",
   actionSlot,
 }: {
@@ -49,6 +50,11 @@ export default function SurnameSearch({
   censusYear?: "1901" | "1911";
   /** Called with the surname picked from the dropdown. */
   onSelect: (surname: { display: string; search: string }) => void;
+  /** Called when the visitor clears a locked-in selection via "Reset search" —
+   *  callers whose search box stays mounted after picking (DiscoverHistory) use
+   *  this to put their preview back to its default state. Callers that navigate
+   *  away on select (CensusBlock) can leave it out. */
+  onReset?: () => void;
   /** Small print under the input explaining that a button-less search box only
    *  responds to a picked row — callers override the default wording to describe
    *  what picking one actually does for them. */
@@ -62,6 +68,10 @@ export default function SurnameSearch({
   const [options, setOptions] = useState<SurnameOption[]>([]);
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
+  // Set once a row is actually picked — the box goes read-only until "Reset search"
+  // is clicked. Free-typing straight over a just-picked name (rather than resetting
+  // first) is what let back-to-back searches race and trip the dropdown up.
+  const [locked, setLocked] = useState(false);
 
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +87,7 @@ export default function SurnameSearch({
   // Debounced suggestion fetch. The census page fires one request per keystroke;
   // this is the same endpoint, just not asked quite so often.
   useEffect(() => {
-    if (disabled) return;
+    if (disabled || locked) return;
     const query = normaliseSurnameSearch(surname);
     let cancelled = false;
 
@@ -99,7 +109,7 @@ export default function SurnameSearch({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [surname, disabled, censusYear]);
+  }, [surname, disabled, locked, censusYear]);
 
   function go(display: string, surnameSearch?: string) {
     const trimmed = display.trim();
@@ -108,12 +118,22 @@ export default function SurnameSearch({
     // Completes the box to the picked name — without this, picking "Murph" from the
     // list for "Murphy" left the input showing whatever partial text was typed.
     setSurname(trimmed);
+    setLocked(true);
     onSelect({ display: trimmed, search: surnameSearch || normaliseSurnameSearch(trimmed) });
+  }
+
+  function handleReset() {
+    setSurname("");
+    setOptions([]);
+    setOpen(false);
+    setHighlighted(-1);
+    setLocked(false);
+    onReset?.();
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (highlighted < 0) return;
+    if (locked || highlighted < 0) return;
     const chosen = options[highlighted];
     go(chosen.surname_display, chosen.surname_search);
   }
@@ -149,34 +169,49 @@ export default function SurnameSearch({
           <input
             value={surname}
             onChange={(e) => {
+              if (locked) return;
               setSurname(e.target.value);
               setOpen(true);
             }}
-            onFocus={() => setOpen(true)}
+            onFocus={() => !locked && setOpen(true)}
             onKeyDown={onKeyDown}
+            readOnly={locked}
             placeholder="Try 'Obrien' (for O'Brien)…"
             aria-label="Search a surname"
             aria-expanded={open && options.length > 0}
             aria-controls="surname-options"
+            aria-readonly={locked}
             role="combobox"
             aria-autocomplete="list"
             autoComplete="off"
             className="w-full rounded-xl px-5 py-4 text-base outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
             style={{
               border: `1.5px solid ${RULE}`,
-              background: RAISED,
+              background: locked ? TINT : RAISED,
               color: INK,
               fontFamily: "inherit",
               boxShadow: "0 2px 8px rgba(30,43,24,0.06)",
               outlineColor: GOLD,
+              paddingRight: locked ? "8.5rem" : undefined,
+              cursor: locked ? "default" : "text",
             }}
           />
+          {locked ? (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-3 py-1.5 text-xs font-semibold underline-offset-2 hover:underline"
+              style={{ color: GOLD }}
+            >
+              Reset search
+            </button>
+          ) : null}
         </div>
         {actionSlot}
       </form>
 
       <p className="mt-2 text-xs" style={{ color: MUTED }}>
-        {helperText}
+        {locked ? `Showing "${surname}". Reset search to look up a different name.` : helperText}
       </p>
 
       {open && options.length > 0 ? (

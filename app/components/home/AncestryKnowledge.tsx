@@ -20,7 +20,7 @@ const ROUTES: Route[] = [
   {
     heading: "I know the surname and place",
     body: "Found through ancestry research or a DNA test? Mark the exact location and display the family details on the artwork.",
-    buttonLabel: "Find my family",
+    buttonLabel: "Find my ancestors",
     // CensusBlock is the first thing in /discover's <main>, so a plain link lands
     // right on it — no anchor needed.
     buttonHref: "/discover",
@@ -32,7 +32,7 @@ const ROUTES: Route[] = [
   {
     heading: "I only know the surname",
     body: "Display the total count and the distribution of your family across Ireland with a heritage symbol of your choice.",
-    buttonLabel: "Map my surname",
+    buttonLabel: "Show my ancestors",
     // DiscoverHistory's own section id — further down the same page.
     buttonHref: "/discover#discover-historic",
     // Historic template: the nationwide, ornate distribution map — no address needed.
@@ -74,7 +74,7 @@ export default function AncestryKnowledge() {
           {ROUTES.map((route, index) => {
             const imageFirst = index % 2 === 0;
             const image = (
-              <div className="mx-auto w-full max-w-sm">
+              <div className="mx-auto w-full max-w-[10rem] sm:max-w-sm">
                 <FramedPrint src={route.preview} alt={route.previewAlt} matPadding="0" frameWidth="6px" />
               </div>
             );
@@ -106,18 +106,13 @@ export default function AncestryKnowledge() {
             return (
               <div key={route.heading}>
                 {index > 0 && <hr className="my-12 sm:my-16" style={{ borderColor: RULE }} />}
+                {/* Text always comes first in DOM order so mobile always stacks
+                    heading/body/button above the image; `order` classes then
+                    restore the alternating image-left/text-right desktop layout
+                    without reversing the mobile stack. */}
                 <div className="grid gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
-                  {imageFirst ? (
-                    <>
-                      {image}
-                      {text}
-                    </>
-                  ) : (
-                    <>
-                      {text}
-                      {image}
-                    </>
-                  )}
+                  <div className={imageFirst ? "order-1 sm:order-2" : "order-1"}>{text}</div>
+                  <div className={imageFirst ? "order-2 sm:order-1" : "order-2"}>{image}</div>
                 </div>
               </div>
             );
