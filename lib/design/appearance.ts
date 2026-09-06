@@ -12,7 +12,13 @@ export type AccentId =
   | "navy"
   | "bronze"
   | "slate"
-  | "burgundy";
+  | "burgundy"
+  | "aubergine"
+  | "petrol"
+  | "charcoal"
+  | "olive"
+  | "rust"
+  | "ochre";
 
 export type AccentOption = {
   id: AccentId;
@@ -30,6 +36,12 @@ export const ACCENT_OPTIONS: AccentOption[] = [
   { id: "bronze", label: "Bronze", page: "#F7F1E4", accent: "#6E5033" },
   { id: "slate", label: "Slate", page: "#F4F3EF", accent: "#44576B" },
   { id: "burgundy", label: "Burgundy", page: "#F7F4EF", accent: "#5B2C35" },
+  { id: "aubergine", label: "Aubergine", page: "#F6F3F5", accent: "#3E2142" },
+  { id: "petrol", label: "Petrol", page: "#F4F6F5", accent: "#1A4F4A" },
+  { id: "charcoal", label: "Charcoal", page: "#F7F6F2", accent: "#33312C" },
+  { id: "olive", label: "Olive", page: "#F7F6EC", accent: "#4B4A1E" },
+  { id: "rust", label: "Rust", page: "#F8F1E9", accent: "#7A3418" },
+  { id: "ochre", label: "Ochre", page: "#F8F4E6", accent: "#6B4A12" },
 ];
 
 export const DEFAULT_ACCENT_ID: AccentId = "classic";

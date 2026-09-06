@@ -43,10 +43,10 @@ export default function DiscoverPage() {
       <SiteHeader />
 
       <main style={{ flex: 1 }}>
-        <CensusBlock collection={IRISH_CENSUS} eyebrow="Down to the house" />
-        <Gallery only="modern" />
+        <CensusBlock collection={IRISH_CENSUS} heading="Know the surname and place?" />
+        <Gallery only="modern" title="Modern Examples" />
         <DiscoverHistory />
-        <Gallery only="historic" />
+        <Gallery only="historic" title="Historic Examples" />
       </main>
 
       <SiteFooter />

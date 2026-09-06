@@ -190,7 +190,7 @@ function CurrencyMenu() {
  * Below `sm` the header collapses to a single slim line — a hamburger (opens the side
  * menu below), an optional back chevron, the centered wordmark, and Cart/Account
  * (icon-only) — to save horizontal space on a phone without dropping nav or sign-in
- * access. The nav links themselves (Examples, Discover, Background, Contact) move
+ * access. The nav links themselves (Discover, Examples, Background, Contact) move
  * into that side menu rather than just disappearing.
  * Both breakpoints share one `height: var(--site-header-h)` (see globals.css), which
  * every page that offsets or sizes against the header reads from the same variable
@@ -303,7 +303,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
       >
       <div className="relative mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 shrink items-center gap-1">
-          {/* Opens the side menu below — the nav links (Examples, Discover,
+          {/* Opens the side menu below — the nav links (Discover, Examples,
               Background, Contact) that the desktop-only <nav> further down drops
               below `sm` live there instead of just disappearing. */}
           <button
@@ -377,10 +377,18 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
         </div>
 
         <nav className="hidden items-center gap-6 sm:flex">
-          <HeaderLink href="/examples">Examples</HeaderLink>
-          <HeaderLink href="/discover">Discover</HeaderLink>
-          <HeaderLink href="/background">Background</HeaderLink>
-          <HeaderLink href="/contact">Contact</HeaderLink>
+          <HeaderLink href="/discover" active={isActivePath(pathname, "/discover")}>
+            Discover
+          </HeaderLink>
+          <HeaderLink href="/examples" active={isActivePath(pathname, "/examples")}>
+            Examples
+          </HeaderLink>
+          <HeaderLink href="/background" active={isActivePath(pathname, "/background")}>
+            Background
+          </HeaderLink>
+          <HeaderLink href="/contact" active={isActivePath(pathname, "/contact")}>
+            Contact
+          </HeaderLink>
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -581,20 +589,20 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
               <div className="px-5 py-5">
                 <div className="flex flex-col gap-4">
                   <Link
-                    href="/examples"
-                    onClick={requestCloseMenu}
-                    className="text-sm"
-                    style={{ color: INK }}
-                  >
-                    Examples
-                  </Link>
-                  <Link
                     href="/discover"
                     onClick={requestCloseMenu}
                     className="text-sm"
                     style={{ color: INK }}
                   >
                     Discover
+                  </Link>
+                  <Link
+                    href="/examples"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Examples
                   </Link>
                   <Link
                     href="/background"
@@ -622,12 +630,30 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
   );
 }
 
-function HeaderLink({ href, children }: { href: string; children: string }) {
+// Matches the section root and anything nested under it (e.g. /discover/foo), so
+// deep-linked subpages still show the parent nav item as active.
+function isActivePath(pathname: string | null, href: string): boolean {
+  return pathname === href || !!pathname?.startsWith(`${href}/`);
+}
+
+function HeaderLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active?: boolean;
+  children: string;
+}) {
   return (
     <Link
       href={href}
-      className="-my-2 py-2 text-sm transition-colors hover:text-[#1e2b18]"
-      style={{ color: MUTED }}
+      aria-current={active ? "page" : undefined}
+      className="-my-2 border-b-2 py-2 text-sm transition-colors hover:text-[#1e2b18]"
+      style={{
+        color: active ? INK : MUTED,
+        borderColor: active ? GOLD : "transparent",
+      }}
     >
       {children}
     </Link>

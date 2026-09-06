@@ -68,7 +68,7 @@ export default function HowItWorks() {
                   className="mt-4"
                   style={{
                     fontFamily: "var(--font-cormorant)",
-                    fontSize: "1.6rem",
+                    fontSize: "clamp(1.6rem, 2.4vw, 2.1rem)",
                     color: RAISED,
                     fontWeight: 500,
                   }}
@@ -76,8 +76,8 @@ export default function HowItWorks() {
                   {index + 1}. {step.title}
                 </h3>
                 <p
-                  className="mx-auto mt-3 max-w-[26ch] text-sm leading-relaxed"
-                  style={{ color: MUTED_ON_DARK, fontWeight: 300 }}
+                  className="mx-auto mt-3 max-w-[30ch] leading-relaxed"
+                  style={{ color: MUTED_ON_DARK, fontWeight: 300, fontSize: "clamp(0.9rem, 1.3vw, 1.15rem)" }}
                 >
                   {step.body}
                 </p>

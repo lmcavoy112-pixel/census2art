@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import SiteHeader from "./components/home/SiteHeader";
 import SiteFooter from "./components/home/SiteFooter";
-import CensusBlock from "./components/home/CensusBlock";
 import WhatWillYouMap from "./components/home/WhatWillYouMap";
 import AncestryKnowledge from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
@@ -12,7 +11,6 @@ import NeedHelp from "./components/home/NeedHelp";
 import HeroLedgerMap from "./components/home/HeroLedgerMap";
 import FeaturedQuote from "./components/home/FeaturedQuote";
 import { siteFontVars } from "./fonts";
-import { IRISH_CENSUS } from "@/lib/censusEditions";
 
 const GROUND = "#fdfaf5";
 const RAISED = "#fdfaf5";
@@ -94,15 +92,10 @@ export default function Home() {
         <FeaturedQuote />
 
         <WhatWillYouMap />
-
-        {/* ── BLOCK 2 · IRISH CENSUS ───────────────────────────────────────────
-            One block per country. England and the rest follow this same shape, which
-            is why it is a component fed by lib/censusEditions.ts rather than markup. */}
-        <CensusBlock collection={IRISH_CENSUS} />
         <AncestryKnowledge />
 
-        <HowItWorks />
         <Gallery />
+        <HowItWorks />
         <Testimonials />
         <NeedHelp />
       </main>

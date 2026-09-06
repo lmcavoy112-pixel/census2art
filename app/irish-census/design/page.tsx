@@ -144,6 +144,8 @@ import HistoricPoster, {
   HISTORIC_SYMBOLS,
   HOTSPOT_COLOURS,
   SQUARE_BORDER_STYLES,
+  defaultHotspotColourForAccent,
+  hotspotColoursForAccent,
 } from "@/app/components/historic/HistoricPoster";
 import SiteHeader from "@/app/components/home/SiteHeader";
 import {
@@ -645,7 +647,10 @@ function ModernDesignContent() {
     const savedTemplate = getParam(params, "template");
     if (savedTemplate === "historic" || savedTemplate === "modern") setTemplate(savedTemplate);
 
-    if (isAccentId(saved?.accent)) setAccentId(saved.accent);
+    if (isAccentId(saved?.accent)) {
+      setAccentId(saved.accent);
+      setHotspotColour(defaultHotspotColourForAccent(saved.accent));
+    }
 
     // A marker placed back on the census search carries over — but only onto the
     // Modern template, which is the only one with a map to place it on. The Historic
@@ -2574,7 +2579,10 @@ function ModernDesignContent() {
                 land={option.page}
                 water={option.accent}
                 selected={accentId === option.id}
-                onClick={() => setAccentId(option.id)}
+                onClick={() => {
+                  setAccentId(option.id);
+                  setHotspotColour(defaultHotspotColourForAccent(option.id));
+                }}
               />
             ))}
           </div>
@@ -2587,7 +2595,7 @@ function ModernDesignContent() {
           <div className="mb-5">
             <FieldLabel>Shading colour</FieldLabel>
             <div className="flex flex-wrap items-start gap-2">
-              {HOTSPOT_COLOURS.map((option) => (
+              {hotspotColoursForAccent(accentId).map((option) => (
                 <ColourDot
                   key={option.id}
                   colour={option.hex}

@@ -48,7 +48,7 @@ export default function WhatWillYouMap() {
 
   return (
     <section className="py-14 sm:py-16" style={{ background: "#fdfaf5" }}>
-      <div className="mx-auto max-w-6xl px-6 text-left sm:text-center">
+      <div className="mx-auto max-w-6xl px-6">
         <h2
           style={{
             fontFamily: "var(--font-cormorant)",
@@ -57,7 +57,7 @@ export default function WhatWillYouMap() {
             color: INK,
           }}
         >
-          Who will you map?
+          What will yours look like?
         </h2>
       </div>
 

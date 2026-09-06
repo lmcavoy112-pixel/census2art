@@ -3,35 +3,38 @@ import Link from "next/link";
 import FramedPrint from "./FramedPrint";
 
 const INK = "#1e2b18";
-const GOLD = "#b8902a";
+const RAISED = "#fdfaf5";
 const MUTED = "#6b5f4a";
 const RULE = "#ddd6c4";
 
 type Route = {
   heading: string;
   body: string;
-  href: string;
+  buttonLabel: string;
+  buttonHref: string;
   preview: string;
   previewAlt: string;
 };
 
 const ROUTES: Route[] = [
   {
-    heading: "I know the house or townland, or have a rough idea",
-    body: "Search a surname above and drill down to the exact address inside the designer.",
-    href: "#irish-census",
+    heading: "I know the surname and place",
+    body: "Found through ancestry research or a DNA test? Mark the exact location and display the family details on the artwork.",
+    buttonLabel: "Find my family",
+    // CensusBlock is the first thing in /discover's <main>, so a plain link lands
+    // right on it — no anchor needed.
+    buttonHref: "/discover",
     // Modern template: a precise street-level map, since this path needs a real
     // address to search down to.
     preview: "/examples/irish-census-1901-example.png",
     previewAlt: "A Modern-template sample print: a street-level map pinned to one house",
   },
   {
-    heading: "I only know the surname, or not even that",
-    body: "See everywhere that name appears across Ireland today. No other details needed.",
-    // AncestryKnowledge lives on the homepage; DiscoverHistory (the search-then-preview
-    // flow this points at) only exists on /discover, so this is a real cross-page link,
-    // not an in-page anchor like the card above.
-    href: "/discover#discover-historic",
+    heading: "I only know the surname",
+    body: "Display the total count and the distribution of your family across Ireland with a heritage symbol of your choice.",
+    buttonLabel: "Map my surname",
+    // DiscoverHistory's own section id — further down the same page.
+    buttonHref: "/discover#discover-historic",
     // Historic template: the nationwide, ornate distribution map — no address needed.
     preview: "/examples/discover-history-placeholder.png",
     previewAlt: "A Historic-template sample print: a nationwide surname distribution map",
@@ -39,29 +42,23 @@ const ROUTES: Route[] = [
 ];
 
 /**
- * Sits below the homepage's own Irish Census search (CensusBlock), for visitors who
- * scroll past it without searching: routes them to whichever of the two existing
- * search flows fits what they actually know. Originally had a third option for
- * "know nothing at all", linking straight into a blank designer — dropped because
- * everyone knows their own surname, so that persona doesn't really exist; both real
- * personas resolve to a surname search, just at two different depths.
+ * Sits right below WhatWillYouMap on the homepage — the homepage itself has no
+ * surname search any more (that lived in CensusBlock, dropped in favour of sending
+ * everyone here first), so this is the first fork visitors hit. Two full-width
+ * rows, one per persona, each pairing a large sample print with a button into the
+ * matching search on /discover — image and text swap sides between rows (mirroring
+ * the image-left/text-right and text-left/image-right arrangements CensusBlock and
+ * DiscoverHistory themselves use on /discover) rather than two small side-by-side
+ * cards, so the sample prints can actually read as prints rather than thumbnails.
+ * Originally had a third option for "know nothing at all", linking straight into a
+ * blank designer — dropped because everyone knows their own surname, so that
+ * persona doesn't really exist; both real personas resolve to a surname search,
+ * just at two different depths.
  */
 export default function AncestryKnowledge() {
   return (
     <section className="px-6 py-14 sm:py-16">
       <div className="mx-auto max-w-6xl">
-        <p
-          style={{
-            fontFamily: "var(--font-plex-mono)",
-            fontSize: "0.7rem",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: GOLD,
-            marginBottom: "0.5rem",
-          }}
-        >
-          Not sure yet?
-        </p>
         <h2
           style={{
             fontFamily: "var(--font-cormorant)",
@@ -72,37 +69,59 @@ export default function AncestryKnowledge() {
         >
           What best describes your ancestry knowledge?
         </h2>
-        <p className="mt-4 max-w-2xl text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
-          Know exactly where your family lived, or have a rough idea? Search above and
-          we'll help you find the house. Only know the surname? We'll show you
-          everywhere it's from instead.
-        </p>
 
-        <div className="mt-8 grid gap-5 sm:grid-cols-2">
-          {ROUTES.map((route) => (
-            <Link
-              key={route.heading}
-              href={route.href}
-              className="block rounded-2xl px-6 py-6 transition-opacity hover:opacity-90"
-              style={{ border: `1px solid ${RULE}`, color: INK }}
-            >
-              <h3
-                style={{
-                  fontFamily: "var(--font-cormorant)",
-                  fontSize: "1.3rem",
-                  fontWeight: 500,
-                }}
-              >
-                {route.heading}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
-                {route.body}
-              </p>
-              <div className="mt-5 w-32">
+        <div className="mt-10">
+          {ROUTES.map((route, index) => {
+            const imageFirst = index % 2 === 0;
+            const image = (
+              <div className="mx-auto w-full max-w-sm">
                 <FramedPrint src={route.preview} alt={route.previewAlt} matPadding="0" frameWidth="6px" />
               </div>
-            </Link>
-          ))}
+            );
+            const text = (
+              <div>
+                <h3
+                  style={{
+                    fontFamily: "var(--font-cormorant)",
+                    fontSize: "1.6rem",
+                    fontWeight: 500,
+                    color: INK,
+                  }}
+                >
+                  {route.heading}
+                </h3>
+                <p className="mt-3 max-w-md text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
+                  {route.body}
+                </p>
+                <Link
+                  href={route.buttonHref}
+                  className="mt-6 inline-block rounded-xl px-7 py-4 text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: INK, color: RAISED, letterSpacing: "0.03em" }}
+                >
+                  {route.buttonLabel}
+                </Link>
+              </div>
+            );
+
+            return (
+              <div key={route.heading}>
+                {index > 0 && <hr className="my-12 sm:my-16" style={{ borderColor: RULE }} />}
+                <div className="grid gap-8 sm:grid-cols-2 sm:items-center sm:gap-12">
+                  {imageFirst ? (
+                    <>
+                      {image}
+                      {text}
+                    </>
+                  ) : (
+                    <>
+                      {text}
+                      {image}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

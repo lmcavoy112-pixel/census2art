@@ -40,7 +40,7 @@ function useGalleryPrints(): GalleryPrint[] {
   return prints;
 }
 
-const GOLD = "#b8902a";
+const INK = "#1e2b18";
 
 /**
  * A horizontal strip of sample prints — no caption underneath, since the surname
@@ -52,8 +52,18 @@ const GOLD = "#b8902a";
  * Omit it to show the whole pool unfiltered (the homepage's call) — samples with no
  * extent word at all (the "Surname - County.png" convention) only ever show up
  * unfiltered, since there's no extent to classify them by.
+ *
+ * `title` overrides the "Gallery" heading — /discover's two filtered strips each
+ * sit under a specific search and label themselves accordingly ("Modern Examples",
+ * "Historic Examples") rather than the generic default.
  */
-export default function Gallery({ only }: { only?: "modern" | "historic" } = {}) {
+export default function Gallery({
+  only,
+  title = "Gallery",
+}: {
+  only?: "modern" | "historic";
+  title?: string;
+} = {}) {
   const allPrints = useGalleryPrints();
   const isDesktop = useIsDesktop();
   const [openPrint, setOpenPrint] = useState<GalleryPrint | null>(null);
@@ -69,19 +79,18 @@ export default function Gallery({ only }: { only?: "modern" | "historic" } = {})
   if (prints.length === 0) return null;
 
   return (
-    <section className="py-10 sm:py-12">
+    <section className="py-14 sm:py-16">
       <div className="mx-auto max-w-6xl px-6">
-        <p
+        <h2
           style={{
-            fontFamily: "var(--font-plex-mono)",
-            fontSize: "0.7rem",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: GOLD,
+            fontFamily: "var(--font-cormorant)",
+            fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+            fontWeight: 500,
+            color: INK,
           }}
         >
-          Gallery
-        </p>
+          {title}
+        </h2>
       </div>
 
       <HorizontalScroller itemCount={prints.length}>

@@ -16,7 +16,7 @@ import { Cormorant_Garamond, Uncial_Antiqua } from "next/font/google";
 import IrelandArtworkMap from "@/app/components/IrelandArtworkMap";
 import type { DedRow } from "@/lib/design/fetching";
 import { formatAspect, type Format } from "@/lib/design/catalogue";
-import { lightenHex } from "@/lib/design/appearance";
+import { lightenHex, type AccentId } from "@/lib/design/appearance";
 import type { HotspotIntensity } from "@/lib/hotspotStyle";
 
 const titleFont = Cormorant_Garamond({
@@ -66,22 +66,51 @@ export const HISTORIC_SYMBOLS: { id: string; label: string }[] = [
 
 // Curated to read clearly against all three basemaps (green sea, land ranging from
 // Terrain's moss-green through Hybrid's khaki to Sepia's cream) rather than any one.
-// Ordered around the hue wheel (neutral, then warm through to red) rather than by
-// when each was added, so the swatch row reads as a deliberate spread of colour.
 export const DEFAULT_HOTSPOT_COLOUR = "#2a1904";
 export const HOTSPOT_COLOURS: { id: string; label: string; hex: string }[] = [
-  { id: "charcoal", label: "Charcoal", hex: "#262626" },
-  { id: "terracotta", label: "Terracotta", hex: "#a8462c" },
-  { id: "bronze", label: "Bronze", hex: "#5a3a1e" },
   { id: "espresso", label: "Espresso", hex: "#2a1904" },
-  { id: "ochre", label: "Ochre", hex: "#6b4a12" },
   { id: "moss", label: "Deep Moss", hex: "#0d3d1e" },
-  { id: "petrol", label: "Petrol", hex: "#0f3d3d" },
-  { id: "slate", label: "Slate", hex: "#35495e" },
-  { id: "indigo", label: "Deep Indigo", hex: "#1c2b4a" },
-  { id: "aubergine", label: "Aubergine", hex: "#3b1f3b" },
   { id: "oxblood", label: "Oxblood", hex: "#6b1220" },
+  { id: "indigo", label: "Deep Indigo", hex: "#1c2b4a" },
+  { id: "terracotta", label: "Terracotta", hex: "#a8462c" },
 ];
+
+// Same five colours for every Paper & Ink accent — just ranked differently per accent,
+// tonal match first, so the accent you pick comes with a shading colour already suited
+// to it: Classic's ink is a dark umber (Espresso leads), Emerald's is forest green (Deep
+// Moss leads), Navy and Slate are both cool blues (Deep Indigo leads both, Slate ranks
+// Deep Moss above Oxblood since a muted sage-on-slate pairing reads calmer than a red
+// one), Bronze is a warm metallic brown (Terracotta leads) and Burgundy is a deep wine
+// red (Oxblood leads). Aubergine's purple is nearest Oxblood's wine-red, Petrol's teal
+// is nearest Deep Moss's green, Charcoal is neutral so pairs with Espresso (the other
+// neutral-leaning tone), Olive's yellow-green leads with Deep Moss then the classic
+// olive-and-rust pairing of Terracotta, Rust leads with its own near-analogous
+// Terracotta, and Ochre's mustard-gold leads with Espresso, the classic brown pairing,
+// then Terracotta. index 0 of each is that accent's default.
+const HOTSPOT_COLOUR_ORDER_BY_ACCENT: Record<AccentId, string[]> = {
+  classic: ["espresso", "terracotta", "oxblood", "moss", "indigo"],
+  emerald: ["moss", "espresso", "oxblood", "indigo", "terracotta"],
+  navy: ["indigo", "moss", "espresso", "oxblood", "terracotta"],
+  bronze: ["terracotta", "espresso", "oxblood", "moss", "indigo"],
+  slate: ["indigo", "moss", "oxblood", "espresso", "terracotta"],
+  burgundy: ["oxblood", "espresso", "indigo", "moss", "terracotta"],
+  aubergine: ["oxblood", "indigo", "espresso", "moss", "terracotta"],
+  petrol: ["moss", "indigo", "espresso", "oxblood", "terracotta"],
+  charcoal: ["espresso", "indigo", "moss", "oxblood", "terracotta"],
+  olive: ["moss", "terracotta", "espresso", "oxblood", "indigo"],
+  rust: ["terracotta", "espresso", "oxblood", "moss", "indigo"],
+  ochre: ["espresso", "terracotta", "moss", "oxblood", "indigo"],
+};
+
+export function hotspotColoursForAccent(accentId: AccentId) {
+  return HOTSPOT_COLOUR_ORDER_BY_ACCENT[accentId].map(
+    (id) => HOTSPOT_COLOURS.find((option) => option.id === id)!
+  );
+}
+
+export function defaultHotspotColourForAccent(accentId: AccentId): string {
+  return hotspotColoursForAccent(accentId)[0].hex;
+}
 
 /* ── Calibrated layout ──────────────────────────────────────────────── */
 

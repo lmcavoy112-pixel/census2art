@@ -46,13 +46,13 @@ export const IRISH_CENSUS: CensusCollection = {
       available: true,
       // Kept to the fields the app actually shows (name/age/occupation/birthplace,
       // per HouseholdPerson in lib/design/snapshot.ts) — nothing about marriage
-      // length or children surviving, which isn't data this app surfaces. Also
-      // near-identical in length to the 1911 blurb below on purpose: CensusBlock
-      // swaps this text in place when the year toggle is clicked, and a blurb that
-      // wraps to a different number of lines would shove the search box and
-      // everything below it up or down the page.
+      // length or children surviving, which isn't data this app surfaces. No year
+      // named in the text itself — the year toggle right above already makes that
+      // obvious — which leaves this identical to the 1911 blurb below; CensusBlock
+      // swaps this text in place when the toggle is clicked, so identical text can't
+      // wrap to a different number of lines and shove the search box around.
       blurb:
-        "Search your surname and follow it down to the county, the townland, even the house your family lived in — every name, age and occupation as recorded in 1901.",
+        "Search your surname and follow it down to the county, the townland, even the house your family lived in, with every name, age and occupation.",
       recentPurchases: [
         { img: "/examples/Irish Census/1901/eg1.svg", surname: "Clare" },
         { img: "/examples/Irish Census/1901/eg2.svg", surname: "King" },
@@ -66,7 +66,7 @@ export const IRISH_CENSUS: CensusCollection = {
       href: "/irish-census",
       available: true,
       blurb:
-        "Search your surname and follow it down to the county, the townland, even the house your family lived in — every name, age and occupation as recorded in 1911.",
+        "Search your surname and follow it down to the county, the townland, even the house your family lived in, with every name, age and occupation.",
       // No 1911-specific sample art exists yet (the 1901 samples under
       // public/examples/Irish Census/1901/ have "1901" drawn directly into the
       // artwork, so reusing them here would print a wrong date) — left empty rather

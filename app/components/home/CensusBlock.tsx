@@ -23,12 +23,19 @@ const CARD_SHADOW = "0 30px 60px -24px rgba(30,43,24,0.4), 0 3px 10px rgba(30,43
 export default function CensusBlock({
   collection,
   eyebrow,
+  heading,
 }: {
   collection: CensusCollection;
   /** Small caps label above the heading — signals who this section is for before
    *  the visitor reads the blurb. Optional so the homepage's call (no eyebrow)
    *  is unaffected by copy written for /discover. */
   eyebrow?: string;
+  /** Overrides `collection.label` as the heading text — collection.label ("Irish
+   *  Census") stays the generic name used elsewhere (nav, /examples), while a page
+   *  like /discover can speak to its specific visitor instead ("Know the surname
+   *  and place?"). The section's anchor id is still derived from collection.label,
+   *  unaffected by this override. */
+  heading?: string;
 }) {
   const router = useRouter();
   const [selectedYear, setSelectedYear] = useState(
@@ -87,7 +94,7 @@ export default function CensusBlock({
               fontWeight: 500,
             }}
           >
-            {collection.label}
+            {heading ?? collection.label}
           </h2>
 
           {/* Year selector — a true binary switch, since IRISH_CENSUS (the only

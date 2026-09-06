@@ -161,7 +161,7 @@ export default function DiscoverHistory() {
               color: INK,
             }}
           >
-            Not sure exactly where your family's from?
+            Only know the surname?
           </h2>
           <p className="mt-4 max-w-md text-base leading-relaxed" style={{ color: MUTED, fontWeight: 300 }}>
             Search your surname and see everywhere it appears across Ireland, right here.
