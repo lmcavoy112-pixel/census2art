@@ -57,10 +57,12 @@ function PitchHeading({ pitch }: { pitch: Pitch }) {
 
 /** Just the CTA, right below the persona's Gallery strip — no top padding of its own,
  *  same reasoning as PitchHeading's bottom edge: Gallery's own (shrunk) bottom padding
- *  does the separating. */
+ *  does the separating. Centred, not left-aligned like the heading/subtext above it —
+ *  with no text left to line up against, a left-aligned button under a full-width,
+ *  visually centred gallery strip just reads as adrift rather than intentional. */
 function PitchButton({ pitch }: { pitch: Pitch }) {
   return (
-    <section className="px-6 pb-2 sm:pb-16">
+    <section className="px-6 pb-2 text-center sm:pb-16">
       <div className="mx-auto max-w-6xl">
         <Link
           href={pitch.buttonHref}
