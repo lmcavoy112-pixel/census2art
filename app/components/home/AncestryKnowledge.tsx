@@ -13,7 +13,7 @@ type Pitch = {
 
 const MODERN_PITCH: Pitch = {
   heading: "I know the surname and place",
-  body: "We mark the exact house and print your family's real household record.",
+  body: "Use our census mapper to find the household location, then our artwork designer to customise to your liking.",
   buttonLabel: "Find my ancestors",
   // CensusBlock is the first thing in /discover's <main>, so a plain link lands
   // right on it — no anchor needed.
@@ -22,7 +22,7 @@ const MODERN_PITCH: Pitch = {
 
 const HISTORIC_PITCH: Pitch = {
   heading: "I only know the surname",
-  body: "See your surname's spread across Ireland, with its total count and a heritage symbol.",
+  body: "Discover your surname distribution and count across Ireland - choose an irish heritage symbol and customise your artwork.",
   buttonLabel: "Show my ancestors",
   // DiscoverHistory's own section id — further down /discover.
   buttonHref: "/discover#discover-historic",

@@ -30,6 +30,7 @@ export default function HorizontalScroller({
   children,
   itemCount,
   pagingOnMobile = false,
+  compact = false,
 }: {
   children: ReactNode;
   itemCount: number;
@@ -43,6 +44,13 @@ export default function HorizontalScroller({
    * unaffected either way. Default false keeps Gallery's existing mobile behaviour.
    */
   pagingOnMobile?: boolean;
+  /**
+   * Drops the row's own top margin — meant for a caller with no heading sitting right
+   * above it (Gallery's title-less homepage use), where the usual mt-6 was previously
+   * unconditional and stacked with that caller's own section padding into a much
+   * bigger gap than intended. Every other caller keeps the original spacing.
+   */
+  compact?: boolean;
 }) {
   const scrollerRef = useRef<HTMLUListElement>(null);
   const [progress, setProgress] = useState({ thumbPercent: 100, offsetPercent: 0 });
@@ -185,12 +193,12 @@ export default function HorizontalScroller({
   }, [itemCount, paging]);
 
   return (
-    <div className="relative mt-6">
+    <div className={compact ? "relative mt-1" : "relative mt-6"}>
       <ul
         ref={scrollerRef}
-        className={`horizontal-scroller flex scroll-smooth gap-5 overflow-x-auto pt-3 pb-5 sm:gap-7 ${
-          needsScroll ? "" : "justify-center"
-        }`}
+        className={`horizontal-scroller flex scroll-smooth gap-5 overflow-x-auto pb-5 sm:gap-7 ${
+          compact ? "pt-1" : "pt-3"
+        } ${needsScroll ? "" : "justify-center"}`}
         style={{
           // Real value ("mandatory" in paging mode) is set imperatively in the
           // layout effect above — see the comment there for why.

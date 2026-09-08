@@ -258,7 +258,7 @@ async function deliverDigitalOrder(order: ShopifyOrder, lines: ShopifyLineItem[]
     }
   }
 
-  console.log(`Shopify order ${order.id}: digital download email sent to ${to} (${pending.length} line(s))`);
+  console.log(`Shopify order ${order.id}: digital download email sent (${pending.length} line(s))`);
   return true;
 }
 

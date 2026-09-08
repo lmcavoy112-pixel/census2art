@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { formatMoney } from "@/lib/currency";
+import { useCurrency } from "../CurrencyProvider";
 import FramedPrint from "./FramedPrint";
 import HorizontalScroller from "./HorizontalScroller";
 import ImageLightbox from "./ImageLightbox";
@@ -41,10 +43,43 @@ function useGalleryPrints(): GalleryPrint[] {
 }
 
 const INK = "#1e2b18";
+const MUTED = "#6b5f4a";
+
+type StartingPrices = { digital: number | null; physical: number | null };
 
 /**
- * A horizontal strip of sample prints — no caption underneath, since the surname
- * and county are already printed on the artwork itself.
+ * The cheapest digital/physical price in the visitor's currency (GET
+ * /api/catalogue/starting-prices), refetched whenever `currency` changes so the
+ * caption under each card always matches what checkout would actually charge.
+ */
+function useStartingPrices(currency: string): StartingPrices {
+  const [prices, setPrices] = useState<StartingPrices>({ digital: null, physical: null });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`/api/catalogue/starting-prices?currency=${currency}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: StartingPrices | null) => {
+        if (!cancelled && body) setPrices({ digital: body.digital, physical: body.physical });
+      })
+      .catch(() => {
+        if (!cancelled) setPrices({ digital: null, physical: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currency]);
+
+  return prices;
+}
+
+/**
+ * A horizontal strip of sample prints. No surname/county caption — that's already
+ * printed on the artwork itself. When a `title` is shown, it's followed by an
+ * "Available from £x digital / £y printed" line for the whole strip, driven by the
+ * visitor's currency (useCurrency) rather than always GBP.
  *
  * `only` narrows the pool by source folder (see /api/recent-purchase-samples):
  * "modern" for gallery-modern/ (tagged by the extent word in the filename —
@@ -73,6 +108,8 @@ export default function Gallery({
   const allPrints = useGalleryPrints();
   const isDesktop = useIsDesktop();
   const [openPrint, setOpenPrint] = useState<GalleryPrint | null>(null);
+  const { currency } = useCurrency();
+  const { digital, physical } = useStartingPrices(currency);
 
   const prints = !only
     ? allPrints
@@ -98,10 +135,17 @@ export default function Gallery({
           >
             {title}
           </h2>
+          {digital !== null || physical !== null ? (
+            <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
+              {digital !== null ? `Available from ${formatMoney(digital, currency)} digital` : null}
+              {digital !== null && physical !== null ? " · " : null}
+              {physical !== null ? `from ${formatMoney(physical, currency)} printed` : null}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      <HorizontalScroller itemCount={prints.length}>
+      <HorizontalScroller itemCount={prints.length} compact={!title}>
         {prints.map((print) => (
           <li
             key={print.img}

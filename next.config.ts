@@ -71,6 +71,19 @@ const nextConfig: NextConfig = {
   // serving them; it only helps someone match the site against a CVE list.
   poweredByHeader: false,
 
+  experimental: {
+    // Default is 10MB. /api/orders accepts a print-res PNG export (up to
+    // MAX_IMAGE_BYTES there) plus a preview JPEG and JSON fields in the same multipart
+    // body. Historic's painted basemap textures (Terrain/Sepia/Hybrid) routinely produce
+    // A2/A3 PNGs over 10MB — see MAX_IMAGE_BYTES in app/api/orders/route.ts for measured
+    // sizes — so the framework was silently truncating the body before it reached the
+    // route handler, breaking the multipart boundary and making request.formData() throw
+    // "Failed to parse body as FormData" for every such order. This has to stay ahead of
+    // MAX_IMAGE_BYTES there plus the preview JPEG and JSON fields, or the same truncation
+    // comes back the moment that limit is raised again.
+    proxyClientMaxBodySize: "45mb",
+  },
+
   // Static headers live here rather than in proxy.ts because they never vary per request.
   async headers() {
     return [

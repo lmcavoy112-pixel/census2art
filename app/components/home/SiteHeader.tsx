@@ -383,6 +383,9 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
           <HeaderLink href="/examples" active={isActivePath(pathname, "/examples")}>
             Examples
           </HeaderLink>
+          <HeaderLink href="/gallery" active={isActivePath(pathname, "/gallery")}>
+            Gallery
+          </HeaderLink>
           <HeaderLink href="/background" active={isActivePath(pathname, "/background")}>
             Background
           </HeaderLink>
@@ -426,10 +429,8 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
             <span className="hidden md:inline">Cart</span>
           </Link>
 
-          {/* CurrencyMenu is built and verified but deliberately not rendered yet: until
-              Shopify Markets is configured (and EUR/USD checkout proven end to end), a
-              customer could pick EUR, see a correct EUR price, and be charged in GBP.
-              Rendering it is the whole of the reveal step — add <CurrencyMenu /> here. */}
+          <CurrencyMenu />
+
           <div ref={accountRef} className="relative">
             {customer.signedIn ? (
               <>
@@ -603,6 +604,14 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
                     style={{ color: INK }}
                   >
                     Examples
+                  </Link>
+                  <Link
+                    href="/gallery"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Gallery
                   </Link>
                   <Link
                     href="/background"

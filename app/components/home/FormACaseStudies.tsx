@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 
+import FormAEmbed from "./FormAEmbed";
 import FramedPrint from "./FramedPrint";
 import ImageLightbox from "./ImageLightbox";
 import SwipeGallery from "./SwipeGallery";
@@ -54,16 +54,17 @@ function CaptionText({ study }: { study: FormACaseStudy }) {
 }
 
 /**
- * Pairs each finished print with the real scanned Form A it was drawn from — proof
- * that "100-year-old census return -> piece of artwork" is a real pipeline, not just
- * a claim. The scan shown is a static image (lib/formACaseStudies.ts's `scanSrc`),
- * not a live embed of the National Archives' PDF — embedding the PDF directly (via
- * the same /api/form-a proxy the designer page uses) brought along the browser's own
- * PDF-viewer chrome, which looked out of place next to a plain artwork print.
+ * Pairs each finished print with the real Form A it was drawn from — proof that
+ * "100-year-old census return -> piece of artwork" is a real pipeline, not just a
+ * claim. The Form A is shown live via FormAEmbed (the same /api/form-a proxy the
+ * designer page uses), not a static image — we don't want a reproduction of the
+ * National Archives' own scan committed to this repo. Its native PDF-viewer chrome
+ * is hidden so it still sits quietly next to a plain artwork print.
  *
- * Both the artwork and the scan open in the same click-to-zoom lightbox the homepage
- * Gallery uses (ImageLightbox, desktop-only via useIsDesktop) — one shared piece of
- * state here rather than one per image, since only one can be open at a time.
+ * Only the artwork print opens in the click-to-zoom lightbox the homepage Gallery
+ * uses (ImageLightbox, desktop-only via useIsDesktop) — the Form A embed has
+ * nothing higher-res to zoom into; its "View on nationalarchives.ie" link (in
+ * CaptionText) is the way to see the authoritative original.
  *
  * Desktop alternates which side the Form A sits on (print/scan, then scan/print, ...)
  * so a long run of examples doesn't read as one repeating template.
@@ -129,32 +130,16 @@ export default function FormACaseStudies() {
 
           const formA = (
             <div>
-              <button
-                type="button"
-                onClick={() =>
-                  isDesktop &&
-                  setOpenImage({
-                    src: study.scanSrc,
-                    alt: `Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`,
-                  })
-                }
-                aria-label={`View a larger preview of the ${study.surname} Form A scan`}
-                className="block w-full cursor-default overflow-hidden rounded-md border-0 bg-transparent p-0 text-left sm:cursor-zoom-in"
-              >
-                <div className="overflow-hidden rounded-md border" style={{ borderColor: RULE }}>
-                  <Image
-                    src={study.scanSrc}
-                    alt={`Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`}
-                    width={study.scanWidth}
-                    height={study.scanHeight}
-                    unoptimized
-                    className="h-auto w-full"
-                  />
-                </div>
-              </button>
+              <FormAEmbed
+                naiId={study.naiId}
+                surname={study.surname}
+                censusYear={study.censusYear}
+                aspectWidth={study.scanWidth}
+                aspectHeight={study.scanHeight}
+              />
 
-              {/* Glued directly under its own image, not a separate grid item — so it
-                  stays close to the Form A scan it's captioning wherever that scan
+              {/* Glued directly under its own embed, not a separate grid item — so it
+                  stays close to the Form A it's captioning wherever that embed
                   lands (see formAFirst above). */}
               <div className="mt-3">
                 <CaptionText study={study} />
@@ -186,20 +171,14 @@ export default function FormACaseStudies() {
                           frameWidth="10px"
                         />
                       </div>,
-                      <div
+                      <FormAEmbed
                         key="scan"
-                        className="overflow-hidden rounded-md border"
-                        style={{ borderColor: RULE }}
-                      >
-                        <Image
-                          src={study.scanSrc}
-                          alt={`Scanned Form A census return for the ${study.surname} household, ${study.censusYear}`}
-                          width={study.scanWidth}
-                          height={study.scanHeight}
-                          unoptimized
-                          className="h-auto w-full"
-                        />
-                      </div>,
+                        naiId={study.naiId}
+                        surname={study.surname}
+                        censusYear={study.censusYear}
+                        aspectWidth={study.scanWidth}
+                        aspectHeight={study.scanHeight}
+                      />,
                     ]}
                   />
                   <div className="mt-6">

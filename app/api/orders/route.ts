@@ -15,8 +15,15 @@ import { supabaseAdmin } from "../../../lib/supabase-admin";
  * below rather than trusted.
  */
 
-/** 300dpi A1 exports land around 8 MB; 15 leaves headroom without inviting abuse. */
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+/**
+ * A1 is gone from the catalogue (Historic's biggest size is now A2), and that stale "~8MB
+ * at A1" estimate was measured against Modern's flat vector fills, not Historic's painted
+ * basemap textures (Terrain/Sepia/Hybrid) — those are photographic, not vector, and 300dpi
+ * A2 exports of them routinely land in the 15-25MB range (measured directly: A2 ~19-24MB,
+ * A3 ~11-14MB, varying with border style). 40 leaves real headroom above that ceiling
+ * without inviting abuse.
+ */
+const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
 
 /** A 640px-max-edge JPEG (see canvasToPreviewBlob) is a few hundred KB at most; 2 leaves headroom. */
 const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;

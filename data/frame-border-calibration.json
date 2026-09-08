@@ -1,0 +1,74 @@
+{
+  "$comment": "Crop calibration for the Classic Frame border pieces (app/irish-census/design/page.tsx's live poster-preview frame). Edited via /admin/frame-calibration, or by hand here. `left`/`right` are fractions of the source photo's width; `top`/`bottom` are fractions of its height. `outer` is where the photographed backdrop margin ends and the moulding begins (walking in from that edge); `inner` is where the moulding ends and the photographed opening begins. Regenerate the actual crop files after editing this with: node scripts/generate-frame-border-crops.js",
+  "frames": [
+    {
+      "id": "black",
+      "file": "Black classic frame_blank.png",
+      "left": { "outer": 0.195, "inner": 0.22 },
+      "right": { "outer": 0.1825, "inner": 0.22 },
+      "top": { "outer": 0.0825, "inner": 0.105 },
+      "bottom": { "outer": 0.0675, "inner": 0.105 }
+    },
+    {
+      "id": "white",
+      "file": "White classic frame_blank.png",
+      "left": { "outer": 0.195, "inner": 0.22 },
+      "right": { "outer": 0.1825, "inner": 0.22 },
+      "top": { "outer": 0.0825, "inner": 0.105 },
+      "bottom": { "outer": 0.0675, "inner": 0.105 }
+    },
+    {
+      "id": "silver",
+      "file": "Silver Classic Frame_blank.png",
+      "left": { "outer": 0.205, "inner": 0.245 },
+      "right": { "outer": 0.205, "inner": 0.245 },
+      "top": { "outer": 0.1275, "inner": 0.155 },
+      "bottom": { "outer": 0.13, "inner": 0.1525 }
+    },
+    {
+      "id": "dark-grey",
+      "file": "Dark grey classic frame_blank.jpg",
+      "left": { "outer": 0.1875, "inner": 0.225 },
+      "right": { "outer": 0.1975, "inner": 0.2325 },
+      "top": { "outer": 0.105, "inner": 0.1375 },
+      "bottom": { "outer": 0.1, "inner": 0.1375 }
+    },
+    {
+      "id": "light-grey",
+      "file": "Light grey classic frame_blank.jpg",
+      "left": { "outer": 0.205, "inner": 0.24 },
+      "right": { "outer": 0.2125, "inner": 0.245 },
+      "top": { "outer": 0.1225, "inner": 0.155 },
+      "bottom": { "outer": 0.12, "inner": 0.155 }
+    },
+    {
+      "id": "natural",
+      "file": "Natural classic frame_blank.png",
+      "left": { "outer": 0.195, "inner": 0.22 },
+      "right": { "outer": 0.1825, "inner": 0.22 },
+      "top": { "outer": 0.0825, "inner": 0.105 },
+      "bottom": { "outer": 0.0675, "inner": 0.105 }
+    },
+    {
+      "id": "brown",
+      "file": "Brown classic frame_blank.jpg",
+      "left": { "outer": 0.2075, "inner": 0.2425 },
+      "right": { "outer": 0.2125, "inner": 0.245 },
+      "top": { "outer": 0.115, "inner": 0.1475 },
+      "bottom": { "outer": 0.13, "inner": 0.165 }
+    },
+    {
+      "id": "gold",
+      "file": "Gold Classic Frame_blank.png",
+      "left": { "outer": 0.2275, "inner": 0.245 },
+      "right": { "outer": 0.235, "inner": 0.2475 },
+      "top": { "outer": 0.1475, "inner": 0.1575 },
+      "bottom": { "outer": 0.1625, "inner": 0.18 }
+    }
+  ],
+  "cornerOverlapPx": 3,
+  "borderThicknessPercent": {
+    "square": 3.5,
+    "iso": 3.5
+  }
+}

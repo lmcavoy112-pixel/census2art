@@ -69,6 +69,38 @@ export function canvasToPreviewBlob(
   });
 }
 
+/**
+ * Downscales the print-ready canvas to a small PNG for the "Preview on a wall"
+ * mockup — displayed at modal size only, never uploaded or ordered, so it needs
+ * nowhere near print resolution. Same shape as canvasToPreviewBlob above, just a
+ * bigger ceiling (the mockup can fill more of the screen than the tiny email
+ * thumbnail) and PNG rather than JPEG (composited over a template photo, where a
+ * transparent-looking edge or overlaid text benefits from PNG's cleaner edges).
+ */
+export function canvasToMockupBlob(
+  canvas: HTMLCanvasElement,
+  maxDimensionPx = 1200
+): Promise<Blob> {
+  const scale = Math.min(1, maxDimensionPx / Math.max(canvas.width, canvas.height));
+  const width = Math.max(1, Math.round(canvas.width * scale));
+  const height = Math.max(1, Math.round(canvas.height * scale));
+
+  const preview = document.createElement("canvas");
+  preview.width = width;
+  preview.height = height;
+
+  const ctx = preview.getContext("2d");
+  if (!ctx) return Promise.reject(new Error("Could not create mockup canvas context"));
+  ctx.drawImage(canvas, 0, 0, width, height);
+
+  return new Promise((resolve, reject) => {
+    preview.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Mockup canvas could not be exported as PNG"));
+    }, "image/png");
+  });
+}
+
 export function safeFileNamePart(value: string): string {
   return value
     .toLowerCase()

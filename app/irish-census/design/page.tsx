@@ -13,6 +13,7 @@
 // away from the customer.
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { Jost } from "next/font/google";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -45,11 +46,14 @@ import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
 import { formatMoney } from "@/lib/currency";
 import { useCurrency } from "@/app/components/CurrencyProvider";
 import {
+  canvasToMockupBlob,
   canvasToPngBlob,
   canvasToPreviewBlob,
   renderPrintReadyCanvas,
   safeFileNamePart,
 } from "@/lib/printExport";
+import MockupPreviewModal from "@/app/components/designer/MockupPreviewModal";
+import type { MockupTemplateRecord } from "@/lib/mockup/types";
 import {
   cleanOptionalValue,
   getParam,
@@ -312,16 +316,134 @@ const FRAMED_PRODUCT_LABELS: Partial<Record<ProductKind, { label: string; detail
 // `id` is Prodigi's own `color` attribute value for GLOBAL-CFPM-* — confirmed live
 // against GET /v4.0/products/GLOBAL-CFPM-A2 — and travels verbatim through
 // buildProdigiAttributes() to the Prodigi order, so these strings must match exactly.
-const FRAME_COLOURS: { id: string; label: string; hex: string }[] = [
-  { id: "black", label: "Black", hex: "#1B1B1B" },
-  { id: "white", label: "White", hex: "#F7F7F5" },
-  { id: "silver", label: "Silver", hex: "#C7C9CC" },
-  { id: "dark grey", label: "Dark Grey", hex: "#4A4A4A" },
-  { id: "light grey", label: "Light Grey", hex: "#B8B8B8" },
-  { id: "natural", label: "Natural", hex: "#D8C4A0" },
-  { id: "brown", label: "Brown", hex: "#6B4423" },
-  { id: "gold", label: "Gold", hex: "#C9A227" },
+//
+// `texture` is a real studio photo of that moulding (mitred corners, on a plain
+// backdrop) from public/artwork/Frames/Classic Frames/ — used for the small swatch
+// (next/image, object-contain). `hex` stays as the pre-measurement fallback colour
+// for the live preview, before the poster's on-screen pixel size is known (see
+// frameSize), and as the fallback if a frame-card photo (below) 404s.
+//
+// The live poster-preview border is a single pre-composited "frame card" photo per
+// colour+format — public/artwork/Frames/{square,iso}_<id>-classic.png, each a fixed
+// 1200x1600 canvas showing the full mounted frame (moulding + mat) with a window where
+// the artwork goes. The artwork is layered on top of that photo (not cropped into
+// pieces of it) at FRAME_ARTWORK_RECT below, which is the same window for every colour
+// within a format (confirmed pixel-for-pixel across all 8 iso photos and 7 of the 8
+// square ones — see FRAME_ARTWORK_RECT's own comment), so one shared rect covers every
+// colour once its square/iso photo exists. This replaced an earlier 8-piece border-crop
+// system (still on disk under Classic Frames/border-crops/, unused) that cropped one
+// photo into 4 edge strips + 4 corner squares live — dropped once real per-format
+// frame-card photos were available, since compositing one photo + one artwork rect
+// needs no per-colour pixel calibration at all.
+//
+// Background treatment: every photo except square_black-classic.png is fully opaque —
+// a plain white canvas behind the frame with a soft photographic drop shadow, which is
+// the right call for blending into this page's #F5F4F1 background (a hard-edged or
+// colour-matched background would show a visible seam the moment the page background
+// changes; white + a soft shadow reads as "a photo sitting on the page" at any
+// background tone, the same trick product photography uses). square_black-classic.png
+// is the one outlier and is actually broken, not just differently styled: unlike its
+// siblings it's fully transparent (alpha 0) end to end — no moulding, no shadow, no
+// backdrop, just a white content rectangle floating on nothing — confirmed by decoding
+// its raw pixels (Read's own preview renders transparent PNG regions as black, which is
+// what made it look like a solid black card at a glance). Selecting Black in Square
+// format currently renders no visible frame at all as a result; it needs to be
+// re-exported to match the other 7 (opaque white + soft shadow) before it'll work.
+const FRAME_COLOURS: { id: string; label: string; hex: string; texture: string }[] = [
+  {
+    id: "black",
+    label: "Black",
+    hex: "#1B1B1B",
+    texture: "/artwork/Frames/Classic Frames/Black classic frame_blank.png",
+  },
+  {
+    id: "white",
+    label: "White",
+    hex: "#F7F7F5",
+    texture: "/artwork/Frames/Classic Frames/White classic frame_blank.png",
+  },
+  {
+    id: "silver",
+    label: "Silver",
+    hex: "#C7C9CC",
+    texture: "/artwork/Frames/Classic Frames/Silver Classic Frame_blank.png",
+  },
+  {
+    id: "dark grey",
+    label: "Dark Grey",
+    hex: "#4A4A4A",
+    texture: "/artwork/Frames/Classic Frames/Dark grey classic frame_blank.jpg",
+  },
+  {
+    id: "light grey",
+    label: "Light Grey",
+    hex: "#B8B8B8",
+    texture: "/artwork/Frames/Classic Frames/Light grey classic frame_blank.jpg",
+  },
+  {
+    id: "natural",
+    label: "Natural",
+    hex: "#D8C4A0",
+    texture: "/artwork/Frames/Classic Frames/Natural classic frame_blank.png",
+  },
+  {
+    id: "brown",
+    label: "Brown",
+    hex: "#6B4423",
+    texture: "/artwork/Frames/Classic Frames/Brown classic frame_blank.jpg",
+  },
+  {
+    id: "gold",
+    label: "Gold",
+    hex: "#C9A227",
+    texture: "/artwork/Frames/Classic Frames/Gold Classic Frame_blank.png",
+  },
 ];
+
+// The two frame-card photo variants — one canvas layout per print aspect ratio, shared
+// by every colour (see the FRAME_COLOURS comment above).
+type FrameCardFormat = "square" | "iso";
+
+/** Path to a colour's frame-card photo. File naming matches what's already on disk:
+ * `{format}_<id>-classic.png` with spaces in the id hyphenated (e.g. "dark grey" ->
+ * "dark-grey"), directly under public/artwork/Frames/. */
+function frameCardUrl(colourId: string, cardFormat: FrameCardFormat): string {
+  const fileId = colourId.replace(/ /g, "-");
+  return `/artwork/Frames/${cardFormat}_${fileId}-classic.png`;
+}
+
+/** Where the artwork sits inside a frame-card photo's own 1200x1600 canvas, as
+ * fractions of that canvas — left/right of width, top/bottom of height. Square's
+ * top/bottom offset is bigger than its left/right because the mat is a fixed physical
+ * size on all sides while the square opening is narrower than the card is tall; ISO's
+ * tall opening leaves a much thinner top/bottom band by comparison.
+ *
+ * Measured directly from the photos' raw pixels (not eyeballed): `iso` from
+ * iso_black-classic.png (the only iso photo that's still a blank window — cross-checked
+ * against all 8 iso photos, within ~0.3% of each other). `square` from
+ * square_gold-classic.png — square_black-classic.png is unusable for this (see the
+ * FRAME_COLOURS comment) so gold stood in; cross-checked pixel-for-pixel identical
+ * against white, silver, natural, brown, light-grey and dark-grey.
+ *
+ * The square photos have a Historic-template "REA" example baked into their window as
+ * a realistic mockup, complete with its own Celtic border design — that border sits
+ * right at the true window edge (a ~10px sliver of plain mat, then the border
+ * artwork), not set back from it. An earlier pass here mistook the border's ink lines
+ * for noise and required a long unbroken run of plain mat colour before accepting a
+ * boundary, which skipped past the true edge and landed ~5% of the card too far in;
+ * every one of these numbers is retuned from that mistake to the actual moulding edge. */
+const FRAME_ARTWORK_RECT: Record<
+  FrameCardFormat,
+  { left: number; right: number; top: number; bottom: number }
+> = {
+  square: { left: 0.1, right: 0.1008, top: 0.2, bottom: 0.2006 },
+  iso: { left: 0.1225, right: 0.1242, top: 0.1006, bottom: 0.1012 },
+};
+
+// Padding percentage for the flat-colour fallback (pre-measurement, or a missing
+// frame-card photo for a colour/format that hasn't been produced yet) — unrelated to
+// FRAME_ARTWORK_RECT, just a plausible border thickness for that plain-colour stand-in.
+const FRAME_FALLBACK_THICKNESS_PERCENT = 3.5;
 
 /**
  * One row of district colour swatches: an "inherit" dot, the fixed palette, and a
@@ -496,6 +618,12 @@ function ModernDesignContent() {
   const [productKind, setProductKind] = useState<ProductKind>("Art Print");
   const [frameColour, setFrameColour] = useState<string>("black");
   const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
+  // Tracks the last frame-card photo src that failed to load (404 — a colour/format
+  // pair whose photo hasn't been produced yet) so the preview can fall back to the
+  // flat-colour border instead of showing a broken image. Compared against the
+  // *current* src rather than a plain boolean, so switching to a different colour or
+  // format automatically retries rather than staying stuck on a stale failure.
+  const [frameCardErroredSrc, setFrameCardErroredSrc] = useState<string | null>(null);
 
   // ── Panel state ────────────────────────────────────────────────────
   const [openSection, setOpenSection] = useState("template");
@@ -561,7 +689,16 @@ function ModernDesignContent() {
   const [householdMaxRows, setHouseholdMaxRows] = useState<number | null>(null);
   const [householdBudgetPx, setHouseholdBudgetPx] = useState<number | null>(null);
 
-  const [busy, setBusy] = useState<"" | "preview" | "export" | "order">("");
+  const [busy, setBusy] = useState<"" | "preview" | "export" | "order" | "mockup">("");
+
+  // ── Preview on a wall ──────────────────────────────────────────────
+  // One calibrated wall-scenario photo per SKU (see /admin/mockup-calibration).
+  // Cached per SKU in a ref so flipping between sizes already fetched doesn't
+  // refetch; `null` in the cache means "checked, none exists" (a real, expected
+  // steady state, not a loading condition).
+  const mockupTemplateCache = useRef<Map<string, MockupTemplateRecord | null>>(new Map());
+  const [mockupTemplate, setMockupTemplate] = useState<MockupTemplateRecord | null>(null);
+  const [mockupPreviewUrl, setMockupPreviewUrl] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState("");
   const [orderError, setOrderError] = useState("");
   const [orderStage, setOrderStage] = useState("");
@@ -1235,6 +1372,40 @@ function ModernDesignContent() {
 
   const printSize = selectedSku ? printSizeForSku(selectedSku) : null;
 
+  // Looks up the calibrated wall photo for the selected SKU, if any exists yet.
+  // v1 only ever calibrates Classic Frame / Stretched Canvas SKUs, so an Art
+  // Print/Digital selection (or an uncalibrated size) simply resolves to `null` —
+  // the "Preview on a wall" button below just doesn't render in that case.
+  useEffect(() => {
+    const sku = selectedSku?.sku ?? null;
+    if (!sku) {
+      setMockupTemplate(null);
+      return;
+    }
+
+    const cached = mockupTemplateCache.current.get(sku);
+    if (cached !== undefined) {
+      setMockupTemplate(cached);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/mockup-templates?sku=${encodeURIComponent(sku)}`)
+      .then((res) => (res.ok ? res.json() : { template: null }))
+      .then((body: { template: MockupTemplateRecord | null }) => {
+        const template = body.template ?? null;
+        mockupTemplateCache.current.set(sku, template);
+        if (!cancelled) setMockupTemplate(template);
+      })
+      .catch(() => {
+        if (!cancelled) setMockupTemplate(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSku]);
+
   // Follow the chosen SKU's real proportions only where sizes genuinely differ in shape.
   // Every remaining format is one exact shape at different scales — their short_in/long_in
   // are decimal-inch roundings of the true mm size (A3 rounds to 11.7×16.5", A4 to
@@ -1242,19 +1413,42 @@ function ModernDesignContent() {
   // preview visibly stretches by a percent or two when switching sizes within a format.
   const aspect = formatAspect(format);
 
+  // Needed before frameSize below, not just at render time: when framed (Classic
+  // Frame), what actually has to fit the stage is the frame CARD (poster + mat +
+  // moulding, see FRAME_ARTWORK_RECT), not the poster alone. The mat is a much bigger
+  // share of the card than the old border-crop system's thin border was (up to ~30% of
+  // the card's own width for Square), so fitting frameSize to the raw stage size and
+  // letting the card overflow it — tolerable with a thin border — left the card wider
+  // than the stage at ordinary laptop widths, and flexbox silently squeezed the
+  // wrapper's width to fit while the artwork overlay kept its un-squeezed position,
+  // visibly misaligning the artwork from the photo's window on the right edge.
+  const framed = fulfilment === "framed" && productKind !== "Stretched Canvas";
+  const frameCardArtworkRect = FRAME_ARTWORK_RECT[isSquare ? "square" : "iso"];
+  const frameCardWidthFactor = framed
+    ? 1 / (1 - frameCardArtworkRect.left - frameCardArtworkRect.right)
+    : 1;
+  const frameCardHeightFactor = framed
+    ? 1 / (1 - frameCardArtworkRect.top - frameCardArtworkRect.bottom)
+    : 1;
+
   // The frame's exact on-screen pixel size — whichever of the stage's width/height is
   // the binding constraint for this aspect ratio, capped at 640px so the on-screen
   // preview never renders larger than a desktop monitor needs it to. Recomputed
-  // whenever the stage resizes (stageSize) or the shape changes (aspect).
+  // whenever the stage resizes (stageSize) or the shape changes (aspect). When framed,
+  // fits the resulting CARD (frameSize scaled up by frameCardWidthFactor/
+  // frameCardHeightFactor) to the stage rather than fitting frameSize itself — see
+  // above.
   const frameSize = useMemo(() => {
     if (!stageSize || stageSize.width <= 0 || stageSize.height <= 0) return null;
     const ratio = aspect.w / aspect.h;
-    const byHeight = { width: stageSize.height * ratio, height: stageSize.height };
-    const byWidth = { width: stageSize.width, height: stageSize.width / ratio };
-    const fitted = byHeight.width <= stageSize.width ? byHeight : byWidth;
+    const availableWidth = stageSize.width / frameCardWidthFactor;
+    const availableHeight = stageSize.height / frameCardHeightFactor;
+    const byHeight = { width: availableHeight * ratio, height: availableHeight };
+    const byWidth = { width: availableWidth, height: availableWidth / ratio };
+    const fitted = byHeight.width <= availableWidth ? byHeight : byWidth;
     const width = Math.min(fitted.width, 640);
     return { width, height: width / ratio };
-  }, [stageSize, aspect.w, aspect.h]);
+  }, [stageSize, aspect.w, aspect.h, frameCardWidthFactor, frameCardHeightFactor]);
 
   // The Modern poster body is laid out once against this fixed logical size (see
   // MODERN_LOGICAL_WIDTH above) and then visually fit to frameSize with a single CSS
@@ -1674,6 +1868,14 @@ function ModernDesignContent() {
     // resolution it is asked for — so there is nothing to swap and the poster can be
     // rendered straight out.
     if (template === "historic") {
+      // countryPolygons feeds the poster's map area (see the HistoricPoster render
+      // below) — until it arrives the poster shows a "Loading…" placeholder in place
+      // of the map. Exporting before then would silently rasterise that placeholder
+      // text as the customer's final artwork instead of throwing, since nothing else
+      // here depends on the map having loaded.
+      if (!countryLoaded || countryPolygons.length === 0) {
+        throw new Error("Still loading the map — try again in a moment.");
+      }
       const canvas = await renderPrintReadyCanvas(poster, printSize.pixelWidth);
       setExportNote("");
       return consume(canvas);
@@ -1786,6 +1988,25 @@ function ModernDesignContent() {
       });
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "Could not build the print file.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function previewOnWall() {
+    if (busy || !mockupTemplate) return;
+    setBusy("mockup");
+    setOrderError("");
+    try {
+      await withPrintReadyPoster(async (canvas) => {
+        const blob = await canvasToMockupBlob(canvas);
+        setMockupPreviewUrl((previous) => {
+          if (previous) URL.revokeObjectURL(previous);
+          return URL.createObjectURL(blob);
+        });
+      });
+    } catch (error) {
+      setOrderError(error instanceof Error ? error.message : "Could not build the preview.");
     } finally {
       setBusy("");
     }
@@ -2673,9 +2894,17 @@ function ModernDesignContent() {
                   }`}
                 >
                   <span
-                    className="mx-auto block h-8 w-8 rounded"
-                    style={{ background: option.hex, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }}
-                  />
+                    className="relative mx-auto block h-14 w-14 overflow-hidden rounded bg-stone-100"
+                    style={{ boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }}
+                  >
+                    <Image
+                      src={option.texture}
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-contain"
+                    />
+                  </span>
                   <span className="mt-1 block text-center text-[12px] text-stone-700">
                     {option.label}
                   </span>
@@ -2714,6 +2943,21 @@ function ModernDesignContent() {
             </HelpText>
           )}
         </div>
+
+        {/* Only renders once this SKU has a calibrated wall photo (see
+            /admin/mockup-calibration) — hidden rather than disabled for an
+            uncalibrated size, since coverage grows one SKU at a time and a
+            permanent "coming soon" affordance would read as broken, not scoped. */}
+        {mockupTemplate && (
+          <button
+            type="button"
+            onClick={previewOnWall}
+            disabled={busy !== ""}
+            className="w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[13px] font-medium text-stone-800 transition-colors hover:bg-stone-50 disabled:opacity-60"
+          >
+            {busy === "mockup" ? "Building preview…" : "Preview on a wall"}
+          </button>
+        )}
 
         {/* Desktop: sticky pane at the foot of this panel. Mobile: a spacer reserving
             the room the fixed bar (rendered near the bottom of the page, only while
@@ -2967,8 +3211,31 @@ function ModernDesignContent() {
     );
   }
 
-  const framed = fulfilment === "framed" && productKind !== "Stretched Canvas";
   const frameHex = FRAME_COLOURS.find((f) => f.id === frameColour)?.hex ?? "#1B1B1B";
+
+  const frameCardFormat: FrameCardFormat = isSquare ? "square" : "iso";
+  const frameCardSrc = frameCardUrl(frameColour, frameCardFormat);
+  const frameCardBroken = frameCardErroredSrc === frameCardSrc;
+  // Same rect frameSize's own useMemo above already factored in via
+  // frameCardWidthFactor/frameCardHeightFactor.
+  const frameArtworkRect = frameCardArtworkRect;
+  // The card (the full frame photo, mat included) is sized *around* frameSize — the
+  // poster's own on-screen box, unchanged from before — rather than the other way
+  // round, so nothing downstream of frameSize (modernScaleFactor, HistoricPoster's own
+  // aspect-ratio sizing) needs to know the frame system changed underneath it. Because
+  // frameArtworkRect's fractions were measured to match the format's true aspect ratio
+  // already, the card's derived aspect ratio lands within ~0.3% of its real 1200x1600
+  // photo — an imperceptible stretch from object-fit: fill.
+  const frameCardSize =
+    frameSize && framed && !frameCardBroken
+      ? {
+          width: frameSize.width / (1 - frameArtworkRect.left - frameArtworkRect.right),
+          height: frameSize.height / (1 - frameArtworkRect.top - frameArtworkRect.bottom),
+        }
+      : null;
+  const frameArtworkOffset = frameCardSize
+    ? { left: frameCardSize.width * frameArtworkRect.left, top: frameCardSize.height * frameArtworkRect.top }
+    : null;
 
   return (
     // min-h-dvh, not min-h-screen: <main> below is sized off 100dvh, which shrinks on
@@ -3053,25 +3320,75 @@ function ModernDesignContent() {
               rasterised for print, and the frame is a physical object Prodigi puts around
               the paper, not something printed onto it. */}
           <div
-            className="shadow-[0_12px_48px_rgba(0,0,0,0.14)]"
+            // shrink-0: this is a flex item of the stage <section> above (items-center
+            // justify-center) — without it, flexbox is free to compress this wrapper's
+            // width below the explicit width set below whenever content overflows the
+            // stage, which desyncs it from the artwork overlay inside (sized/positioned
+            // off the *unsquashed* frameSize/frameCardSize) and visibly misaligns the
+            // artwork from the frame photo's window on one edge. frameSize's own
+            // useMemo already fits the card to the stage so this shouldn't normally
+            // trigger — this is a second line of defence, not the primary fit logic.
+            className="shrink-0 shadow-[0_12px_48px_rgba(0,0,0,0.14)]"
             style={{
-              background: framed ? frameHex : "transparent",
-              padding: framed ? "3.5%" : 0,
+              position: "relative",
+              // Once a frame-card photo is loaded (frameCardSize), the wrapper *is*
+              // the card — its own full 1200x1600 photo, sized around frameSize (see
+              // frameCardSize above). Before frameSize resolves, and for the
+              // unframed/canvas cases or a colour/format whose photo 404s
+              // (frameCardBroken), it's the same flat-colour background + percentage
+              // padding this always used, so nothing jumps size once frameSize (or the
+              // photo) resolves.
+              ...(frameCardSize
+                ? {}
+                : {
+                    background: framed ? frameHex : "transparent",
+                    padding: framed ? `${FRAME_FALLBACK_THICKNESS_PERCENT}%` : 0,
+                  }),
               // content-box, overriding Tailwind Preflight's global border-box reset:
               // width/height below must size the paper itself (posterRef, "w-full"
-              // inside this box), with the frame's padding added on top of that rather
-              // than carved out of it. Prodigi's physical frame sits around the paper,
-              // not on it, so the frame must not change the paper's own size — border-box
-              // would shrink posterRef by the padding amount every time a frame is picked,
-              // which also threw off the household table's fit-to-width measurement below.
+              // inside this box), with the frame's padding added on top of that
+              // rather than carved out of it. Prodigi's physical frame sits around the
+              // paper, not on it, so the frame must not change the paper's own size —
+              // border-box would shrink posterRef by that amount every time a frame is
+              // picked, which also threw off the household table's fit-to-width
+              // measurement below.
               boxSizing: "content-box",
-              ...(frameSize
-                ? { width: frameSize.width, height: frameSize.height }
-                : { width: "100%", aspectRatio: `${aspect.w} / ${aspect.h}` }),
+              ...(frameCardSize
+                ? { width: frameCardSize.width, height: frameCardSize.height }
+                : frameSize
+                  ? { width: frameSize.width, height: frameSize.height }
+                  : { width: "100%", aspectRatio: `${aspect.w} / ${aspect.h}` }),
             }}
           >
+            {frameCardSize && (
+              // unoptimized: this is a fixed, purpose-made photo (~1200x1600,
+              // pre-composited frame + mat) — Next's optimizer has no useful work to
+              // do on it at the small on-screen sizes this renders at.
+              <Image
+                src={frameCardSrc}
+                alt=""
+                fill
+                unoptimized
+                className="object-fill"
+                onError={() => setFrameCardErroredSrc(frameCardSrc)}
+              />
+            )}
             {template === "historic" ? (
-              <div ref={posterRef} className="w-full">
+              <div
+                ref={posterRef}
+                className="w-full"
+                style={
+                  frameCardSize && frameArtworkOffset && frameSize
+                    ? {
+                        position: "absolute",
+                        left: frameArtworkOffset.left,
+                        top: frameArtworkOffset.top,
+                        width: frameSize.width,
+                        height: frameSize.height,
+                      }
+                    : undefined
+                }
+              >
               <HistoricPoster
                 format={format}
                 polygons={countryPolygons}
@@ -3105,7 +3422,19 @@ function ModernDesignContent() {
             <div
               ref={posterRef}
               className="relative w-full overflow-hidden"
-              style={{ background: pageHex, aspectRatio: `${aspect.w} / ${aspect.h}` }}
+              style={{
+                background: pageHex,
+                aspectRatio: `${aspect.w} / ${aspect.h}`,
+                ...(frameCardSize && frameArtworkOffset && frameSize
+                  ? {
+                      position: "absolute",
+                      left: frameArtworkOffset.left,
+                      top: frameArtworkOffset.top,
+                      width: frameSize.width,
+                      height: frameSize.height,
+                    }
+                  : {}),
+              }}
             >
               {/* Fixed-size logical canvas, visually fit to the real on-screen frame with
                   a single CSS transform — same pattern as HistoricPoster. Everything
@@ -3345,6 +3674,20 @@ function ModernDesignContent() {
         <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
           {renderCartSummaryBar("bar")}
         </div>
+      )}
+
+      {mockupPreviewUrl && mockupTemplate && (
+        <MockupPreviewModal
+          templateImageUrl={mockupTemplate.imageUrl}
+          templateWidth={mockupTemplate.imageWidth}
+          templateHeight={mockupTemplate.imageHeight}
+          quad={mockupTemplate.quad}
+          artworkSrc={mockupPreviewUrl}
+          onClose={() => {
+            URL.revokeObjectURL(mockupPreviewUrl);
+            setMockupPreviewUrl(null);
+          }}
+        />
       )}
 
       {shareOpen && (

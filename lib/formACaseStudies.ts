@@ -5,13 +5,11 @@
  * `irish_census_houses.form_a_1901_id` / `form_a_1911_id` and used to build
  * `form_a_url` in supabase/migrations/0005_irish_census_schema_and_rpcs.sql:235-240.
  *
- * `scanSrc` is a static render of that same Form A — the National Archives only
- * serves the original as a PDF, and embedding a live PDF viewer looked rough (its
- * own toolbar, chrome, load flicker). Each one was captured once with headless
- * Chrome (view=Fit, toolbar hidden) and auto-cropped, so it displays exactly like
- * the artwork beside it: a plain static image, sized in advance to avoid layout
- * shift. Re-generate by re-running that capture if a scan ever needs updating —
- * there is no build-time step that does this automatically.
+ * The Form A itself is shown live via `FormAEmbed` (`/api/form-a`, the same proxy
+ * `/irish-census` uses) rather than a static image — we don't want to store a
+ * reproduction of the National Archives' own scan in this repo. `scanWidth`/
+ * `scanHeight` are kept only as the embed's target aspect ratio, to size its
+ * container in advance and avoid layout shift.
  *
  * Hand-maintained, same pattern as `recentPurchases` in lib/censusEditions.ts.
  * Blurbs are drawn only from what's printed on each artwork's own household table
@@ -25,7 +23,6 @@ export type FormACaseStudy = {
   censusYear: "1901" | "1911";
   location: string;
   blurb: string;
-  scanSrc: string;
   scanWidth: number;
   scanHeight: number;
 };
@@ -44,7 +41,6 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     location: "Co. Antrim, Ballymoney – Union Street · House No. 52",
     blurb:
       "Samuel Hammond baked for a living on Union Street in Ballymoney, Co. Antrim. He, his wife Martha, and their four children (an infant son up to a nine-year-old daughter already at school) filled out the return with three slightly different labels for their shared Protestant faith: Church of Ireland, Protestant, and Episcopalian.",
-    scanSrc: "/examples/form a examples/scans/Hammond_nai001377255.jpg",
     scanWidth: 2600,
     scanHeight: 1767,
   },
@@ -56,7 +52,6 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     location: "Co. Antrim, Portrush Town – Eglinton Street · House No. 17.1",
     blurb:
       "Thomas and Eleaner Frazer's household spanned two counties before it spanned two rooms: she born in Belfast, the children in Antrim, three of the four already at school.",
-    scanSrc: "/examples/form a examples/scans/Frazer_nai001392158.jpg",
     scanWidth: 2600,
     scanHeight: 1643,
   },
@@ -68,7 +63,6 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     location: "Co. Donegal, Aran – Leabgarrow · House No. 5",
     blurb:
       "John Byrne farmed Arranmore Island with his wife Magie and nine children; by 1911 the eldest son worked the land alongside him and every child but the three youngest could already read and write.",
-    scanSrc: "/examples/form a examples/scans/Byrne_nai002076867.jpg",
     scanWidth: 2600,
     scanHeight: 1750,
   },
@@ -80,7 +74,6 @@ export const FORM_A_CASE_STUDIES: FormACaseStudy[] = [
     location: "Co. Sligo, Sligo West – Lord Edward Street · House No. 17",
     blurb:
       "John O'Neill served as an Acting Sergeant in the Royal Irish Constabulary in Sligo town, where he and his wife Bridget were raising two children still in nappies.",
-    scanSrc: "/examples/form a examples/scans/ONeill_nai003877121.jpg",
     scanWidth: 2600,
     scanHeight: 1706,
   },
