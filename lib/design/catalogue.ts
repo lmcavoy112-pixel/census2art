@@ -63,17 +63,17 @@ export const PRODUCT_OPTIONS: ProductOption[] = [
     label: "Art Print",
     description: "Unframed fine art print on museum-grade paper, ready for you to frame.",
     supplier: "Prodigi",
-    material: "Hahnemühle German Etching (HGE)",
-    supplierCode: "GLOBAL-HGE-*",
+    material: "Fine Art Paper (FAP)",
+    supplierCode: "GLOBAL-FAP-*",
     skuStatus: "Active",
   },
   {
     id: "Classic Frame",
     label: "Classic Frame",
-    description: "Ready-to-hang framed fine art print. Enhanced Matte Art 200gsm, float glass, 2.4mm mount.",
+    description: "Ready-to-hang framed fine art print. Enhanced Matte Art 200gsm, float glass.",
     supplier: "Prodigi",
     material: "Enhanced Matte Art Paper (EMA) + Classic Frame",
-    supplierCode: "GLOBAL-CFPM-*",
+    supplierCode: "GLOBAL-CFP-*",
     skuStatus: "Active",
   },
   {
@@ -101,6 +101,24 @@ export function isProductKind(value: string | undefined): value is ProductKind {
     value === "Digital Print"
   );
 }
+
+/**
+ * What the Products page (app/gallery) hands off to the designer when someone
+ * clicks "Create your own" after configuring orientation/frame/colour/size there.
+ * Written to sessionStorage rather than threaded through the census search
+ * flow's own URL/snapshot handling (app/irish-census -> app/irish-census/design)
+ * since it needs to survive that entire multi-step flow regardless of how many
+ * query params or snapshot ids it passes through — sessionStorage just rides
+ * along with the tab. The designer reads and clears it once, on its first load.
+ */
+export type ProductPreselect = {
+  format: Format;
+  productKind: ProductKind;
+  frameColour: string;
+  sku: string;
+};
+
+export const PRODUCT_PRESELECT_STORAGE_KEY = "c2a_product_preselect";
 
 export function categoryForProductKind(kind: ProductKind): ProductCategory {
   if (kind === "Digital Print") return "Digital";
@@ -143,6 +161,19 @@ export function printSizeForSku(sku: CatalogueSku): PrintSizeOption {
     pixelHeight: Math.round(sku.long_in * 300),
     group: sku.format,
   };
+}
+
+/**
+ * Prodigi's canvas wrap auto-generates the 38mm stretcher-side content by stretching
+ * the edge region of whatever front-face image is submitted — there's no way to send
+ * a separate wrap-only asset. This margin is rendered inset (filled with the design's
+ * own page colour) so that band is safe, plain colour rather than border/map artwork.
+ * 40mm rounds up from Prodigi's 38mm bars to cover territory variance.
+ */
+export const CANVAS_WRAP_MARGIN_MM = 40;
+
+export function canvasWrapMarginPx(): number {
+  return Math.round((CANVAS_WRAP_MARGIN_MM / 25.4) * 300);
 }
 
 export function formatAspect(format: Format): { w: number; h: number } {

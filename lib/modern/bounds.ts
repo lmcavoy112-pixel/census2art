@@ -23,10 +23,23 @@ export const IRELAND_BOUNDS: LngLatBox = [
  * (`IRELAND_BOUNDS` below) for any poster aspect ratio — a maxBounds box tighter than
  * that fit silently caps how far MapLibre will let fitBounds() zoom out, which used to
  * clip the north/south tips of Ireland before the mask existed to hide the extra margin.
+ *
+ * The box previously used here ([-13,49.5]-[-3,57], 10° wide) turned out not to be wide
+ * enough east-west: MapLibre derives its actual pan/zoom floor from whichever of this
+ * box's two dimensions requires the LARGER scale to avoid ever showing outside it —
+ * i.e. max(containerWidth/boxWidth, containerHeight/boxHeight), not the more forgiving
+ * min() a naive "does the fit box fit inside the pan box" check would assume. On a
+ * landscape map area (e.g. the Square poster shape, where the surname/count text below
+ * the map eats into a square canvas's height more than a portrait one's, leaving a
+ * wider-than-tall map area) that old 10°-wide box made the WIDTH term dominate and
+ * pushed the effective floor to a more-zoomed-in level than the padded Country fit
+ * wanted — clamping fitBounds() to a tighter view than requested and clipping straight
+ * into Ireland's own extent, not just its padding. Widened well beyond what any
+ * realistic poster aspect ratio needs so neither dimension binds early.
  */
 export const IRELAND_PAN_BOUNDS: LngLatBox = [
-  [-13.0, 49.5],
-  [-3.0, 57.0],
+  [-22.0, 43.0],
+  [6.0, 64.0],
 ];
 
 type RingGeometry = {

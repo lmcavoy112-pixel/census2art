@@ -19,6 +19,32 @@ export async function renderPrintReadyCanvas(
   });
 }
 
+/**
+ * Pads a print-ready capture out to the full target size with a solid colour margin,
+ * for Stretched Canvas orders — see CANVAS_WRAP_MARGIN_MM in lib/design/catalogue.ts.
+ * `inner` must already be captured at `totalWidthPx - 2*marginPx` so this only ever
+ * places it, never rescales it.
+ */
+export function compositeWithMargin(
+  inner: HTMLCanvasElement,
+  marginPx: number,
+  totalWidthPx: number,
+  totalHeightPx: number,
+  fillColour: string
+): HTMLCanvasElement {
+  const out = document.createElement("canvas");
+  out.width = totalWidthPx;
+  out.height = totalHeightPx;
+
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("Could not create margin canvas context");
+  ctx.fillStyle = fillColour;
+  ctx.fillRect(0, 0, totalWidthPx, totalHeightPx);
+  ctx.drawImage(inner, marginPx, marginPx);
+
+  return out;
+}
+
 export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {

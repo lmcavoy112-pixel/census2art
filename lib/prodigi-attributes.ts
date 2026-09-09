@@ -6,10 +6,10 @@
 // colour. Prodigi requires a `wrap` attribute for Stretched Canvas
 // regardless, so those orders were reaching Prodigi incomplete.
 //
-// Confirmed live against GET /v4.0/products/GLOBAL-CFPM-A2: Classic Frame needs `color`
-// (black/brown/dark grey/gold/light grey/natural/silver/white) + `mountColor`. `color`
-// is forwarded verbatim from the FRAME_COLOURS id the customer picked, with no
-// hardcoded list here — it must already match Prodigi's expected string exactly.
+// Confirmed live against GET /v4.0/products/GLOBAL-CFP-A2: Classic Frame needs `color`
+// (black/brown/dark grey/gold/light grey/natural/silver/white). `color` is forwarded
+// verbatim from the FRAME_COLOURS id the customer picked, with no hardcoded list here
+// — it must already match Prodigi's expected string exactly.
 import type { ProductKind } from "@/lib/design/catalogue";
 
 export function buildProdigiAttributes(
@@ -23,9 +23,7 @@ export function buildProdigiAttributes(
   if (!frameColour) return {};
 
   if (product === "Classic Frame") {
-    // Not yet a customer-facing choice — "Snow white" is a neutral default
-    // that reads correctly against every frame colour.
-    return { color: frameColour, mountColor: "Snow white" };
+    return { color: frameColour };
   }
 
   return {};

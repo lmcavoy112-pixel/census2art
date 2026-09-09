@@ -40,7 +40,14 @@ export const MODERN_PRESETS: Record<ModernLevel, ModernPresetConfig> = {
       "Every district anywhere in Ireland where the surname appears — for a name that isn't tied to one place.",
     basemaps: ["contours", "streets"],
     fallbackZoom: 6.3,
-    fitPadding: 24,
+    // Country is the only level whose map area can end up shorter than it is wide (the
+    // heading/surname/count text above and below eat into a square or portrait poster's
+    // height more than at other levels), and Ireland's own bounding box is much taller
+    // than it is wide — so the fit here is the one most likely to end up binding on
+    // height with barely any margin. Kept in line with the other levels' 48-56 rather
+    // than the tighter 24 this used to be, so the north/south coastline doesn't sit
+    // right on the frame edge on Square, where that margin is thinnest.
+    fitPadding: 40,
     defaultPlaceLabels: "off",
     allowsPin: false,
     districtBorders: false,

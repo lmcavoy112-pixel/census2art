@@ -48,6 +48,9 @@ next-env.d.ts
 # and they were previously untracked yet unignored, so a single `git add .` would commit them.
 /scripts/
 
+# Sensitive internal pricing sheet - never commit
+pricing.xlsx
+
 # Internal cost/pricing exports — real supplier costs and margins, not for the repo.
 /pricing/
 

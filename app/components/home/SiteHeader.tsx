@@ -384,7 +384,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
             Examples
           </HeaderLink>
           <HeaderLink href="/gallery" active={isActivePath(pathname, "/gallery")}>
-            Gallery
+            Products
           </HeaderLink>
           <HeaderLink href="/background" active={isActivePath(pathname, "/background")}>
             Background
@@ -611,7 +611,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
                     className="text-sm"
                     style={{ color: INK }}
                   >
-                    Gallery
+                    Products
                   </Link>
                   <Link
                     href="/background"
