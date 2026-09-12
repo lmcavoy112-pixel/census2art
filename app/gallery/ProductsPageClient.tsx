@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
+import ImageLightbox from "../components/home/ImageLightbox";
 import { siteFontVars } from "../fonts";
 import { useCurrency } from "../components/CurrencyProvider";
 import { formatMoney } from "@/lib/currency";
@@ -27,7 +28,13 @@ import {
   type ProductKind,
   type ProductPreselect,
 } from "@/lib/design/catalogue";
-import { FRAME_ARTWORK_RECT, FRAME_COLOURS, frameCardUrl } from "@/lib/design/frames";
+import {
+  CANVAS_FRAME_COLOURS,
+  FRAME_ARTWORK_RECT,
+  FRAME_COLOURS,
+  frameCardUrl,
+  NO_FRAME_ID,
+} from "@/lib/design/frames";
 
 const GROUND = "#fdfaf5";
 const INK = "#1e2b18";
@@ -39,12 +46,38 @@ const RULE = "#ddd6c4";
 // is already a finished, framing-ready 2000x2400 raster.
 const SAMPLE_ARTWORK_SRC = "/artwork/Basemaps/Surname/Terrain.png";
 
+// Real finished lifestyle photos — shelf shots with actual composited artwork baked
+// in, standing in per-colour for the flat frame-card + sample-artwork overlay.
+// Keyed by FRAME_COLOURS id. Pre-compressed to WebP by scripts/compress-images.mjs
+// (see public/examples/product-gallery/classic-framed).
+const LIFESTYLE_SRC: Record<string, string> = {
+  black: "/examples/product-gallery/classic-framed/black.webp",
+  white: "/examples/product-gallery/classic-framed/white.webp",
+  silver: "/examples/product-gallery/classic-framed/silver.webp",
+  "dark grey": "/examples/product-gallery/classic-framed/dark-grey.webp",
+  "light grey": "/examples/product-gallery/classic-framed/light-grey.webp",
+  natural: "/examples/product-gallery/classic-framed/natural.webp",
+  brown: "/examples/product-gallery/classic-framed/brown.webp",
+  gold: "/examples/product-gallery/classic-framed/gold.webp",
+};
+
+// Same idea for the "Canvas" product kind, keyed by CANVAS_FRAME_COLOURS id — no entry
+// for NO_FRAME_ID (plain stretched canvas has no frame to photograph). Gold/silver use
+// their photographed "antique" finish names, matching canvasFrameCardUrl's file ids.
+const CANVAS_LIFESTYLE_SRC: Record<string, string> = {
+  black: "/examples/product-gallery/canvas/black.webp",
+  white: "/examples/product-gallery/canvas/white.webp",
+  natural: "/examples/product-gallery/canvas/natural.webp",
+  brown: "/examples/product-gallery/canvas/brown.webp",
+  gold: "/examples/product-gallery/canvas/antique-gold.webp",
+  silver: "/examples/product-gallery/canvas/antique-silver.webp",
+};
+
 const ORIENTATIONS: Format[] = ["ISO", "Square"];
 
 // "Print only" / "Classic Frame" / "Canvas" — the three physical products on
-// sale. Canvas has no frame colour (it's a stretched canvas edge, not a wooden
-// frame) and no frame-card photo yet, so it falls into the same flat-artwork
-// image treatment as "Print only" below.
+// sale. Canvas's own colour picker starts at "No Frame" (plain stretched canvas);
+// any colour switches it to Prodigi's float-framed canvas.
 const FRAME_KIND_OPTIONS: { id: ProductKind; label: string }[] = [
   { id: "Art Print", label: "Print only" },
   { id: "Classic Frame", label: "Classic Frame" },
@@ -52,8 +85,9 @@ const FRAME_KIND_OPTIONS: { id: ProductKind; label: string }[] = [
 ];
 
 // A handful of colours for the thumbnail strip, echoing the reference screenshot's
-// three or four framed shots rather than all eight swatches.
-const THUMBNAIL_COLOURS = ["black", "white", "natural", "gold"];
+// three or four framed shots rather than all eight swatches. Chosen to match the
+// colours with a real lifestyle photo (see LIFESTYLE_SRC above).
+const THUMBNAIL_COLOURS = ["black", "natural", "gold", "dark grey"];
 
 export default function ProductsPageClient() {
   const { currency } = useCurrency();
@@ -68,6 +102,7 @@ export default function ProductsPageClient() {
   // Classic Frame -> Canvas keeps "A4" selected — and shows its price at each — as long
   // as that size is on sale for the newly chosen product; otherwise sizeOptions[0] below.
   const [selectedSizeLabel, setSelectedSizeLabel] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,8 +123,14 @@ export default function ProductsPageClient() {
     () =>
       skus
         .filter((sku) => sku.format === orientation && sku.product === frameKind)
+        // Canvas is the one product where colour changes the SKU (No Frame vs. any
+        // colour is GLOBAL-CAN-* vs. GLOBAL-FRA-CAN-*, tracked by `framed`) — see the
+        // same filter and its fuller comment in app/irish-census/design/page.tsx.
+        .filter(
+          (sku) => frameKind !== "Stretched Canvas" || sku.framed === (frameColour !== NO_FRAME_ID)
+        )
         .sort((a, b) => a.short_in - b.short_in),
-    [skus, orientation, frameKind]
+    [skus, orientation, frameKind, frameColour]
   );
 
   const selectedSku = useMemo(
@@ -98,10 +139,32 @@ export default function ProductsPageClient() {
     [sizeOptions, selectedSizeLabel]
   );
 
-  const framed = frameKind === "Classic Frame";
+  // "framed" = show the frame-card compositing/photo treatment: always true for
+  // Classic Frame, and true for Canvas only once a colour has switched it to the
+  // GLOBAL-FRA-CAN-* SKU (not NO_FRAME_ID).
+  const framed = frameKind === "Classic Frame" || (frameKind === "Stretched Canvas" && frameColour !== NO_FRAME_ID);
+  const activeFrameColours = frameKind === "Stretched Canvas" ? CANVAS_FRAME_COLOURS : FRAME_COLOURS;
   const cardFormat = orientation === "Square" ? "square" : "iso";
   const rect = FRAME_ARTWORK_RECT[cardFormat];
   const aspect = formatAspect(orientation);
+
+  // Whichever photo the preview below is actually showing right now — used to drive
+  // the click-to-zoom lightbox. The frame-card + composited-artwork treatment has no
+  // single flat image (it's a photo plus an absolutely-positioned overlay), so that
+  // case zooms into the sample artwork alone rather than trying to recreate the
+  // composite in the lightbox.
+  const mainImage =
+    frameKind === "Classic Frame" && LIFESTYLE_SRC[frameColour]
+      ? { src: LIFESTYLE_SRC[frameColour], alt: `Classic Frame in ${frameColour}, shown on a shelf` }
+      : frameKind === "Stretched Canvas" && CANVAS_LIFESTYLE_SRC[frameColour]
+        ? { src: CANVAS_LIFESTYLE_SRC[frameColour], alt: `Canvas in ${frameColour}, shown on a shelf` }
+        : {
+            src: SAMPLE_ARTWORK_SRC,
+            alt:
+              frameKind === "Stretched Canvas"
+                ? "Sample census artwork on canvas"
+                : "Sample census artwork",
+          };
 
   return (
     <div
@@ -152,34 +215,54 @@ export default function ProductsPageClient() {
                   <OptionButton
                     key={option.id}
                     active={frameKind === option.id}
-                    onClick={() => setFrameKind(option.id)}
+                    onClick={() => {
+                      setFrameKind(option.id);
+                      // See the matching reconciliation in the designer
+                      // (app/irish-census/design/page.tsx): a colour carried over from
+                      // the other frame kind can be invalid here (dark/light grey only
+                      // exist on Classic Frame; NO_FRAME_ID only means something on
+                      // Canvas), so it's corrected to that kind's own default.
+                      const validColours =
+                        option.id === "Stretched Canvas" ? CANVAS_FRAME_COLOURS : FRAME_COLOURS;
+                      if (!validColours.some((c) => c.id === frameColour)) {
+                        setFrameColour(option.id === "Stretched Canvas" ? NO_FRAME_ID : "black");
+                      }
+                    }}
                   >
                     {option.label}
                   </OptionButton>
                 ))}
               </OptionGroup>
 
-              {framed && (
-                <OptionGroup label="Frame colour">
-                  {FRAME_COLOURS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      title={option.label}
-                      aria-label={option.label}
-                      aria-pressed={frameColour === option.id}
-                      onClick={() => setFrameColour(option.id)}
-                      className="h-8 w-8 rounded-full transition-shadow"
-                      style={{
-                        background: option.hex,
-                        boxShadow:
-                          frameColour === option.id
-                            ? `0 0 0 2px ${GROUND}, 0 0 0 3.5px ${INK}`
-                            : `0 0 0 1px ${RULE}`,
-                      }}
-                    />
-                  ))}
-                </OptionGroup>
+              {(frameKind === "Classic Frame" || frameKind === "Stretched Canvas") && (
+                <div>
+                  <p className="mb-2 text-[13px] font-medium" style={{ color: INK }}>
+                    Frame colour
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeFrameColours.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        title={option.label}
+                        aria-label={option.label}
+                        aria-pressed={frameColour === option.id}
+                        onClick={() => setFrameColour(option.id)}
+                        className="h-8 w-8 rounded-full transition-shadow"
+                        style={{
+                          background: option.hex,
+                          boxShadow:
+                            frameColour === option.id
+                              ? `0 0 0 2px ${GROUND}, 0 0 0 3.5px ${INK}`
+                              : `0 0 0 1px ${RULE}`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[13px]" style={{ color: MUTED }}>
+                    {activeFrameColours.find((option) => option.id === frameColour)?.label}
+                  </p>
+                </div>
               )}
 
               <OptionGroup label="Size">
@@ -253,9 +336,11 @@ export default function ProductsPageClient() {
               </Section>
 
               <Section heading="Canvas">
-                Stretched over a 38mm wooden frame with an ImageWrap edge, so the
-                artwork continues around the sides rather than showing a plain
-                border. Arrives ready to hang, no separate frame needed.
+                Stretched over a 38mm wooden stretcher bar with an ImageWrap edge,
+                so the artwork continues around the sides rather than showing a
+                plain border. Choose &ldquo;No Frame&rdquo; for the plain stretched
+                canvas, or any colour to add a float frame around it — both arrive
+                ready to hang.
               </Section>
 
               <Section heading="Shipping">
@@ -275,11 +360,49 @@ export default function ProductsPageClient() {
 
           {/* ── Image gallery ── */}
           <div className="order-1 lg:sticky lg:top-24 lg:self-start">
-            <div
-              className="relative w-full overflow-hidden rounded-md"
-              style={{ aspectRatio: framed ? "3 / 4" : `${aspect.w} / ${aspect.h}`, background: "#F5F4F1" }}
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              aria-label="Click to zoom"
+              className="group relative block w-full cursor-zoom-in overflow-hidden rounded-md"
+              style={{
+                // 3:4 matches the frame-card/lifestyle photos' own shape — only meaningful
+                // once a real photo is actually shown. Until then the flat sample artwork
+                // keeps its own aspect ratio rather than being cropped to a photo that isn't
+                // there.
+                aspectRatio:
+                  (frameKind === "Classic Frame" && framed) ||
+                  (frameKind === "Stretched Canvas" && !!CANVAS_LIFESTYLE_SRC[frameColour])
+                    ? "3 / 4"
+                    : `${aspect.w} / ${aspect.h}`,
+                background: "#F5F4F1",
+              }}
             >
-              {framed ? (
+              <span
+                className="pointer-events-none absolute right-3 top-3 z-10 flex items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+                style={{ width: 36, height: 36, background: "rgba(30,43,24,0.65)" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="11" cy="11" r="7" stroke="#fdfaf5" strokeWidth="2" />
+                  <path d="M21 21l-4.3-4.3" stroke="#fdfaf5" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M11 8v6M8 11h6" stroke="#fdfaf5" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </span>
+              {frameKind === "Classic Frame" && LIFESTYLE_SRC[frameColour] ? (
+                <Image
+                  src={LIFESTYLE_SRC[frameColour]}
+                  alt={`Classic Frame in ${frameColour}, shown on a shelf`}
+                  fill
+                  className="object-cover"
+                />
+              ) : frameKind === "Stretched Canvas" && CANVAS_LIFESTYLE_SRC[frameColour] ? (
+                <Image
+                  src={CANVAS_LIFESTYLE_SRC[frameColour]}
+                  alt={`Canvas in ${frameColour}, shown on a shelf`}
+                  fill
+                  className="object-cover"
+                />
+              ) : frameKind === "Classic Frame" && framed ? (
                 <>
                   <Image
                     src={frameCardUrl(frameColour, cardFormat)}
@@ -306,14 +429,25 @@ export default function ProductsPageClient() {
                   </div>
                 </>
               ) : (
+                // Print only, plain "No Frame" canvas, or a canvas colour without a
+                // lifestyle photo yet — falls back to the flat sample artwork rather
+                // than attempting a photo that isn't there.
                 <Image
                   src={SAMPLE_ARTWORK_SRC}
-                  alt="Sample census artwork, print only"
+                  alt={frameKind === "Stretched Canvas" ? "Sample census artwork on canvas" : "Sample census artwork, print only"}
                   fill
                   className="object-cover"
                 />
               )}
-            </div>
+            </button>
+
+            {lightboxOpen && (
+              <ImageLightbox
+                src={mainImage.src}
+                alt={mainImage.alt}
+                onClose={() => setLightboxOpen(false)}
+              />
+            )}
 
             <div className="mt-3 grid grid-cols-4 gap-3">
               {THUMBNAIL_COLOURS.map((colourId) => {
@@ -336,11 +470,11 @@ export default function ProductsPageClient() {
                     }}
                   >
                     <Image
-                      src={frameCardUrl(colourId, cardFormat)}
+                      src={LIFESTYLE_SRC[colourId] ?? frameCardUrl(colourId, cardFormat)}
                       alt={`${colour.label} frame, ${formatLabel(orientation)}`}
                       fill
-                      unoptimized
-                      className="object-fill"
+                      unoptimized={!LIFESTYLE_SRC[colourId]}
+                      className={LIFESTYLE_SRC[colourId] ? "object-cover" : "object-fill"}
                     />
                   </button>
                 );

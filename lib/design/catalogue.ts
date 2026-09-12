@@ -35,6 +35,11 @@ export type CatalogueSku = {
   /** The real, margin-bearing price in the requested currency — cached from Shopify.
    *  This is the only figure that should ever be shown to a customer. */
   sellingPrice: number;
+  /** True only for GLOBAL-FRA-CAN-* rows (framed canvas). Always false for every
+   *  other product, including plain Stretched Canvas — this is the one place frame
+   *  colour genuinely changes the SKU (see 0018_framed_canvas.sql), unlike Classic
+   *  Frame where colour never does. */
+  framed: boolean;
 };
 
 export type ProductOption = {
@@ -78,11 +83,12 @@ export const PRODUCT_OPTIONS: ProductOption[] = [
   },
   {
     id: "Stretched Canvas",
-    label: "Stretched Canvas",
-    description: "Unframed canvas print, 38mm stretcher, ImageWrap edge.",
+    label: "Canvas",
+    description:
+      "Canvas print, 38mm stretcher, ImageWrap edge. \"No Frame\" is the plain stretched canvas; any colour switches to Prodigi's float-framed canvas.",
     supplier: "Prodigi",
-    material: "Standard Canvas 38mm",
-    supplierCode: "GLOBAL-CAN-*",
+    material: "Standard Canvas 38mm (+ optional float frame)",
+    supplierCode: "GLOBAL-CAN-* / GLOBAL-FRA-CAN-*",
     skuStatus: "Active",
   },
 ];
@@ -164,16 +170,65 @@ export function printSizeForSku(sku: CatalogueSku): PrintSizeOption {
 }
 
 /**
- * Prodigi's canvas wrap auto-generates the 38mm stretcher-side content by stretching
- * the edge region of whatever front-face image is submitted — there's no way to send
- * a separate wrap-only asset. This margin is rendered inset (filled with the design's
- * own page colour) so that band is safe, plain colour rather than border/map artwork.
- * 40mm rounds up from Prodigi's 38mm bars to cover territory variance.
+ * Prodigi's canvas products want the *uploaded file itself* enlarged by the stretcher
+ * depth on every side, beyond the SKU's plain front-face size — confirmed directly
+ * against Prodigi's own upload tool. Prodigi's recommended size doesn't reduce to one
+ * fixed mm value across every SKU: A5/A4/A2 and every square size (6x6–16x16, confirmed
+ * directly against Prodigi's previewer) land on ~450px/side at 300dpi (1.5in, a
+ * 38mm-class edge), but A3 specifically uses a deeper 41mm border — confirmed directly
+ * against Prodigi's previewer, not just derived from the pixel totals — so its true
+ * margin (`marginPx` below) is smaller than what `(total - frontFace) / 2` would imply.
+ * Only SKUs whose margin genuinely differs from the 450px default need `marginPx` set;
+ * canvasCaptureBudgetPx() below uses it to enlarge the artwork capture itself to fill
+ * the rest of the recommended canvas, rather than leaving the artwork at front-face
+ * size and calling the whole difference blank margin.
  */
-export const CANVAS_WRAP_MARGIN_MM = 40;
+export const CANVAS_RECOMMENDED_PX: Partial<
+  Record<string, { width: number; height: number; marginPx?: number }>
+> = {
+  "GLOBAL-CAN-A5": { width: 2648, height: 3380 },
+  "GLOBAL-CAN-A4": { width: 3380, height: 4408 },
+  "GLOBAL-CAN-A3": { width: 4708, height: 6161, marginPx: 484 }, // true 41mm, not (total-front)/2
+  "GLOBAL-CAN-A2": { width: 5861, height: 7916 },
+};
+
+/** 1.5in (38.1mm) at 300dpi is exactly 450px, no rounding — see CANVAS_RECOMMENDED_PX. */
+export const CANVAS_WRAP_MARGIN_MM = 38.1;
 
 export function canvasWrapMarginPx(): number {
   return Math.round((CANVAS_WRAP_MARGIN_MM / 25.4) * 300);
+}
+
+/**
+ * The exact enlarged (bleed-inclusive) file size to export for a Stretched Canvas SKU.
+ * Uses Prodigi's own confirmed recommended size verbatim where we have it; otherwise
+ * falls back to the SKU's front-face size plus canvasWrapMarginPx() on every side.
+ */
+export function canvasOuterPixelSize(sku: CatalogueSku): { width: number; height: number } {
+  const exact = CANVAS_RECOMMENDED_PX[sku.sku];
+  if (exact) return exact;
+  const marginPx = canvasWrapMarginPx();
+  return {
+    width: Math.round(sku.short_in * 300) + 2 * marginPx,
+    height: Math.round(sku.long_in * 300) + 2 * marginPx,
+  };
+}
+
+/**
+ * For the few SKUs whose true margin (CANVAS_RECOMMENDED_PX's `marginPx`) is smaller
+ * than `(outer - frontFace) / 2`, the artwork itself must be captured larger than the
+ * plain front-face size to fill the rest of the recommended canvas — otherwise the
+ * difference just becomes oversized blank margin (the A3 bug). Returns the pixel budget
+ * the artwork capture should fit within, or null for every SKU where holding the
+ * capture at the plain front-face size is already correct (no explicit marginPx).
+ */
+export function canvasCaptureBudgetPx(sku: CatalogueSku): { width: number; height: number } | null {
+  const exact = CANVAS_RECOMMENDED_PX[sku.sku];
+  if (!exact?.marginPx) return null;
+  return {
+    width: exact.width - 2 * exact.marginPx,
+    height: exact.height - 2 * exact.marginPx,
+  };
 }
 
 export function formatAspect(format: Format): { w: number; h: number } {
@@ -262,6 +317,7 @@ export async function loadCatalogueSkus(
       // CatalogueSku for why the field keeps this name regardless of currency.
       price_gbp: Number(row[produceColumn]) + Number(row[shipColumn]),
       sellingPrice: Number(sellingPrice),
+      framed: row.framed === true,
     };
     return [sku];
   });

@@ -20,14 +20,16 @@ export async function renderPrintReadyCanvas(
 }
 
 /**
- * Pads a print-ready capture out to the full target size with a solid colour margin,
- * for Stretched Canvas orders — see CANVAS_WRAP_MARGIN_MM in lib/design/catalogue.ts.
- * `inner` must already be captured at `totalWidthPx - 2*marginPx` so this only ever
- * places it, never rescales it.
+ * Places a normally-captured, undistorted print-ready canvas onto a larger, solid
+ * colour canvas, centred — for Stretched Canvas orders, where totalWidthPx/totalHeightPx
+ * is Prodigi's own recommended (bleed-inclusive) upload size for that SKU (see
+ * canvasOuterPixelSize() in lib/design/catalogue.ts). The artwork itself is never
+ * resized or refit — only the file is enlarged around it. Centring (rather than a fixed
+ * offset) handles SKUs whose confirmed recommended size isn't perfectly symmetric on
+ * both axes without needing to know that asymmetry here.
  */
 export function compositeWithMargin(
   inner: HTMLCanvasElement,
-  marginPx: number,
   totalWidthPx: number,
   totalHeightPx: number,
   fillColour: string
@@ -40,7 +42,9 @@ export function compositeWithMargin(
   if (!ctx) throw new Error("Could not create margin canvas context");
   ctx.fillStyle = fillColour;
   ctx.fillRect(0, 0, totalWidthPx, totalHeightPx);
-  ctx.drawImage(inner, marginPx, marginPx);
+  const offsetX = Math.round((totalWidthPx - inner.width) / 2);
+  const offsetY = Math.round((totalHeightPx - inner.height) / 2);
+  ctx.drawImage(inner, offsetX, offsetY);
 
   return out;
 }

@@ -31,6 +31,10 @@ export type CartLine = {
   variantTitle: string;
   sku: string;
   imageUrl: string | null;
+  /** The saved-design id behind this line's artwork (see saveShareableDesign), if any —
+   *  backs the cart's "Edit" link to `/irish-census/design?snapshot=<id>`. Null for a
+   *  line added before this existed, or if the save failed at add-to-cart time. */
+  snapshotId: string | null;
   attributes: CartLineAttribute[];
   unitAmount: string;
   totalAmount: string;
@@ -171,6 +175,7 @@ function normaliseCart(raw: RawCart | null): Cart | null {
         node.attributes.find((a) => a.key === "_imageUrl")?.value ??
         node.merchandise.image?.url ??
         null,
+      snapshotId: node.attributes.find((a) => a.key === "_snapshotId")?.value ?? null,
       // Underscore-prefixed attributes are Shopify's convention for "internal": they
       // stay on the order for fulfilment but are hidden from the customer.
       attributes: node.attributes.filter((a) => !a.key.startsWith("_")),
@@ -375,6 +380,50 @@ export async function updateLineQuantity(
        }
      }`,
     { cartId, lines: [{ id: lineId, quantity }] }
+  );
+
+  const errors = data.cartLinesUpdate.userErrors;
+  if (errors?.length) throw new ShopifyError(errors[0].message);
+
+  return normaliseCart(data.cartLinesUpdate.cart);
+}
+
+/** The raw, unfiltered attributes for one cart line — including the underscore-prefixed
+ *  ones normaliseCart() hides from the browser (`_imageUrl`, `_snapshotId`, ...). Used
+ *  only server-side, to merge a Size/Frame colour change into a line without clobbering
+ *  the fields fulfilment depends on that the browser never saw in the first place. */
+export async function getCartLineRawAttributes(
+  cartId: string,
+  lineId: string
+): Promise<CartLineAttribute[] | null> {
+  const data = await shopifyFetch<{
+    cart: { lines: { nodes: { id: string; attributes: CartLineAttribute[] }[] } } | null;
+  }>(
+    `query LineAttributes($id: ID!) {
+       cart(id: $id) { lines(first: 100) { nodes { id attributes { key value } } } }
+     }`,
+    { id: cartId }
+  );
+  return data.cart?.lines.nodes.find((node) => node.id === lineId)?.attributes ?? null;
+}
+
+/** Swaps a line's variant and/or attributes in place — used to change Size (new SKU,
+ *  new variant) or Frame colour (same or, for canvas, a different SKU) without
+ *  disturbing the line's id, quantity or position in the cart. */
+export async function updateLine(
+  cartId: string,
+  lineId: string,
+  changes: { merchandiseId?: string; attributes?: CartLineAttribute[] }
+): Promise<Cart | null> {
+  const data = await shopifyFetch<{ cartLinesUpdate: { cart: RawCart | null; userErrors: { message: string }[] } }>(
+    `${CART_FRAGMENT}
+     mutation UpdateLineOptions($cartId: ID!, $lines: [CartLineUpdateInput!]!) {
+       cartLinesUpdate(cartId: $cartId, lines: $lines) {
+         cart { ...CartParts }
+         userErrors { message }
+       }
+     }`,
+    { cartId, lines: [{ id: lineId, ...changes }] }
   );
 
   const errors = data.cartLinesUpdate.userErrors;

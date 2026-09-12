@@ -2,10 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import type { Cart } from "@/lib/shopify";
+import type { Cart, CartLine } from "@/lib/shopify";
 import { formatMoney, isCurrencyCode } from "@/lib/currency";
+import { PRODUCT_PRESELECT_STORAGE_KEY, type CatalogueSku } from "@/lib/design/catalogue";
+import { FRAME_COLOURS, CANVAS_FRAME_COLOURS, NO_FRAME_ID } from "@/lib/design/frames";
 
 const GROUND = "#fdfaf5";
 const RAISED = "#fdfaf5";
@@ -54,12 +57,16 @@ type CartResponse = {
 };
 
 export default function CartView() {
+  const router = useRouter();
   const [cart, setCart] = useState<Cart | null>(null);
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busyLine, setBusyLine] = useState("");
   const [error, setError] = useState("");
   const [signedIn, setSignedIn] = useState(false);
+  // The full priced catalogue, used only to build the Size/Frame colour dropdowns and
+  // their live prices — the cart line itself only carries a SKU, not a product/format.
+  const [catalogue, setCatalogue] = useState<CatalogueSku[] | null>(null);
 
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
@@ -71,6 +78,15 @@ export default function CartView() {
     setConfigured(payload.configured);
     setError(payload.error ?? "");
   }, []);
+
+  const cartCurrency = cart && isCurrencyCode(cart.currency) ? cart.currency : null;
+  useEffect(() => {
+    if (!cartCurrency) return;
+    fetch(`/api/catalogue/skus?currency=${cartCurrency}`)
+      .then((r) => r.json())
+      .then((body: { skus?: CatalogueSku[] }) => setCatalogue(body.skus ?? null))
+      .catch(() => setCatalogue(null));
+  }, [cartCurrency]);
 
   useEffect(() => {
     fetch("/api/cart")
@@ -103,6 +119,62 @@ export default function CartView() {
     } finally {
       setBusyLine("");
     }
+  }
+
+  function changeOption(line: CartLine, sku: string, key: string, value: string) {
+    if (sku === line.sku && line.attributes.find((a) => a.key === key)?.value === value) return;
+    mutate({ action: "changeOption", lineId: line.id, sku, attributeUpdates: [{ key, value }] }, line.id);
+  }
+
+  /** Every other size on sale for the same product/format/frame-status as `row` — a
+   *  frame-status change (canvas "No Frame" <-> a colour) belongs to the Frame colour
+   *  dropdown, not this one, so it's held fixed here. */
+  function sizeOptionsFor(row: CatalogueSku): CatalogueSku[] {
+    if (!catalogue) return [];
+    return catalogue
+      .filter((s) => s.product === row.product && s.format === row.format && s.framed === row.framed)
+      .sort((a, b) => a.short_in - b.short_in);
+  }
+
+  /** Frame colour choices for `row`, each paired with the SKU/price it actually resolves
+   *  to — for Stretched Canvas, "No Frame" vs any colour is a different Prodigi SKU (see
+   *  CatalogueSku.framed), so switching colour there can itself change the price. */
+  function frameOptionsFor(row: CatalogueSku): { id: string; label: string; sku: string; price: number }[] {
+    if (row.product === "Classic Frame") {
+      return FRAME_COLOURS.map((c) => ({ id: c.id, label: c.label, sku: row.sku, price: row.sellingPrice }));
+    }
+    if (row.product === "Stretched Canvas" && catalogue) {
+      return CANVAS_FRAME_COLOURS.map((c) => {
+        const wantFramed = c.id !== NO_FRAME_ID;
+        const match = catalogue.find(
+          (s) =>
+            s.product === "Stretched Canvas" &&
+            s.format === row.format &&
+            s.size_label === row.size_label &&
+            s.framed === wantFramed
+        );
+        return { id: c.id, label: c.label, sku: match?.sku ?? row.sku, price: match?.sellingPrice ?? row.sellingPrice };
+      });
+    }
+    return [];
+  }
+
+  /** Sends the customer back into the designer with this line's exact artwork
+   *  (?snapshot=<id>) and product/size/frame colour (sessionStorage, the same channel
+   *  the Products page uses) preloaded, so "Update item" there replaces this line. */
+  function editLine(line: CartLine, row: CatalogueSku | null) {
+    const frameColour =
+      line.attributes.find((a) => a.key === "Frame colour")?.value ??
+      (row?.product === "Stretched Canvas" ? NO_FRAME_ID : undefined);
+    try {
+      sessionStorage.setItem(
+        PRODUCT_PRESELECT_STORAGE_KEY,
+        JSON.stringify({ productKind: row?.product, frameColour, sku: line.sku })
+      );
+    } catch {
+      // Preselect is a convenience — the designer still opens fine without it.
+    }
+    router.push(`/irish-census/design?snapshot=${line.snapshotId}&editLine=${encodeURIComponent(line.id)}`);
   }
 
   async function submitDiscount(event: React.FormEvent) {
@@ -178,7 +250,19 @@ export default function CartView() {
     <div className="grid gap-8 lg:grid-cols-[1.7fr_1fr] lg:gap-16">
       {/* ── Line items ── */}
       <ul>
-        {lines.map((line) => (
+        {lines.map((line) => {
+          const row = catalogue?.find((s) => s.sku === line.sku) ?? null;
+          const sizeAttr = line.attributes.find((a) => a.key === "Size");
+          const frameAttr = line.attributes.find((a) => a.key === "Frame colour");
+          const otherAttributes = line.attributes.filter(
+            (a) => a.key !== "Size" && a.key !== "Frame colour"
+          );
+          const sizeOptions = row ? sizeOptionsFor(row) : [];
+          const frameOptions = row ? frameOptionsFor(row) : [];
+          const currentFrameColour =
+            frameAttr?.value ?? (row?.product === "Stretched Canvas" ? NO_FRAME_ID : "");
+
+          return (
           <li
             key={line.id}
             className="flex gap-3 py-5 sm:gap-5 sm:py-8"
@@ -230,9 +314,9 @@ export default function CartView() {
 
               {/* The design's own details, straight off the line item — the same list
                   that follows the order through to fulfilment. */}
-              {line.attributes.length > 0 && (
+              {otherAttributes.length > 0 && (
                 <dl className="mt-1.5 space-y-0.5 sm:mt-3">
-                  {line.attributes.map((attribute) => (
+                  {otherAttributes.map((attribute) => (
                     <div key={attribute.key} className="flex gap-1.5 text-[12px] sm:text-[13px]">
                       <dt style={{ color: MUTED }}>{attribute.key}:</dt>
                       <dd className="min-w-0 truncate" style={{ color: INK }}>
@@ -240,6 +324,69 @@ export default function CartView() {
                       </dd>
                     </div>
                   ))}
+                </dl>
+              )}
+
+              {/* Size and Frame colour become live dropdowns once the catalogue has
+                  loaded — each option priced for real, so switching size or colour
+                  shows exactly what it will cost before it's picked. Falls back to
+                  plain text if the catalogue hasn't loaded or this SKU isn't in it. */}
+              {(sizeAttr || frameAttr) && (
+                <dl className="mt-1.5 space-y-1 sm:mt-3">
+                  {sizeAttr && (
+                    <div className="flex items-center gap-1.5 text-[12px] sm:text-[13px]">
+                      <dt style={{ color: MUTED }}>Size:</dt>
+                      <dd className="min-w-0" style={{ color: INK }}>
+                        {row && sizeOptions.length > 1 ? (
+                          <select
+                            value={row.sku}
+                            disabled={busyLine === line.id}
+                            onChange={(e) => {
+                              const next = sizeOptions.find((s) => s.sku === e.target.value);
+                              if (next) changeOption(line, next.sku, "Size", next.size_label);
+                            }}
+                            className="rounded border bg-transparent py-0.5 pl-1 pr-5 text-[12px] sm:text-[13px]"
+                            style={{ borderColor: RULE, color: INK }}
+                          >
+                            {sizeOptions.map((s) => (
+                              <option key={s.sku} value={s.sku}>
+                                {s.size_label} — {money(String(s.sellingPrice), cart!.currency)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          sizeAttr.value
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {(frameAttr || row?.product === "Stretched Canvas") && (
+                    <div className="flex items-center gap-1.5 text-[12px] sm:text-[13px]">
+                      <dt style={{ color: MUTED }}>Frame colour:</dt>
+                      <dd className="min-w-0" style={{ color: INK }}>
+                        {row && frameOptions.length > 0 ? (
+                          <select
+                            value={currentFrameColour}
+                            disabled={busyLine === line.id}
+                            onChange={(e) => {
+                              const next = frameOptions.find((o) => o.id === e.target.value);
+                              if (next) changeOption(line, next.sku, "Frame colour", next.id);
+                            }}
+                            className="rounded border bg-transparent py-0.5 pl-1 pr-5 text-[12px] sm:text-[13px]"
+                            style={{ borderColor: RULE, color: INK }}
+                          >
+                            {frameOptions.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.label} — {money(String(o.price), cart!.currency)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          frameAttr?.value ?? "None"
+                        )}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               )}
 
@@ -283,6 +430,18 @@ export default function CartView() {
                   </button>
                 </div>
 
+                {line.snapshotId && (
+                  <button
+                    type="button"
+                    onClick={() => editLine(line, row)}
+                    disabled={busyLine === line.id}
+                    className="text-[12px] underline underline-offset-4 transition-opacity disabled:opacity-40 sm:text-[13px]"
+                    style={{ color: MUTED }}
+                  >
+                    Edit
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => mutate({ action: "remove", lineId: line.id }, line.id)}
@@ -295,7 +454,8 @@ export default function CartView() {
               </div>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       {/* ── Summary ── */}

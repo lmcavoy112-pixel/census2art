@@ -6,12 +6,15 @@ import {
   createCart,
   findVariantIdBySku,
   getCart,
+  getCartLineRawAttributes,
   removeLine,
   setCartCountry,
   setDiscountCodes,
   shopifyConfigured,
+  updateLine,
   updateLineQuantity,
   type Cart,
+  type CartLineAttribute,
 } from "@/lib/shopify";
 import { cartRequestSchema, type CartRequest } from "@/lib/validation";
 import { MIN_MODERN_BASEMAP_PPI } from "@/lib/design/catalogue";
@@ -81,6 +84,35 @@ async function unavailableSkus(cart: Cart, currency: CurrencyCode): Promise<stri
       .map((row) => row.sku)
   );
   return skus.filter((sku) => !sellable.has(sku));
+}
+
+/**
+ * Re-validates a SKU against the catalogue before it can reach a cart line — shared by
+ * "add" and "changeOption" so a stale page, a replayed request, or a future UI bug can't
+ * add or swap in a retired, under-quality, or currency-unsellable print either way.
+ */
+async function validateSkuForSale(
+  sku: string,
+  currency: CurrencyCode,
+  isModern: boolean
+): Promise<{ error: string; status: number } | null> {
+  const sellColumn = `sell_${currency.toLowerCase()}` as "sell_gbp" | "sell_usd" | "sell_eur";
+  const { data: catalogueRow } = await supabase
+    .from("catalogue_skus")
+    .select(`basemap_ppi, ${sellColumn}`)
+    .eq("sku", sku)
+    .maybeSingle();
+
+  if (!catalogueRow) {
+    return { error: "That size is no longer available.", status: 422 };
+  }
+  if ((catalogueRow as Record<string, unknown>)[sellColumn] == null) {
+    return { error: `That size isn't available in ${currency}.`, status: 422 };
+  }
+  if (isModern && (catalogueRow.basemap_ppi ?? 0) < MIN_MODERN_BASEMAP_PPI) {
+    return { error: "That size doesn't meet our print quality minimum.", status: 422 };
+  }
+  return null;
 }
 
 function notConfigured() {
@@ -158,39 +190,12 @@ export async function POST(request: NextRequest) {
         // never changed the SKU, cost or price — see lib/design/catalogue.ts), so `sku`
         // is a genuine primary key now and exactly one row can ever match.
         const currency = await readCurrency();
-        const sellColumn = `sell_${currency.toLowerCase()}` as "sell_gbp" | "sell_usd" | "sell_eur";
-        const { data: catalogueRow } = await supabase
-          .from("catalogue_skus")
-          .select(`basemap_ppi, ${sellColumn}`)
-          .eq("sku", body.sku)
-          .maybeSingle();
-
-        if (!catalogueRow) {
-          return NextResponse.json(
-            { error: "That size is no longer available." },
-            { status: 422 }
-          );
-        }
-
-        // Currency-specific: Prodigi only prints part of the range at its EU/US labs, so
-        // a real SKU can still be unsellable in the visitor's chosen currency (no
-        // sell_{currency} value). The designer's size picker already excludes these, so
-        // reaching this branch means a stale page, a replayed request, or a future UI bug.
-        if ((catalogueRow as Record<string, unknown>)[sellColumn] == null) {
-          return NextResponse.json(
-            { error: `That size isn't available in ${currency}.` },
-            { status: 422 }
-          );
-        }
-
         const isModern = (body.attributes ?? []).some(
           (a) => a.key === "Style" && a.value === "Modern"
         );
-        if (isModern && (catalogueRow.basemap_ppi ?? 0) < MIN_MODERN_BASEMAP_PPI) {
-          return NextResponse.json(
-            { error: "That size doesn't meet our print quality minimum." },
-            { status: 422 }
-          );
+        const invalid = await validateSkuForSale(body.sku, currency, isModern);
+        if (invalid) {
+          return NextResponse.json({ error: invalid.error }, { status: invalid.status });
         }
 
         const variantId = await findVariantIdBySku(body.sku);
@@ -241,6 +246,58 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "No cart line to remove." }, { status: 400 });
         }
         return ok(await removeLine(cartId, body.lineId));
+      }
+
+      case "changeOption": {
+        // Changes Size (a new SKU/variant, new price) or Frame colour (usually the same
+        // SKU; a different one only for canvas switching to/from "No Frame" — see
+        // lib/design/catalogue.ts's `framed` field) on a line already in the cart, with
+        // no re-render: the artwork file itself doesn't change, only what it's printed
+        // on. Attribute updates are merged into the line's own current attributes
+        // (fetched fresh from Shopify, not trusted from the browser) so the hidden
+        // `_imageUrl`/`_previewUrl` fields the browser never sees are carried forward
+        // untouched.
+        if (!cartId || !body.lineId || !body.sku) {
+          return NextResponse.json({ error: "No cart line to update." }, { status: 400 });
+        }
+
+        const currentAttributes = await getCartLineRawAttributes(cartId, body.lineId);
+        if (!currentAttributes) {
+          return NextResponse.json({ error: "That item is no longer in your cart." }, { status: 404 });
+        }
+
+        const isModern = currentAttributes.some((a) => a.key === "Style" && a.value === "Modern");
+        const currency = await readCurrency();
+        const invalid = await validateSkuForSale(body.sku, currency, isModern);
+        if (invalid) {
+          return NextResponse.json({ error: invalid.error }, { status: invalid.status });
+        }
+
+        const variantId = await findVariantIdBySku(body.sku);
+        if (!variantId) {
+          return NextResponse.json(
+            { error: `No Shopify variant matches SKU ${body.sku}.` },
+            { status: 422 }
+          );
+        }
+
+        const updates = new Map((body.attributeUpdates ?? []).map((a) => [a.key, a.value]));
+        const mergedAttributes: CartLineAttribute[] = currentAttributes.map((a) =>
+          updates.has(a.key) ? { key: a.key, value: updates.get(a.key)! } : a
+        );
+        // A Frame colour update on a line that never had one (plain, unframed canvas)
+        // has no existing key to merge into — append it instead.
+        for (const [key, value] of updates) {
+          if (!mergedAttributes.some((a) => a.key === key)) {
+            mergedAttributes.push({ key, value });
+          }
+        }
+
+        const cart = await updateLine(cartId, body.lineId, {
+          merchandiseId: variantId,
+          attributes: mergedAttributes,
+        });
+        return ok(cart);
       }
 
       case "applyDiscount": {

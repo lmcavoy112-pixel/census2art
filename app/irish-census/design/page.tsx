@@ -31,7 +31,8 @@ import { fetchHousehold, fetchTownlandPolygon } from "@/lib/census/queries";
 import { buildHouseholdSummaryLines } from "@/lib/census/householdSummary";
 import {
   buildGalleryGroups,
-  canvasWrapMarginPx,
+  canvasCaptureBudgetPx,
+  canvasOuterPixelSize,
   categoryForProductKind,
   FORMAT_ORDER,
   formatAspect,
@@ -48,10 +49,13 @@ import {
 } from "@/lib/design/catalogue";
 import { submitPrintOrder } from "@/lib/design/order";
 import {
+  CANVAS_FRAME_COLOURS,
+  canvasFrameCardUrl,
   FRAME_ARTWORK_RECT,
   FRAME_COLOURS,
   FRAME_FALLBACK_THICKNESS_PERCENT,
   frameCardUrl,
+  NO_FRAME_ID,
   type FrameCardFormat,
 } from "@/lib/design/frames";
 import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
@@ -321,9 +325,9 @@ const MARKER_SIZES = [
 // Short cards for the framed products. The set of products comes from the catalogue
 // (PRODUCTS_FOR_CATEGORY), so retiring one there removes its card here too; this only
 // supplies the wording, since the catalogue's own names are too long for a card.
-const FRAMED_PRODUCT_LABELS: Partial<Record<ProductKind, { label: string; detail: string }>> = {
-  "Classic Frame": { label: "Classic", detail: "Framed print" },
-  "Stretched Canvas": { label: "Stretched", detail: "No frame" },
+const FRAMED_PRODUCT_LABELS: Partial<Record<ProductKind, { label: string }>> = {
+  "Classic Frame": { label: "Classic Frame" },
+  "Stretched Canvas": { label: "Canvas" },
 };
 
 // Frame colour swatches + photoreal frame-card compositing constants now live in
@@ -427,6 +431,10 @@ function ModernDesignContent() {
   // why re-saving always mints a new id rather than overwriting this one.
   const [incomingSnapshotId, setIncomingSnapshotId] = useState<string | null>(null);
   const [loadSnapshotError, setLoadSnapshotError] = useState("");
+  // Set from ?editLine=<id> when this designer was opened from the cart's "Edit"
+  // button — orderPrint() then replaces that line instead of adding a new one, and the
+  // button reads "Update item" rather than "Add to cart".
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -693,9 +701,47 @@ function ModernDesignContent() {
     }
   }
 
+  // The Products page (app/gallery) hands off its Orientation/Frame/Frame Colour/Size
+  // choice via sessionStorage, and the cart's "Edit" button reuses the same channel to
+  // restore the exact product/size/colour a line was bought with (the artwork/layout
+  // side of that comes from the ?snapshot= design itself, which has no notion of
+  // product/SKU — see ShareableDesign's module comment). Read once and cleared
+  // immediately either way. Applied after `savedFormat` in the non-snapshot branch so
+  // this — the more specific, more recent handoff — wins if a link somehow carried both.
+  function applyProductPreselect() {
+    try {
+      const rawPreselect = sessionStorage.getItem(PRODUCT_PRESELECT_STORAGE_KEY);
+      if (!rawPreselect) return;
+      sessionStorage.removeItem(PRODUCT_PRESELECT_STORAGE_KEY);
+      const preselect = JSON.parse(rawPreselect) as Partial<ProductPreselect>;
+      if (preselect.format === "ISO" || preselect.format === "Square") {
+        setFormat(preselect.format);
+      }
+      if (isProductKind(preselect.productKind)) {
+        const category = categoryForProductKind(preselect.productKind);
+        setFulfilment(category === "Digital" ? "digital" : category === "Printed" ? "print" : "framed");
+        setProductKind(preselect.productKind);
+        // Without this, the fulfilment-driven reset effect below would immediately
+        // snap productKind back to its category's first option (e.g. discarding a
+        // preselected Stretched Canvas in favour of Classic Frame) on this same mount.
+        skipFulfilmentResetRef.current = true;
+      }
+      if (typeof preselect.frameColour === "string" && preselect.frameColour) {
+        setFrameColour(preselect.frameColour);
+      }
+      if (typeof preselect.sku === "string" && preselect.sku) {
+        setSelectedSkuId(preselect.sku);
+      }
+    } catch {
+      // Malformed/inaccessible storage — the designer just falls back to its own
+      // defaults, same as arriving here directly rather than via the Products page.
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     const incomingSnapshotId = getParam(params, "snapshot");
+    const incomingEditLine = getParam(params, "editLine");
 
     // A snapshot link is complete and self-sufficient — mixing it with a designKey/
     // query-param handoff would silently blend a full saved state with today's
@@ -708,7 +754,9 @@ function ModernDesignContent() {
           const design = await loadShareableDesign(incomingSnapshotId);
           if (cancelled) return;
           applySnapshot(design);
+          applyProductPreselect();
           setIncomingSnapshotId(incomingSnapshotId);
+          if (incomingEditLine) setEditingLineId(incomingEditLine);
           setLoadSnapshotError("");
         } catch {
           if (!cancelled) {
@@ -823,41 +871,8 @@ function ModernDesignContent() {
     const savedTemplate = getParam(params, "template");
     if (savedTemplate === "historic" || savedTemplate === "modern") setTemplate(savedTemplate);
 
-    // The Products page (app/gallery) hands off its Orientation/Frame/Frame Colour/
-    // Size choice via sessionStorage — see PRODUCT_PRESELECT_STORAGE_KEY's comment in
-    // lib/design/catalogue.ts for why sessionStorage rather than a query param. Read
-    // once and clear immediately: a later "start from scratch" navigation on this same
-    // tab (without going back through Products) shouldn't resurrect a stale choice.
-    // Applied after savedFormat above so this — the more specific, more recent
-    // handoff — wins if a link somehow carried both.
-    try {
-      const rawPreselect = sessionStorage.getItem(PRODUCT_PRESELECT_STORAGE_KEY);
-      if (rawPreselect) {
-        sessionStorage.removeItem(PRODUCT_PRESELECT_STORAGE_KEY);
-        const preselect = JSON.parse(rawPreselect) as Partial<ProductPreselect>;
-        if (preselect.format === "ISO" || preselect.format === "Square") {
-          setFormat(preselect.format);
-        }
-        if (isProductKind(preselect.productKind)) {
-          const category = categoryForProductKind(preselect.productKind);
-          setFulfilment(category === "Digital" ? "digital" : category === "Printed" ? "print" : "framed");
-          setProductKind(preselect.productKind);
-          // Without this, the fulfilment-driven reset effect below would immediately
-          // snap productKind back to its category's first option (e.g. discarding a
-          // preselected Stretched Canvas in favour of Classic Frame) on this same mount.
-          skipFulfilmentResetRef.current = true;
-        }
-        if (typeof preselect.frameColour === "string" && preselect.frameColour) {
-          setFrameColour(preselect.frameColour);
-        }
-        if (typeof preselect.sku === "string" && preselect.sku) {
-          setSelectedSkuId(preselect.sku);
-        }
-      }
-    } catch {
-      // Malformed/inaccessible storage — the designer just falls back to its own
-      // defaults, same as arriving here directly rather than via the Products page.
-    }
+    applyProductPreselect();
+    if (incomingEditLine) setEditingLineId(incomingEditLine);
 
     if (isAccentId(saved?.accent)) {
       setAccentId(saved.accent);
@@ -1285,16 +1300,21 @@ function ModernDesignContent() {
   const sizeOptions = useMemo(() => {
     return catalogueSkus
       .filter((sku) => sku.format === format && sku.product === productKind)
-      // Frame colour never filters sizes here: Prodigi's SKU (and this row) doesn't vary
-      // by colour, so every colour is available at every size. Colour is chosen
-      // separately below and travels to Prodigi as a cart/order-line attribute.
-      //
+      // Frame colour never filters sizes for Classic Frame: Prodigi's SKU (and this
+      // row) doesn't vary by colour, so every colour is available at every size.
+      // Canvas is the one exception — "No Frame" vs. any colour is a genuinely
+      // different Prodigi SKU (GLOBAL-CAN-* vs GLOBAL-FRA-CAN-*), tracked by the
+      // `framed` column, so it does filter sizes here.
+      .filter(
+        (sku) =>
+          productKind !== "Stretched Canvas" || sku.framed === (frameColour !== NO_FRAME_ID)
+      )
       // Modern's map is a raster capture with a real resolution ceiling (basemap_ppi).
       // Historic doesn't need this guard: A1, the one size that fell short of it, isn't
       // in the catalogue at all any more.
       .filter((sku) => template !== "modern" || (sku.basemap_ppi ?? 0) >= MIN_MODERN_BASEMAP_PPI)
       .sort((a, b) => a.short_in - b.short_in);
-  }, [catalogueSkus, format, productKind, template]);
+  }, [catalogueSkus, format, productKind, frameColour, template]);
 
   // Derived rather than synced in an effect, so changing shape or product can never
   // leave a SKU selected that is no longer on offer.
@@ -1302,6 +1322,14 @@ function ModernDesignContent() {
     () => sizeOptions.find((sku) => sku.sku === selectedSkuId) ?? sizeOptions[0] ?? null,
     [sizeOptions, selectedSkuId]
   );
+
+  // Whether the current SKU actually carries a frame colour to Prodigi/Shopify:
+  // always true for Classic Frame, and true for Canvas only once "framed" (not
+  // NO_FRAME_ID) has resolved to the GLOBAL-FRA-CAN-* row. Plain canvas has no
+  // `color` attribute, so it must never show/send one.
+  const skuHasFrameColour =
+    selectedSku?.product === "Classic Frame" ||
+    (selectedSku?.product === "Stretched Canvas" && selectedSku.framed);
 
   const printSize = selectedSku ? printSizeForSku(selectedSku) : null;
 
@@ -1355,7 +1383,10 @@ function ModernDesignContent() {
   // than the stage at ordinary laptop widths, and flexbox silently squeezed the
   // wrapper's width to fit while the artwork overlay kept its un-squeezed position,
   // visibly misaligning the artwork from the photo's window on the right edge.
-  const framed = fulfilment === "framed" && productKind !== "Stretched Canvas";
+  // "framed" here means "show the frame-card compositing/border", which is now true
+  // for Classic Frame (always, once in the Framed step) and for Canvas only once a
+  // colour has switched it to the GLOBAL-FRA-CAN-* SKU — mirrors skuHasFrameColour.
+  const framed = fulfilment === "framed" && skuHasFrameColour;
   const frameCardArtworkRect = FRAME_ARTWORK_RECT[isSquare ? "square" : "iso"];
   const frameCardWidthFactor = framed
     ? 1 / (1 - frameCardArtworkRect.left - frameCardArtworkRect.right)
@@ -1797,13 +1828,31 @@ function ModernDesignContent() {
     const poster = posterRef.current;
     if (!poster || !printSize) throw new Error("Nothing to export yet.");
 
-    // Prodigi's canvas ImageWrap auto-generates the 38mm stretcher-side content by
-    // stretching whatever sits at the true edge of the submitted image — so canvas
-    // orders are captured inset by a safety margin, leaving a plain page-colour band
-    // for the wrap to consume instead of border/map artwork. See CANVAS_WRAP_MARGIN_MM.
+    // Prodigi's own upload tool reports a "recommended" canvas file size larger than
+    // the SKU's plain front-face size, to cover the wrap depth on every side — so
+    // canvas orders enlarge the exported file to that exact recommended size and fill
+    // the added border with the design's own page colour, rather than resizing the
+    // artwork itself. The artwork is captured at its completely normal, undistorted
+    // full size for every SKU whose true margin matches (total-front)/2 — which is
+    // every canvas SKU except A3 (see CANVAS_RECOMMENDED_PX). A3's true margin is
+    // smaller, so its artwork must be captured *larger* than the front-face size to
+    // fill the rest of the recommended canvas — fit to whichever axis is binding,
+    // since the poster's fixed CSS aspect ratio doesn't exactly match the budget's own
+    // aspect ratio. See canvasOuterPixelSize()/canvasCaptureBudgetPx().
     const isCanvas = selectedSku?.product === "Stretched Canvas";
-    const marginPx = isCanvas ? canvasWrapMarginPx() : 0;
-    const captureWidthPx = printSize.pixelWidth - 2 * marginPx;
+    const captureBudget = isCanvas && selectedSku ? canvasCaptureBudgetPx(selectedSku) : null;
+    let captureWidthPx = printSize.pixelWidth;
+    if (captureBudget) {
+      const naturalAspect = aspect.h / aspect.w;
+      const widthConstrainedHeight = captureBudget.width * naturalAspect;
+      captureWidthPx =
+        widthConstrainedHeight <= captureBudget.height
+          ? captureBudget.width
+          : captureBudget.height / naturalAspect;
+    }
+    const outerSize = isCanvas && selectedSku ? canvasOuterPixelSize(selectedSku) : null;
+    const outerWidthPx = outerSize?.width ?? printSize.pixelWidth;
+    const outerHeightPx = outerSize?.height ?? printSize.pixelHeight;
     const marginColour = template === "historic" ? historicAccent.page : pageHex;
 
     // Historic draws its map as inline SVG, which html2canvas rasterises at whatever
@@ -1820,13 +1869,7 @@ function ModernDesignContent() {
       }
       let canvas = await renderPrintReadyCanvas(poster, captureWidthPx);
       if (isCanvas) {
-        canvas = compositeWithMargin(
-          canvas,
-          marginPx,
-          printSize.pixelWidth,
-          printSize.pixelHeight,
-          marginColour
-        );
+        canvas = compositeWithMargin(canvas, outerWidthPx, outerHeightPx, marginColour);
       }
       setExportNote("");
       return consume(canvas);
@@ -1837,6 +1880,15 @@ function ModernDesignContent() {
 
     const posterRect = poster.getBoundingClientRect();
     const mapRect = mapArea.getBoundingClientRect();
+
+    // mapArea normally grows via flex-1 to fill whatever the household block (flex-none)
+    // doesn't use — the live browser resolves that correctly, but html2canvas's offscreen
+    // layout pass doesn't reliably resolve flex-grow against this fixed-aspect-ratio /
+    // transform-scaled ancestor chain, and can collapse it toward its natural/minimum
+    // size instead (most visible with a small household, leaving blank print below the
+    // table). Pinning the already-correct measured height sidesteps that entirely.
+    const previousMapAreaHeight = mapArea.style.height;
+    mapArea.style.height = `${mapRect.height}px`;
 
     // How much denser the print is than the screen. The offscreen map keeps the on-screen
     // CSS size and raises pixelRatio, so the customer's framing is preserved exactly.
@@ -1895,16 +1947,11 @@ function ModernDesignContent() {
 
       let canvas = await renderPrintReadyCanvas(poster, captureWidthPx);
       if (isCanvas) {
-        canvas = compositeWithMargin(
-          canvas,
-          marginPx,
-          printSize.pixelWidth,
-          printSize.pixelHeight,
-          marginColour
-        );
+        canvas = compositeWithMargin(canvas, outerWidthPx, outerHeightPx, marginColour);
       }
       return await consume(canvas);
     } finally {
+      mapArea.style.height = previousMapAreaHeight;
       setCaptureUrl(null);
     }
   }
@@ -1986,6 +2033,57 @@ function ModernDesignContent() {
     };
     window.addEventListener("beforeunload", warnBeforeUnload);
 
+    const shareableDesign = buildShareableDesign({
+      surnameSearch,
+      includedSurnames,
+      censusYear,
+      county,
+      countyDisplayText,
+      dedId,
+      dedDisplayText,
+      townlandId,
+      townlandText,
+      houseUid,
+      houseNoText,
+      household,
+      householdDisplayMode,
+      visibleHouseholdFields,
+      hiddenHouseholdIndices,
+      template,
+      format,
+      headingText,
+      modern:
+        template === "modern"
+          ? {
+              level,
+              basemap,
+              mapLayers,
+              elevationUnit,
+              contourDensity,
+              paletteId,
+              polygonColourId,
+              borderColourId,
+              borderWidthIndex,
+              view: viewRef.current ?? { center: centre, zoom: preset.fallbackZoom },
+              pin,
+              pinSource,
+              markerShape,
+              markerSizeIndex,
+            }
+          : undefined,
+      historic:
+        template === "historic"
+          ? {
+              basemap: historicBasemap,
+              border: effectiveBorder,
+              symbol: historicSymbol,
+              accentId,
+              shadingOpacity,
+              hotspotColour,
+            }
+          : undefined,
+    });
+
     try {
       const { imageUrl, previewUrl } = await withPrintReadyPoster(async (canvas) => {
         const blob = await canvasToPngBlob(canvas);
@@ -2001,59 +2099,10 @@ function ModernDesignContent() {
           priceGbp: selectedSku.price_gbp,
           attributes: buildProdigiAttributes(
             selectedSku.product,
-            selectedSku.product === "Classic Frame" ? frameColour : null
+            skuHasFrameColour ? frameColour : null
           ),
           design: {
-            ...buildShareableDesign({
-              surnameSearch,
-              includedSurnames,
-              censusYear,
-              county,
-              countyDisplayText,
-              dedId,
-              dedDisplayText,
-              townlandId,
-              townlandText,
-              houseUid,
-              houseNoText,
-              household,
-              householdDisplayMode,
-              visibleHouseholdFields,
-              hiddenHouseholdIndices,
-              template,
-              format,
-              headingText,
-              modern:
-                template === "modern"
-                  ? {
-                      level,
-                      basemap,
-                      mapLayers,
-                      elevationUnit,
-                      contourDensity,
-                      paletteId,
-                      polygonColourId,
-                      borderColourId,
-                      borderWidthIndex,
-                      view: viewRef.current ?? { center: centre, zoom: preset.fallbackZoom },
-                      pin,
-                      pinSource,
-                      markerShape,
-                      markerSizeIndex,
-                    }
-                  : undefined,
-              historic:
-                template === "historic"
-                  ? {
-                      basemap: historicBasemap,
-                      border: effectiveBorder,
-                      symbol: historicSymbol,
-                      accentId,
-                      shadingOpacity,
-                      hotspotColour,
-                    }
-                  : undefined,
-            }),
+            ...shareableDesign,
             // Order-only extras layered on top: `surname`/capitalised `template` are the
             // legacy keys the checkout page and orders table's denormalized columns
             // already read (app/checkout/[id]/page.tsx, app/api/orders/route.ts) —
@@ -2062,7 +2111,7 @@ function ModernDesignContent() {
             template: template === "historic" ? "Historic" : "Modern",
             product: selectedSku.product,
             sizeLabel: selectedSku.size_label,
-            frameColour: selectedSku.product === "Classic Frame" ? frameColour : null,
+            frameColour: skuHasFrameColour ? frameColour : null,
             exportPixelWidth: canvas.width,
             exportPixelHeight: canvas.height,
           },
@@ -2070,43 +2119,66 @@ function ModernDesignContent() {
         return { imageUrl: result.imageUrl, previewUrl: result.previewUrl };
       });
 
+      // Saved under its own id (separately from the order's own denormalized `design`
+      // JSON above) so the cart's "Edit" button can reopen this exact design later via
+      // ?snapshot=<id> — the same link "Save & Share" hands out, just minted
+      // automatically rather than on request. Best-effort: a failure here shouldn't
+      // block the add-to-cart the customer actually asked for, it just means that
+      // line's "Edit" button won't be able to restore the artwork later.
+      const snapshotId = await saveShareableDesign(
+        shareableDesign,
+        incomingSnapshotId ?? undefined
+      ).catch(() => "");
+
       // The rendered artwork is uploaded first because Shopify needs a real URL to
       // show on the cart line and to carry through to fulfilment — the cart holds a
       // reference to the print, not the pixels.
-      setOrderStage("Adding to cart…");
+      setOrderStage(editingLineId ? "Updating your cart…" : "Adding to cart…");
+
+      // Visible attributes are what the customer reads back on the cart line; the
+      // underscore-prefixed ones are kept for fulfilment/editing and hidden from them.
+      const attributes = [
+        { key: "Surname", value: headingText || "—" },
+        ...(countyDisplayText ? [{ key: "County", value: countyDisplayText }] : []),
+        ...(dedDisplayText ? [{ key: "District", value: dedDisplayText }] : []),
+        ...(townlandText ? [{ key: "Townland", value: townlandText }] : []),
+        ...(houseNoText ? [{ key: "House", value: houseNoText }] : []),
+        { key: "Style", value: template === "historic" ? "Historic" : "Modern" },
+        { key: "Size", value: selectedSku.size_label },
+        ...(skuHasFrameColour ? [{ key: "Frame colour", value: frameColour }] : []),
+        { key: "_imageUrl", value: imageUrl },
+        // Small showcase JPEG, never the full-res file above — see canvasToPreviewBlob.
+        // Absent when preview generation failed; Shopify's order-confirmation email
+        // just shows no thumbnail rather than falling back to the real deliverable.
+        ...(previewUrl ? [{ key: "_previewUrl", value: previewUrl }] : []),
+        ...(snapshotId ? [{ key: "_snapshotId", value: snapshotId }] : []),
+      ];
+
+      // Editing an existing line replaces it outright (remove, then add) rather than a
+      // single in-place update — the size/product/frame can all have changed since the
+      // original add, each a different Shopify variant, and "add" already carries every
+      // validation (sellability, quality floor) a swap needs too.
+      if (editingLineId) {
+        await fetch("/api/cart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "remove", lineId: editingLineId }),
+        });
+      }
+
       const response = await fetch("/api/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add",
-          sku: selectedSku.sku,
-          quantity: 1,
-          // Visible attributes are what the customer reads back on the cart line;
-          // the underscore-prefixed one is kept for fulfilment and hidden from them.
-          attributes: [
-            { key: "Surname", value: headingText || "—" },
-            ...(countyDisplayText ? [{ key: "County", value: countyDisplayText }] : []),
-            ...(dedDisplayText ? [{ key: "District", value: dedDisplayText }] : []),
-            ...(townlandText ? [{ key: "Townland", value: townlandText }] : []),
-            ...(houseNoText ? [{ key: "House", value: houseNoText }] : []),
-            { key: "Style", value: template === "historic" ? "Historic" : "Modern" },
-            { key: "Size", value: selectedSku.size_label },
-            ...(selectedSku.product === "Classic Frame"
-              ? [{ key: "Frame colour", value: frameColour }]
-              : []),
-            { key: "_imageUrl", value: imageUrl },
-            // Small showcase JPEG, never the full-res file above — see canvasToPreviewBlob.
-            // Absent when preview generation failed; Shopify's order-confirmation email
-            // just shows no thumbnail rather than falling back to the real deliverable.
-            ...(previewUrl ? [{ key: "_previewUrl", value: previewUrl }] : []),
-          ],
-        }),
+        body: JSON.stringify({ action: "add", sku: selectedSku.sku, quantity: 1, attributes }),
       });
 
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || payload?.error) {
-        throw new Error(payload?.error || "Could not add this print to your cart.");
+        throw new Error(
+          payload?.error ||
+            (editingLineId ? "Could not update this cart item." : "Could not add this print to your cart.")
+        );
       }
 
       router.push("/cart");
@@ -2727,9 +2799,13 @@ function ModernDesignContent() {
   function renderCartSummaryBar(variant: "pane" | "bar") {
     const priceText = selectedSku ? formatMoney(selectedSku.sellingPrice, currency) : "—";
     const detailText = selectedSku
-      ? `${selectedSku.size_label} ${selectedSku.product}${
-          selectedSku.product === "Classic Frame" ? ` · ${frameColour} frame` : ""
-        }`
+      ? fulfilment === "digital" && printSize
+        ? `${selectedSku.product} at ${printSize.pixelWidth} × ${printSize.pixelHeight}px${
+            template === "historic" ? ", 300dpi" : `, ~${selectedSku.basemap_ppi}dpi`
+          }`
+        : `${selectedSku.size_label} ${selectedSku.product}${
+            skuHasFrameColour ? ` · ${frameColour} frame` : ""
+          }`
       : "Choose a size to see the price";
     const deliveryText =
       fulfilment === "digital"
@@ -2748,7 +2824,7 @@ function ModernDesignContent() {
             : "px-6 py-3 text-[14.5px] shadow-[0_6px_16px_-6px_rgba(184,144,42,0.6)] hover:brightness-105"
         }`}
       >
-        {busy === "order" ? orderStage || "Preparing…" : "Add to cart"}
+        {busy === "order" ? orderStage || "Preparing…" : editingLineId ? "Update item" : "Add to cart"}
       </button>
     );
 
@@ -2814,7 +2890,7 @@ function ModernDesignContent() {
             onChange={setFulfilment}
             options={[
               { id: "digital", label: "Digital", detail: "Instant download" },
-              { id: "print", label: "Print", detail: "Poster shipped" },
+              { id: "print", label: "Print Only", detail: "EMA Paper" },
               { id: "framed", label: "Framed", detail: "Ready to hang" },
             ]}
           />
@@ -2827,68 +2903,86 @@ function ModernDesignContent() {
               columns={3}
               ariaLabel="Frame style"
               value={productKind}
-              onChange={setProductKind}
+              onChange={(kind) => {
+                setProductKind(kind);
+                // Colour carries over across a product switch (it's one shared piece of
+                // state), which is fine when the id is valid for both — but Classic
+                // Frame's dark/light grey aren't offered on Canvas, and NO_FRAME_ID only
+                // means something on Canvas, so a carried-over invalid id is corrected to
+                // each kind's own sensible default rather than silently sent to Prodigi.
+                const validColours = kind === "Stretched Canvas" ? CANVAS_FRAME_COLOURS : FRAME_COLOURS;
+                if (!validColours.some((c) => c.id === frameColour)) {
+                  setFrameColour(kind === "Stretched Canvas" ? NO_FRAME_ID : "black");
+                }
+              }}
               options={PRODUCTS_FOR_CATEGORY.Framed.map((kind) => ({
                 id: kind,
                 label: FRAMED_PRODUCT_LABELS[kind]?.label ?? kind,
-                detail: FRAMED_PRODUCT_LABELS[kind]?.detail,
               }))}
             />
           </div>
         )}
 
-        {fulfilment === "framed" && productKind !== "Stretched Canvas" && (
+        {fulfilment === "framed" && (
           <div>
             <FieldLabel>Frame colour</FieldLabel>
             <div className="grid grid-cols-4 gap-2">
-              {FRAME_COLOURS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={frameColour === option.id}
-                  onClick={() => setFrameColour(option.id)}
-                  className={`rounded-md border px-2 py-2.5 text-center text-[12px] transition-colors ${
-                    frameColour === option.id
-                      ? "border-stone-900 bg-stone-900 text-white ring-1 ring-stone-900"
-                      : "border-stone-300 text-stone-700 hover:bg-stone-50"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+              {(productKind === "Stretched Canvas" ? CANVAS_FRAME_COLOURS : FRAME_COLOURS).map(
+                (option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={frameColour === option.id}
+                    onClick={() => setFrameColour(option.id)}
+                    className={`rounded-md border px-2 py-2.5 text-center text-[12px] transition-colors ${
+                      frameColour === option.id
+                        ? "border-stone-900 bg-stone-900 text-white ring-1 ring-stone-900"
+                        : "border-stone-300 text-stone-700 hover:bg-stone-50"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                )
+              )}
             </div>
-            <HelpText>Includes a 2.4mm Snow White mount and glass glaze, every colour.</HelpText>
+            <HelpText>
+              {productKind === "Stretched Canvas"
+                ? "38mm stretched canvas print on 400gsm artist-grade canvas; any colour adds a superior canvas floater frame, \"No Frame\" stays a plain stretched canvas."
+                : "Delivered framed and ready to hang, EMA paper, Acrylic / Perspex glaze."}
+            </HelpText>
           </div>
         )}
 
-        <div>
-          <FieldLabel>Size</FieldLabel>
-          {sizeOptions.length === 0 ? (
-            <HelpText>No sizes available in this shape and format.</HelpText>
-          ) : (
-            <ChoiceCards
-              columns={4}
-              ariaLabel="Size"
-              value={selectedSku ? selectedSku.sku : null}
-              onChange={(id) => setSelectedSkuId(id)}
-              options={sizeOptions.map((sku) => ({
-                id: sku.sku,
-                label: sku.size_label,
-                detail: formatMoney(sku.sellingPrice, currency),
-              }))}
-            />
-          )}
-          {printSize && selectedSku && (
-            <HelpText>
-              {/* Historic renders as vector SVG, so it hits true 300dpi at any size —
-                  Modern's map is a raster capture and its real ceiling is basemap_ppi,
-                  which drops below 300 at the larger sizes. Claiming 300dpi for those
-                  was inaccurate; this shows what the print actually delivers. */}
-              Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px
-              {template === "historic" ? ", 300dpi." : `, ~${selectedSku.basemap_ppi}dpi.`}
-            </HelpText>
-          )}
-        </div>
+        {fulfilment !== "digital" && (
+          <div>
+            <FieldLabel>Size</FieldLabel>
+            {sizeOptions.length === 0 ? (
+              <HelpText>No sizes available in this shape and format.</HelpText>
+            ) : (
+              <ChoiceCards
+                columns={4}
+                ariaLabel="Size"
+                value={selectedSku ? selectedSku.sku : null}
+                onChange={(id) => setSelectedSkuId(id)}
+                options={sizeOptions.map((sku) => ({
+                  id: sku.sku,
+                  label: sku.size_label,
+                  detail: formatMoney(sku.sellingPrice, currency),
+                }))}
+              />
+            )}
+            {printSize && selectedSku && (
+              <HelpText>
+                {/* Historic renders as vector SVG, so it hits true 300dpi at any size —
+                    Modern's map is a raster capture and its real ceiling is basemap_ppi,
+                    which drops below 300 at the larger sizes. Claiming 300dpi for those
+                    was inaccurate; this shows what the print actually delivers. */}
+                Prints at {printSize.pixelWidth} × {printSize.pixelHeight}px
+                {template === "historic" ? ", 300dpi." : `, ~${selectedSku.basemap_ppi}dpi.`}
+              </HelpText>
+            )}
+          </div>
+        )}
 
         {/* Only renders once this SKU has a calibrated wall photo (see
             /admin/mockup-calibration) — hidden rather than disabled for an
@@ -3160,7 +3254,10 @@ function ModernDesignContent() {
   const frameHex = FRAME_COLOURS.find((f) => f.id === frameColour)?.hex ?? "#1B1B1B";
 
   const frameCardFormat: FrameCardFormat = isSquare ? "square" : "iso";
-  const frameCardSrc = frameCardUrl(frameColour, frameCardFormat);
+  const frameCardSrc =
+    productKind === "Stretched Canvas"
+      ? canvasFrameCardUrl(frameColour, frameCardFormat)
+      : frameCardUrl(frameColour, frameCardFormat);
   const frameCardBroken = frameCardErroredSrc === frameCardSrc;
   // Same rect frameSize's own useMemo above already factored in via
   // frameCardWidthFactor/frameCardHeightFactor.
