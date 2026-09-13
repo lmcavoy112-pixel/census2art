@@ -23,6 +23,7 @@ import {
   buildUrl,
   fetchJson,
   normaliseDedRows,
+  normaliseSurnameSearch,
   readArray,
   smartSurnameDisplay,
   type DedRow,
@@ -62,15 +63,12 @@ import { buildProdigiAttributes } from "@/lib/prodigi-attributes";
 import { formatMoney } from "@/lib/currency";
 import { useCurrency } from "@/app/components/CurrencyProvider";
 import {
-  canvasToMockupBlob,
   canvasToPngBlob,
   canvasToPreviewBlob,
   compositeWithMargin,
   renderPrintReadyCanvas,
   safeFileNamePart,
 } from "@/lib/printExport";
-import MockupPreviewModal from "@/app/components/designer/MockupPreviewModal";
-import type { MockupTemplateRecord } from "@/lib/mockup/types";
 import {
   cleanOptionalValue,
   getParam,
@@ -585,19 +583,18 @@ function ModernDesignContent() {
   const [householdMaxRows, setHouseholdMaxRows] = useState<number | null>(null);
   const [householdBudgetPx, setHouseholdBudgetPx] = useState<number | null>(null);
 
-  const [busy, setBusy] = useState<"" | "preview" | "export" | "order" | "mockup">("");
-
-  // ── Preview on a wall ──────────────────────────────────────────────
-  // One calibrated wall-scenario photo per SKU (see /admin/mockup-calibration).
-  // Cached per SKU in a ref so flipping between sizes already fetched doesn't
-  // refetch; `null` in the cache means "checked, none exists" (a real, expected
-  // steady state, not a loading condition).
-  const mockupTemplateCache = useRef<Map<string, MockupTemplateRecord | null>>(new Map());
-  const [mockupTemplate, setMockupTemplate] = useState<MockupTemplateRecord | null>(null);
-  const [mockupPreviewUrl, setMockupPreviewUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"" | "preview" | "export" | "order">("");
   const [exportNote, setExportNote] = useState("");
   const [orderError, setOrderError] = useState("");
   const [orderStage, setOrderStage] = useState("");
+  const [justAdded, setJustAdded] = useState(false);
+  const justAddedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (justAddedTimeoutRef.current) clearTimeout(justAddedTimeoutRef.current);
+    };
+  }, []);
 
   // The camera is user-controlled, so it must not be a render dependency —
   // otherwise every pan would rebuild the map's props and fight the user.
@@ -786,7 +783,7 @@ function ModernDesignContent() {
     const nextHouseUid = saved?.houseUid || getParam(params, "houseUid");
     const nextHousehold = saved?.household || [];
     const nextSurnameSearch =
-      saved?.surnameSearch || getParam(params, "surnameSearch") || nextSurname.toLowerCase();
+      saved?.surnameSearch || getParam(params, "surnameSearch") || normaliseSurnameSearch(nextSurname);
     const nextIncludedSurnames =
       saved?.includedSurnames ?? (getParam(params, "variants") ? getParam(params, "variants").split(",").filter(Boolean) : []);
     const nextCensusYear = (saved?.censusYear || getParam(params, "year")) === "1911" ? "1911" : "1901";
@@ -1333,40 +1330,6 @@ function ModernDesignContent() {
 
   const printSize = selectedSku ? printSizeForSku(selectedSku) : null;
 
-  // Looks up the calibrated wall photo for the selected SKU, if any exists yet.
-  // v1 only ever calibrates Classic Frame / Stretched Canvas SKUs, so an Art
-  // Print/Digital selection (or an uncalibrated size) simply resolves to `null` —
-  // the "Preview on a wall" button below just doesn't render in that case.
-  useEffect(() => {
-    const sku = selectedSku?.sku ?? null;
-    if (!sku) {
-      setMockupTemplate(null);
-      return;
-    }
-
-    const cached = mockupTemplateCache.current.get(sku);
-    if (cached !== undefined) {
-      setMockupTemplate(cached);
-      return;
-    }
-
-    let cancelled = false;
-    fetch(`/api/mockup-templates?sku=${encodeURIComponent(sku)}`)
-      .then((res) => (res.ok ? res.json() : { template: null }))
-      .then((body: { template: MockupTemplateRecord | null }) => {
-        const template = body.template ?? null;
-        mockupTemplateCache.current.set(sku, template);
-        if (!cancelled) setMockupTemplate(template);
-      })
-      .catch(() => {
-        if (!cancelled) setMockupTemplate(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSku]);
-
   // Follow the chosen SKU's real proportions only where sizes genuinely differ in shape.
   // Every remaining format is one exact shape at different scales — their short_in/long_in
   // are decimal-inch roundings of the true mm size (A3 rounds to 11.7×16.5", A4 to
@@ -1823,7 +1786,12 @@ function ModernDesignContent() {
    * swap the map would be upscaled from a few hundred pixels.
    */
   async function withPrintReadyPoster<T>(
-    consume: (canvas: HTMLCanvasElement) => Promise<T>
+    // `innerCanvas` is always the undistorted, un-bordered capture — for Stretched
+    // Canvas orders `canvas` is that same artwork composited onto Prodigi's larger
+    // bordered upload size (see compositeWithMargin below), which is correct for the
+    // print file but wrong for anything meant to show the customer their artwork
+    // (the cart/showcase preview) — those should read innerCanvas instead.
+    consume: (canvas: HTMLCanvasElement, innerCanvas: HTMLCanvasElement) => Promise<T>
   ): Promise<T> {
     const poster = posterRef.current;
     if (!poster || !printSize) throw new Error("Nothing to export yet.");
@@ -1867,12 +1835,12 @@ function ModernDesignContent() {
       if (!countryLoaded || countryPolygons.length === 0) {
         throw new Error("Still loading the map — try again in a moment.");
       }
-      let canvas = await renderPrintReadyCanvas(poster, captureWidthPx);
-      if (isCanvas) {
-        canvas = compositeWithMargin(canvas, outerWidthPx, outerHeightPx, marginColour);
-      }
+      const innerCanvas = await renderPrintReadyCanvas(poster, captureWidthPx);
+      const canvas = isCanvas
+        ? compositeWithMargin(innerCanvas, outerWidthPx, outerHeightPx, marginColour)
+        : innerCanvas;
       setExportNote("");
-      return consume(canvas);
+      return consume(canvas, innerCanvas);
     }
 
     const mapArea = mapAreaRef.current;
@@ -1945,11 +1913,11 @@ function ModernDesignContent() {
       const img = poster.querySelector("img[data-map-capture]") as HTMLImageElement | null;
       if (img) await img.decode().catch(() => undefined);
 
-      let canvas = await renderPrintReadyCanvas(poster, captureWidthPx);
-      if (isCanvas) {
-        canvas = compositeWithMargin(canvas, outerWidthPx, outerHeightPx, marginColour);
-      }
-      return await consume(canvas);
+      const innerCanvas = await renderPrintReadyCanvas(poster, captureWidthPx);
+      const canvas = isCanvas
+        ? compositeWithMargin(innerCanvas, outerWidthPx, outerHeightPx, marginColour)
+        : innerCanvas;
+      return await consume(canvas, innerCanvas);
     } finally {
       mapArea.style.height = previousMapAreaHeight;
       setCaptureUrl(null);
@@ -1995,25 +1963,6 @@ function ModernDesignContent() {
       });
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "Could not build the print file.");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function previewOnWall() {
-    if (busy || !mockupTemplate) return;
-    setBusy("mockup");
-    setOrderError("");
-    try {
-      await withPrintReadyPoster(async (canvas) => {
-        const blob = await canvasToMockupBlob(canvas);
-        setMockupPreviewUrl((previous) => {
-          if (previous) URL.revokeObjectURL(previous);
-          return URL.createObjectURL(blob);
-        });
-      });
-    } catch (error) {
-      setOrderError(error instanceof Error ? error.message : "Could not build the preview.");
     } finally {
       setBusy("");
     }
@@ -2085,9 +2034,9 @@ function ModernDesignContent() {
     });
 
     try {
-      const { imageUrl, previewUrl } = await withPrintReadyPoster(async (canvas) => {
+      const { imageUrl, previewUrl } = await withPrintReadyPoster(async (canvas, innerCanvas) => {
         const blob = await canvasToPngBlob(canvas);
-        const previewBlob = await canvasToPreviewBlob(canvas).catch(() => undefined);
+        const previewBlob = await canvasToPreviewBlob(innerCanvas).catch(() => undefined);
         const fileNamePart = safeFileNamePart(headingText || "artwork");
         setOrderStage("Uploading print file…");
         const result = await submitPrintOrder({
@@ -2181,7 +2130,13 @@ function ModernDesignContent() {
         );
       }
 
-      router.push("/cart");
+      if (editingLineId) {
+        router.push("/cart");
+      } else {
+        setJustAdded(true);
+        if (justAddedTimeoutRef.current) clearTimeout(justAddedTimeoutRef.current);
+        justAddedTimeoutRef.current = setTimeout(() => setJustAdded(false), 2500);
+      }
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "Could not start your order.");
     } finally {
@@ -2817,14 +2772,37 @@ function ModernDesignContent() {
         type="button"
         onClick={() => void orderPrint()}
         disabled={!selectedSku || busy !== ""}
-        style={{ backgroundColor: "#b8902a" }}
-        className={`flex-none rounded-full font-semibold text-[#1e2b18] transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${
+        style={{ backgroundColor: justAdded ? "#2f6b3f" : "#b8902a" }}
+        className={`flex-none rounded-full font-semibold text-[#1e2b18] transition-all duration-200 disabled:cursor-not-allowed disabled:shadow-none ${
+          justAdded ? "scale-105 text-white" : "disabled:opacity-40"
+        } ${
           variant === "bar"
             ? "px-5 py-2.5 text-[14px]"
             : "px-6 py-3 text-[14.5px] shadow-[0_6px_16px_-6px_rgba(184,144,42,0.6)] hover:brightness-105"
         }`}
       >
-        {busy === "order" ? orderStage || "Preparing…" : editingLineId ? "Update item" : "Add to cart"}
+        {busy === "order" ? (
+          orderStage || "Preparing…"
+        ) : justAdded ? (
+          <span className="inline-flex items-center gap-1.5">
+            <svg
+              viewBox="0 0 20 20"
+              className="h-4 w-4 flex-none animate-bounce"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 10.5l3.5 3.5L16 6" />
+            </svg>
+            Added to cart
+          </span>
+        ) : editingLineId ? (
+          "Update item"
+        ) : (
+          "Add to cart"
+        )}
       </button>
     );
 
@@ -2982,21 +2960,6 @@ function ModernDesignContent() {
               </HelpText>
             )}
           </div>
-        )}
-
-        {/* Only renders once this SKU has a calibrated wall photo (see
-            /admin/mockup-calibration) — hidden rather than disabled for an
-            uncalibrated size, since coverage grows one SKU at a time and a
-            permanent "coming soon" affordance would read as broken, not scoped. */}
-        {mockupTemplate && (
-          <button
-            type="button"
-            onClick={previewOnWall}
-            disabled={busy !== ""}
-            className="w-full rounded-md border border-stone-300 bg-white px-4 py-2.5 text-[13px] font-medium text-stone-800 transition-colors hover:bg-stone-50 disabled:opacity-60"
-          >
-            {busy === "mockup" ? "Building preview…" : "Preview on a wall"}
-          </button>
         )}
 
         {/* Desktop: sticky pane at the foot of this panel. Mobile: a spacer reserving
@@ -3729,20 +3692,6 @@ function ModernDesignContent() {
         <div className="fixed inset-x-0 bottom-0 z-[700] lg:hidden">
           {renderCartSummaryBar("bar")}
         </div>
-      )}
-
-      {mockupPreviewUrl && mockupTemplate && (
-        <MockupPreviewModal
-          templateImageUrl={mockupTemplate.imageUrl}
-          templateWidth={mockupTemplate.imageWidth}
-          templateHeight={mockupTemplate.imageHeight}
-          quad={mockupTemplate.quad}
-          artworkSrc={mockupPreviewUrl}
-          onClose={() => {
-            URL.revokeObjectURL(mockupPreviewUrl);
-            setMockupPreviewUrl(null);
-          }}
-        />
       )}
 
       {shareOpen && (

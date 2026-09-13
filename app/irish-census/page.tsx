@@ -974,13 +974,17 @@ function CensusLanding() {
     }
   }
 
-  /** Centre of the selected townland (if one is picked and has its own boundary on
-   *  file), else the district — where a by-hand marker starts before dragging. */
+  /** Centre of the house's own townland (if it has a boundary on file), else the
+   *  district — where a by-hand marker starts before dragging. Falls back to the
+   *  selected house's townland_id even when the dropdown itself is still "viewing
+   *  all" — otherwise a house picked out of the combined list gets dropped in the
+   *  middle of the DED instead of its own townland. */
   function selectedDistrictCentre() {
-    const geometry =
+    const townlandId = selectedTownland?.townland_id || selectedHouse?.townland_id;
+    const townlandGeometry =
       (selectedTownland && townlandGeojson?.geojson) ||
-      selectedPolygon?.geojson ||
-      selectedDed?.geojson;
+      townlandBoundaries.find((t) => t.townland_id === townlandId)?.geojson;
+    const geometry = townlandGeometry || selectedPolygon?.geojson || selectedDed?.geojson;
     const centre = geometry ? polygonCentroid(geometry) : null;
     return centre ? { lng: centre[0], lat: centre[1] } : null;
   }

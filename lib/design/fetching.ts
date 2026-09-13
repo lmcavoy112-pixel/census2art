@@ -6,6 +6,8 @@
 // select, an RPC, or a hand-rolled JSON wrapper. Hence the key-list lookups rather
 // than direct property access.
 
+import { cleanSurnameSearch } from "../validation";
+
 /** A DED row as returned by /api/deds, /api/county-polygons and /api/surname-polygons. */
 export type DedRow = {
   ded_id: string;
@@ -188,6 +190,13 @@ export function smartSurnameDisplay(value: string) {
     .join("");
 }
 
+/**
+ * Delegates to cleanSurnameSearch (lib/validation.ts) so the client filters household
+ * members using the exact same `surname_search` form the DB stores ("O'Neill" ->
+ * "oneill") — a plain trim/lowercase here used to leave the apostrophe in, so
+ * personMatchesSearchedSurnames never matched any O'Neill/O'Brien/etc. household row
+ * and the designer's step 2 silently hid the whole searched-for family.
+ */
 export function normaliseSurnameSearch(value: string) {
-  return value.trim().toLowerCase();
+  return cleanSurnameSearch(value.trim());
 }

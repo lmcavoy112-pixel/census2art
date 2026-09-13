@@ -17,7 +17,7 @@
 // stretch/alignment problem that only shows up in one format is easy to catch here
 // rather than after it's live.
 //
-// Gated the same way as /admin/mockup-calibration: a shared admin token exchanged
+// Gated the same way as the other /admin/* tools: a shared admin token exchanged
 // once for an httpOnly session cookie (lib/admin-auth.ts) — no per-user accounts on
 // this site. Meant to be run against a LOCAL dev server: the API route writes
 // straight to disk (data/ and public/), which only works on a machine you're

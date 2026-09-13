@@ -301,8 +301,8 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
         style={{ background: GROUND, height: "var(--site-header-h)" }}
         className="sticky top-0 z-50"
       >
-      <div className="relative mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
-        <div className="flex min-w-0 shrink items-center gap-1">
+      <div className="relative mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 xl:gap-6 xl:px-6">
+        <div className="flex shrink-0 items-center gap-1">
           {/* Opens the side menu below — the nav links (Discover, Examples,
               Background, Contact) that the desktop-only <nav> further down drops
               below `sm` live there instead of just disappearing. */}
@@ -312,7 +312,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
             aria-label="Open menu"
             aria-expanded={menuOpen}
             aria-haspopup="true"
-            className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 sm:hidden"
+            className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 lg:hidden"
             style={{ color: MUTED, outlineColor: GOLD }}
           >
             <svg
@@ -335,7 +335,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
               href={back.href}
               onClick={back.onClick}
               aria-label={back.label}
-              className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 sm:hidden"
+              className="flex shrink-0 items-center justify-center rounded-full p-2 transition-colors hover:bg-[#e7dfcd] focus-visible:outline-2 focus-visible:outline-offset-2 lg:hidden"
               style={{ color: MUTED, outlineColor: GOLD }}
             >
               <svg
@@ -359,7 +359,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
               off-center) but back to its normal spot in the flex row from `sm` up. */}
           <Link
             href="/"
-            className="absolute left-1/2 top-1/2 max-w-[50vw] -translate-x-1/2 -translate-y-1/2 truncate text-[1.05rem] sm:static sm:max-w-none sm:shrink-0 sm:translate-x-0 sm:translate-y-0 sm:text-[1.15rem]"
+            className="absolute left-1/2 top-1/2 max-w-[50vw] -translate-x-1/2 -translate-y-1/2 truncate text-[1.05rem] lg:static lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:translate-y-0 lg:text-[1.15rem]"
             style={{
               // Bold system sans, not Cormorant — this reproduces what the designer
               // page showed by accident (its wrapper never applies siteFontVars, so
@@ -376,7 +376,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
           </Link>
         </div>
 
-        <nav className="hidden items-center gap-6 sm:flex">
+        <nav className="hidden items-center gap-6 lg:flex">
           <HeaderLink href="/discover" active={isActivePath(pathname, "/discover")}>
             Discover
           </HeaderLink>
@@ -399,7 +399,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
             <Link
               href={back.href}
               onClick={back.onClick}
-              className="hidden shrink-0 items-center rounded-md border px-3 py-2 text-[13px] font-medium transition-colors hover:bg-[#e7dfcd] sm:inline-flex"
+              className="hidden shrink-0 items-center rounded-md border px-3 py-2 text-[13px] font-medium transition-colors hover:bg-[#e7dfcd] lg:inline-flex"
               style={{ borderColor: RULE, background: RAISED, color: INK }}
             >
               {back.label}
@@ -539,7 +539,7 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
       {menuOpen &&
         createPortal(
           <div
-            className={`fixed inset-0 z-[9999] sm:hidden ${
+            className={`fixed inset-0 z-[9999] lg:hidden ${
               menuClosing ? "drawer-backdrop-out" : "drawer-backdrop-in"
             }`}
             style={{ background: "rgba(20,28,16,0.5)" }}

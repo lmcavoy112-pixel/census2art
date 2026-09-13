@@ -182,14 +182,66 @@ export function printSizeForSku(sku: CatalogueSku): PrintSizeOption {
  * canvasCaptureBudgetPx() below uses it to enlarge the artwork capture itself to fill
  * the rest of the recommended canvas, rather than leaving the artwork at front-face
  * size and calling the whole difference blank margin.
+ *
+ * GLOBAL-FRA-CAN-* (float-framed canvas, see 0018_framed_canvas.sql) is a different
+ * Prodigi product from plain GLOBAL-CAN-* — the `width`/`height` below are Prodigi's own
+ * literal recommended upload size per SKU (confirmed: uploading anything bigger makes
+ * Prodigi's editor default to an under-100% zoom, i.e. this is the real expected total
+ * file size, not just a suggestion). Front-face position within that file needed
+ * correcting though — an early calibration pass (white canvas, red box at the plain
+ * 300dpi front-face position, see scripts/generate-canvas-calibration.js) needed a
+ * manual zoom to align with Prodigi's real print boundary, meaning the true front face
+ * is *larger* than a plain 300dpi render for every ISO size (smaller for A3). `marginPx`
+ * here is chosen so canvasCaptureBudgetPx() enlarges the artwork capture to that true
+ * front-face resolution — the resulting capture is then bigger than this file's outer
+ * size, and compositeWithMargin() in lib/printExport.ts trims it to fit (drawImage at a
+ * negative offset simply clips at the canvas edge), rather than shrinking the artwork
+ * back down and losing that resolution. Margin can't be perfectly uniform on both axes
+ * from a single scalar here (the two implied margins were within ~70px of each other
+ * per size) — split the difference; a few dozen px either way is well inside the
+ * 150dpi-floor tolerance already used elsewhere (MIN_MODERN_BASEMAP_PPI).
+ * Square sizes (6x6-16x16, plain and framed alike) were checked against Prodigi's
+ * editor at the plain canvasWrapMarginPx() 450px default and came back good — no A3-style
+ * exception needed, so they aren't fit-to-budget/enlarged, just given the same explicit
+ * marginPx (450 + the safety pull-in below) so the pull-in actually applies to them.
+ *
+ * On top of all the above, every entry here also carries a deliberate safety pull-in:
+ * a lifestyle "canvas on a wall" mockup render (a photographic/3D preview, not the flat
+ * crop-line editor used to derive the numbers above) showed the artwork edge reading as
+ * slightly off in several sizes — most likely a rendering artifact from simulating the
+ * wrap curving around the stretcher in 3D, since the same files had already passed the
+ * more precise flat-editor check. Rather than chase that noisy signal, every SKU's
+ * marginPx has 0.2cm (~24px) added as a buffer, except GLOBAL-FRA-CAN-A5/A4 (already the
+ * closest matches) which get a lighter 0.1cm (~12px) — shrinking the visible artwork
+ * slightly rather than risk it reading past the true edge in production.
  */
 export const CANVAS_RECOMMENDED_PX: Partial<
   Record<string, { width: number; height: number; marginPx?: number }>
 > = {
-  "GLOBAL-CAN-A5": { width: 2648, height: 3380 },
-  "GLOBAL-CAN-A4": { width: 3380, height: 4408 },
-  "GLOBAL-CAN-A3": { width: 4708, height: 6161, marginPx: 484 }, // true 41mm, not (total-front)/2
-  "GLOBAL-CAN-A2": { width: 5861, height: 7916 },
+  "GLOBAL-CAN-A5": { width: 2648, height: 3380, marginPx: 474 }, // ~450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-A4": { width: 3380, height: 4408, marginPx: 474 }, // ~450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-A3": { width: 4708, height: 6161, marginPx: 508 }, // true 41mm (484) + 0.2cm safety pull-in
+  "GLOBAL-CAN-A2": { width: 5861, height: 7916, marginPx: 474 }, // ~450 natural + 0.2cm safety pull-in
+  "GLOBAL-FRA-CAN-A5": { width: 2940, height: 3690, marginPx: 517 }, // 505 + 0.1cm safety pull-in
+  "GLOBAL-FRA-CAN-A4": { width: 3690, height: 4710, marginPx: 507 }, // 495 + 0.1cm safety pull-in
+  "GLOBAL-FRA-CAN-A3": { width: 4260, height: 5700, marginPx: 462 }, // 438 + 0.2cm safety pull-in
+  "GLOBAL-FRA-CAN-A2": { width: 6150, height: 8220, marginPx: 504 }, // 480 + 0.2cm safety pull-in
+  "GLOBAL-CAN-6X6": { width: 2700, height: 2700, marginPx: 474 }, // 450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-8X8": { width: 3300, height: 3300, marginPx: 474 }, // 450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-10X10": { width: 3900, height: 3900, marginPx: 474 }, // 450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-12X12": { width: 4500, height: 4500, marginPx: 474 }, // 450 natural + 0.2cm safety pull-in
+  "GLOBAL-CAN-16X16": { width: 5700, height: 5700, marginPx: 474 }, // 450 natural + 0.2cm safety pull-in
+  // Framed squares came back from Prodigi's editor 300px under on both axes at the
+  // above outer size — the artwork/red-line position itself was already correct, so
+  // outer grows by 300px/axis (150px more margin per side) while marginPx grows by the
+  // same 150px, holding the actual captured artwork at the exact same size (see
+  // captureSize() in scripts/generate-canvas-calibration.js: budget = outer - 2*marginPx
+  // is unchanged by this — 3000-2*624 = 2700-2*474 = 1752).
+  "GLOBAL-FRA-CAN-6X6": { width: 3000, height: 3000, marginPx: 624 },
+  "GLOBAL-FRA-CAN-8X8": { width: 3600, height: 3600, marginPx: 624 },
+  "GLOBAL-FRA-CAN-10X10": { width: 4200, height: 4200, marginPx: 624 },
+  "GLOBAL-FRA-CAN-12X12": { width: 4800, height: 4800, marginPx: 624 },
+  "GLOBAL-FRA-CAN-16X16": { width: 6000, height: 6000, marginPx: 624 },
 };
 
 /** 1.5in (38.1mm) at 300dpi is exactly 450px, no rounding — see CANVAS_RECOMMENDED_PX. */

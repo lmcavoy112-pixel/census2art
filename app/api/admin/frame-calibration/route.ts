@@ -6,8 +6,8 @@ import { detectImageType } from "@/lib/imageValidation";
 import { FRAME_BORDER_PIECES, type FrameBorderCalibration } from "@/lib/design/frameBorder";
 
 // Local-filesystem persistence for /admin/frame-calibration — deliberately not the
-// Supabase-backed pattern the other /api/admin/* routes use (mockup-templates etc).
-// That data is runtime content; this is a build-time asset calibration input that
+// Supabase-backed pattern other /api/admin/* routes use for runtime content.
+// This is a build-time asset calibration input that
 // lives in git next to the source photos it describes, the same way
 // scripts/generate-frame-border-crops.js already wrote PNGs straight to
 // public/artwork/ from a local Node process. Both this route and that script read/
