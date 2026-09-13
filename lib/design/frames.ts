@@ -133,3 +133,27 @@ export const FRAME_ARTWORK_RECT: Record<
 // frame-card photo for a colour/format that hasn't been produced yet) — unrelated to
 // FRAME_ARTWORK_RECT, just a plausible border thickness for that plain-colour stand-in.
 export const FRAME_FALLBACK_THICKNESS_PERCENT = 3.5;
+
+/** Real Prodigi-rendered wall-mockup photos for the Canvas product, one set per
+ * CANVAS_FRAME_COLOURS id per orientation: `main` (straight-on face shot, used as the
+ * hero image), `angled` (3/4 wall shot), `closeup` (frame-corner detail). Sourced from
+ * a real Prodigi print render batch and pre-compressed to WebP by
+ * scripts/compress-images.mjs (see public/examples/product-gallery/canvas/{iso,square}).
+ * Keyed by the same "iso"/"square" FrameCardFormat used for canvasFrameCardUrl. */
+export type CanvasLifestyleShots = { main: string; angled: string; closeup: string };
+
+function canvasLifestyleShots(cardFormat: FrameCardFormat, colourId: string): CanvasLifestyleShots {
+  const base = `/examples/product-gallery/canvas/${cardFormat}/${colourId}`;
+  return { main: `${base}-main.webp`, angled: `${base}-angled.webp`, closeup: `${base}-closeup.webp` };
+}
+
+const CANVAS_LIFESTYLE_COLOUR_IDS = ["none", "black", "white", "silver", "natural", "brown", "gold"];
+
+export const CANVAS_LIFESTYLE_SHOTS: Record<FrameCardFormat, Record<string, CanvasLifestyleShots>> = {
+  iso: Object.fromEntries(
+    CANVAS_LIFESTYLE_COLOUR_IDS.map((id) => [id, canvasLifestyleShots("iso", id)])
+  ),
+  square: Object.fromEntries(
+    CANVAS_LIFESTYLE_COLOUR_IDS.map((id) => [id, canvasLifestyleShots("square", id)])
+  ),
+};

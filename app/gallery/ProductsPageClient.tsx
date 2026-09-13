@@ -30,6 +30,7 @@ import {
 } from "@/lib/design/catalogue";
 import {
   CANVAS_FRAME_COLOURS,
+  CANVAS_LIFESTYLE_SHOTS,
   FRAME_ARTWORK_RECT,
   FRAME_COLOURS,
   frameCardUrl,
@@ -61,17 +62,9 @@ const LIFESTYLE_SRC: Record<string, string> = {
   gold: "/examples/product-gallery/classic-framed/gold.webp",
 };
 
-// Same idea for the "Canvas" product kind, keyed by CANVAS_FRAME_COLOURS id — no entry
-// for NO_FRAME_ID (plain stretched canvas has no frame to photograph). Gold/silver use
-// their photographed "antique" finish names, matching canvasFrameCardUrl's file ids.
-const CANVAS_LIFESTYLE_SRC: Record<string, string> = {
-  black: "/examples/product-gallery/canvas/black.webp",
-  white: "/examples/product-gallery/canvas/white.webp",
-  natural: "/examples/product-gallery/canvas/natural.webp",
-  brown: "/examples/product-gallery/canvas/brown.webp",
-  gold: "/examples/product-gallery/canvas/antique-gold.webp",
-  silver: "/examples/product-gallery/canvas/antique-silver.webp",
-};
+// Real Prodigi-rendered wall-mockup photos for the "Canvas" product kind — main
+// (hero) + angled + closeup detail shots, keyed by CANVAS_FRAME_COLOURS id and
+// orientation. See CANVAS_LIFESTYLE_SHOTS's own comment in lib/design/frames.ts.
 
 const ORIENTATIONS: Format[] = ["ISO", "Square"];
 
@@ -147,6 +140,8 @@ export default function ProductsPageClient() {
   const cardFormat = orientation === "Square" ? "square" : "iso";
   const rect = FRAME_ARTWORK_RECT[cardFormat];
   const aspect = formatAspect(orientation);
+  const canvasShots =
+    frameKind === "Stretched Canvas" ? CANVAS_LIFESTYLE_SHOTS[cardFormat][frameColour] : undefined;
 
   // Whichever photo the preview below is actually showing right now — used to drive
   // the click-to-zoom lightbox. The frame-card + composited-artwork treatment has no
@@ -156,8 +151,8 @@ export default function ProductsPageClient() {
   const mainImage =
     frameKind === "Classic Frame" && LIFESTYLE_SRC[frameColour]
       ? { src: LIFESTYLE_SRC[frameColour], alt: `Classic Frame in ${frameColour}, shown on a shelf` }
-      : frameKind === "Stretched Canvas" && CANVAS_LIFESTYLE_SRC[frameColour]
-        ? { src: CANVAS_LIFESTYLE_SRC[frameColour], alt: `Canvas in ${frameColour}, shown on a shelf` }
+      : canvasShots
+        ? { src: canvasShots.main, alt: `Canvas in ${frameColour}, shown on a wall` }
         : {
             src: SAMPLE_ARTWORK_SRC,
             alt:
@@ -371,8 +366,7 @@ export default function ProductsPageClient() {
                 // keeps its own aspect ratio rather than being cropped to a photo that isn't
                 // there.
                 aspectRatio:
-                  (frameKind === "Classic Frame" && framed) ||
-                  (frameKind === "Stretched Canvas" && !!CANVAS_LIFESTYLE_SRC[frameColour])
+                  (frameKind === "Classic Frame" && framed) || canvasShots
                     ? "3 / 4"
                     : `${aspect.w} / ${aspect.h}`,
                 background: "#F5F4F1",
@@ -395,10 +389,10 @@ export default function ProductsPageClient() {
                   fill
                   className="object-cover"
                 />
-              ) : frameKind === "Stretched Canvas" && CANVAS_LIFESTYLE_SRC[frameColour] ? (
+              ) : canvasShots ? (
                 <Image
-                  src={CANVAS_LIFESTYLE_SRC[frameColour]}
-                  alt={`Canvas in ${frameColour}, shown on a shelf`}
+                  src={canvasShots.main}
+                  alt={`Canvas in ${frameColour}, shown on a wall`}
                   fill
                   className="object-cover"
                 />
@@ -447,6 +441,27 @@ export default function ProductsPageClient() {
                 alt={mainImage.alt}
                 onClose={() => setLightboxOpen(false)}
               />
+            )}
+
+            {canvasShots && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-md">
+                  <Image
+                    src={canvasShots.closeup}
+                    alt={`Canvas in ${frameColour}, frame corner close-up`}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+                <div className="relative aspect-[3/4] overflow-hidden rounded-md">
+                  <Image
+                    src={canvasShots.angled}
+                    alt={`Canvas in ${frameColour}, angled view`}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+              </div>
             )}
 
             <div className="mt-3 grid grid-cols-4 gap-3">
