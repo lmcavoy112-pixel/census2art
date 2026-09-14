@@ -32,18 +32,20 @@
 // rather than reproduced live. That's why the wrapper around the photo (below) is
 // also painted #F5F4F1: it only needs to match for the split-second before the photo
 // itself paints over it, not to blend anything at render time.
-// hex values sampled directly from each colour's own frame-card photo (a median
-// pixel read of the moulding itself, not eyeballed) so the swatch matches what the
-// photo actually shows — see scripts/sample-frame-colours.mjs.
+// hex values sampled from Prodigi's own reference chevron photos for each colour
+// (a median pixel read of the moulding material, not eyeballed) — see
+// scripts/sample-chevron-colours.mjs. These supersede an earlier pass sampled from
+// this site's own frame-card renders, which ran noticeably paler on Gold and Silver
+// than the real material.
 export const FRAME_COLOURS: { id: string; label: string; hex: string }[] = [
-  { id: "black", label: "Black", hex: "#0B0C0C" },
-  { id: "white", label: "White", hex: "#F6F6F6" },
-  { id: "silver", label: "Silver", hex: "#F6F3EF" },
-  { id: "dark grey", label: "Dark Grey", hex: "#64757C" },
-  { id: "light grey", label: "Light Grey", hex: "#BCBAAF" },
-  { id: "natural", label: "Natural", hex: "#C3B198" },
-  { id: "brown", label: "Brown", hex: "#4F2C1D" },
-  { id: "gold", label: "Gold", hex: "#F8E29D" },
+  { id: "black", label: "Black", hex: "#1B1B1A" },
+  { id: "white", label: "White", hex: "#E5DED6" },
+  { id: "silver", label: "Silver", hex: "#CCC9CA" },
+  { id: "dark grey", label: "Dark Grey", hex: "#606F76" },
+  { id: "light grey", label: "Light Grey", hex: "#C3C3BA" },
+  { id: "natural", label: "Natural", hex: "#CDB08E" },
+  { id: "brown", label: "Brown", hex: "#58372C" },
+  { id: "gold", label: "Gold", hex: "#F2C670" },
 ];
 
 // The two frame-card photo variants — one canvas layout per print aspect ratio, shared
@@ -63,24 +65,29 @@ export function frameCardUrl(colourId: string, cardFormat: FrameCardFormat): str
  * which only forwards a `color` attribute when the id isn't this one). */
 export const NO_FRAME_ID = "none";
 
+const FRAME_HEX: Record<string, string> = Object.fromEntries(
+  FRAME_COLOURS.map((c) => [c.id, c.hex])
+);
+
 /** Colour picker for the "Canvas" product kind (Stretched Canvas). Prodigi's
  * GLOBAL-FRA-CAN-* only supports 6 of Classic Frame's 8 colours (no dark/light
  * grey) — confirmed live against GET /v4.0/products/GLOBAL-FRA-CAN-10X10 — plus
  * the synthetic "No Frame" option for the plain GLOBAL-CAN-* SKU, listed first so
- * it reads as the default. `hex` values reused from FRAME_COLOURS for the shared
- * ids; NO_FRAME_ID's hex is just a neutral placeholder swatch. */
-// hex values sampled from the canvas frame-card photos themselves — the same float-
-// frame finish photographs a little differently on canvas than on Classic Frame, so
-// these are their own colours rather than reused from FRAME_COLOURS (see
-// scripts/sample-frame-colours.mjs).
+ * it reads as the default. `hex` values are pulled from FRAME_COLOURS by id
+ * (rather than sampled separately from canvas's own frame-card photos) so the
+ * same colour name reads as the same swatch on both product kinds — a shopper
+ * comparing Gold on Canvas against Gold on Classic Frame should see one colour,
+ * not two. NO_FRAME_ID has no Classic Frame counterpart, so it keeps its own hex
+ * (unused by the swatch itself once ProductsPageClient special-cases it as a
+ * "not allowed" icon rather than a flat fill — see that file). */
 export const CANVAS_FRAME_COLOURS: { id: string; label: string; hex: string }[] = [
-  { id: NO_FRAME_ID, label: "No Frame", hex: "#F5F4F1" },
-  { id: "black", label: "Black", hex: "#2B2D2D" },
-  { id: "white", label: "White", hex: "#ECEDEE" },
-  { id: "silver", label: "Silver", hex: "#CBC4BA" },
-  { id: "natural", label: "Natural", hex: "#E7D4BA" },
-  { id: "brown", label: "Brown", hex: "#442A21" },
-  { id: "gold", label: "Gold", hex: "#CBA44C" },
+  { id: NO_FRAME_ID, label: "No Frame", hex: "#FFFFFF" },
+  { id: "black", label: "Black", hex: FRAME_HEX.black },
+  { id: "white", label: "White", hex: FRAME_HEX.white },
+  { id: "silver", label: "Silver", hex: FRAME_HEX.silver },
+  { id: "natural", label: "Natural", hex: FRAME_HEX.natural },
+  { id: "brown", label: "Brown", hex: FRAME_HEX.brown },
+  { id: "gold", label: "Gold", hex: FRAME_HEX.gold },
 ];
 
 /** Canvas frame-card photos shoot gold/silver under their marketing finish name
@@ -134,26 +141,42 @@ export const FRAME_ARTWORK_RECT: Record<
 // FRAME_ARTWORK_RECT, just a plausible border thickness for that plain-colour stand-in.
 export const FRAME_FALLBACK_THICKNESS_PERCENT = 3.5;
 
+/** Turns a catalogue `size_label` ("6x6\"", "A2") into the filename-safe slug used by
+ * both product-gallery photo sets below — must match scripts/generate-product-gallery.mjs's
+ * own `sizeSlug()`, which produced the files on disk. */
+export function sizeSlug(sizeLabel: string): string {
+  return sizeLabel.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 /** Real Prodigi-rendered wall-mockup photos for the Canvas product, one set per
- * CANVAS_FRAME_COLOURS id per orientation: `main` (straight-on face shot, used as the
- * hero image), `angled` (3/4 wall shot), `closeup` (frame-corner detail). Sourced from
- * a real Prodigi print render batch and pre-compressed to WebP by
- * scripts/compress-images.mjs (see public/examples/product-gallery/canvas/{iso,square}).
- * Keyed by the same "iso"/"square" FrameCardFormat used for canvasFrameCardUrl. */
+ * {CANVAS_FRAME_COLOURS id, orientation, size}: `main` (straight-on face shot, used as
+ * the hero image), `angled` (3/4 wall shot), `closeup` (frame-corner detail). Sourced
+ * from a real Prodigi print render batch and generated by
+ * scripts/generate-product-gallery.mjs (see
+ * public/examples/product-gallery/canvas/{iso,square}/{colour}/{size}-{shot}.webp) —
+ * `main` additionally has the real print-ready artwork composited in for the flat
+ * (Square) shots, since those are the only ones without camera perspective to warp
+ * around; `angled`/`closeup`/every `iso` shot stay as Prodigi's own photo. */
 export type CanvasLifestyleShots = { main: string; angled: string; closeup: string };
 
-function canvasLifestyleShots(cardFormat: FrameCardFormat, colourId: string): CanvasLifestyleShots {
-  const base = `/examples/product-gallery/canvas/${cardFormat}/${colourId}`;
+export function canvasLifestyleShots(
+  cardFormat: FrameCardFormat,
+  colourId: string,
+  sizeLabel: string
+): CanvasLifestyleShots {
+  const base = `/examples/product-gallery/canvas/${cardFormat}/${colourId}/${sizeSlug(sizeLabel)}`;
   return { main: `${base}-main.webp`, angled: `${base}-angled.webp`, closeup: `${base}-closeup.webp` };
 }
 
-const CANVAS_LIFESTYLE_COLOUR_IDS = ["none", "black", "white", "silver", "natural", "brown", "gold"];
-
-export const CANVAS_LIFESTYLE_SHOTS: Record<FrameCardFormat, Record<string, CanvasLifestyleShots>> = {
-  iso: Object.fromEntries(
-    CANVAS_LIFESTYLE_COLOUR_IDS.map((id) => [id, canvasLifestyleShots("iso", id)])
-  ),
-  square: Object.fromEntries(
-    CANVAS_LIFESTYLE_COLOUR_IDS.map((id) => [id, canvasLifestyleShots("square", id)])
-  ),
-};
+/** Same idea as canvasLifestyleShots, for the Classic Frame product — replaces the old
+ * single staged lifestyle photo (one per colour, no size/format/shot variety) with
+ * real per-size Prodigi photography, same {main sharpened, angled/closeup as-shot}
+ * split. Keyed by FRAME_COLOURS id. */
+export function classicFrameLifestyleShots(
+  cardFormat: FrameCardFormat,
+  colourId: string,
+  sizeLabel: string
+): CanvasLifestyleShots {
+  const base = `/examples/product-gallery/classic-framed/${cardFormat}/${colourId}/${sizeSlug(sizeLabel)}`;
+  return { main: `${base}-main.webp`, angled: `${base}-angled.webp`, closeup: `${base}-closeup.webp` };
+}

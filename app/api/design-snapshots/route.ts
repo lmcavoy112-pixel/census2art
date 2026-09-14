@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 import { shareableDesignSchema } from "../../../lib/design/shareableDesign";
+import { pickString } from "../../../lib/design/fetching";
 
 /**
  * Creates a permanent "Save & Share" design link.
@@ -10,8 +11,6 @@ import { shareableDesignSchema } from "../../../lib/design/shareableDesign";
  * ships anything, it just writes a row. Unlike /api/orders there's no file upload either
  * (no image), so this is materially cheaper.
  */
-
-const pickString = (value: unknown) => (typeof value === "string" && value ? value : null);
 
 export async function POST(request: NextRequest) {
   let body: { design: unknown; forkedFrom?: unknown };
@@ -42,11 +41,11 @@ export async function POST(request: NextRequest) {
       id: randomUUID(),
       version: design.version,
       design,
-      surname: pickString(design.headingText),
-      county: pickString(design.county),
-      district: pickString(design.dedDisplayText),
-      townland: pickString(design.townlandText),
-      template: pickString(design.template),
+      surname: pickString(design, ["headingText"]) || null,
+      county: pickString(design, ["county"]) || null,
+      district: pickString(design, ["dedDisplayText"]) || null,
+      townland: pickString(design, ["townlandText"]) || null,
+      template: pickString(design, ["template"]) || null,
       forked_from: forkedFrom,
     })
     .select("id")

@@ -1,6 +1,6 @@
-// Shared between IrelandArtworkMap and CountyArtworkMap: ranks a set of DED
-// person_counts into quartiles and scales a base opacity by rank, so denser
-// areas read as visually heavier regardless of which fill style is active.
+// Used by IrelandArtworkMap: ranks a set of DED person_counts into quartiles
+// and scales a base opacity by rank, so denser areas read as visually
+// heavier regardless of which fill style is active.
 
 export const QUARTILE_SCALE = [0.15, 0.38, 0.65, 1.0] as const;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
+import { pickString } from "../../../lib/design/fetching";
 /**
  * Uploads a finished artwork and opens a `pending` order row.
  *
@@ -71,8 +72,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const pickString = (value: unknown) => (typeof value === "string" && value ? value : null);
 
     const copies = Math.max(1, Number(copiesRaw) || 1);
     const priceGbp = priceGbpRaw ? Number(priceGbpRaw) : null;
@@ -151,14 +150,14 @@ export async function POST(request: NextRequest) {
         image_path: imagePath,
         image_url: imageUrl,
         price_gbp: priceGbp,
-        surname: pickString(design.surname),
-        product: pickString(design.product),
-        template: pickString(design.template),
-        size_label: pickString(design.sizeLabel),
-        frame_colour: pickString(design.frameColour),
-        county: pickString(design.county),
-        district: pickString(design.dedDisplayText),
-        townland: pickString(design.townlandText),
+        surname: pickString(design, ["surname"]) || null,
+        product: pickString(design, ["product"]) || null,
+        template: pickString(design, ["template"]) || null,
+        size_label: pickString(design, ["sizeLabel"]) || null,
+        frame_colour: pickString(design, ["frameColour"]) || null,
+        county: pickString(design, ["county"]) || null,
+        district: pickString(design, ["dedDisplayText"]) || null,
+        townland: pickString(design, ["townlandText"]) || null,
         preview_path: previewPath,
         preview_url: previewUrl,
       })

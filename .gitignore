@@ -61,3 +61,6 @@ pricing.xlsx
 
 # Personal Claude Code permission preferences — machine-specific paths, not shared config.
 .claude/settings.local.json
+
+# One-off local output from scripts/generate-canvas-calibration.js, never meant for git.
+/.calibration/

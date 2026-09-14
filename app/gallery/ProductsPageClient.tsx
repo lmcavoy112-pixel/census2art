@@ -11,7 +11,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import SiteHeader from "../components/home/SiteHeader";
 import SiteFooter from "../components/home/SiteFooter";
@@ -30,11 +30,13 @@ import {
 } from "@/lib/design/catalogue";
 import {
   CANVAS_FRAME_COLOURS,
-  CANVAS_LIFESTYLE_SHOTS,
+  canvasLifestyleShots,
+  classicFrameLifestyleShots,
   FRAME_ARTWORK_RECT,
   FRAME_COLOURS,
   frameCardUrl,
   NO_FRAME_ID,
+  type FrameCardFormat,
 } from "@/lib/design/frames";
 
 const GROUND = "#fdfaf5";
@@ -47,24 +49,15 @@ const RULE = "#ddd6c4";
 // is already a finished, framing-ready 2000x2400 raster.
 const SAMPLE_ARTWORK_SRC = "/artwork/Basemaps/Surname/Terrain.png";
 
-// Real finished lifestyle photos — shelf shots with actual composited artwork baked
-// in, standing in per-colour for the flat frame-card + sample-artwork overlay.
-// Keyed by FRAME_COLOURS id. Pre-compressed to WebP by scripts/compress-images.mjs
-// (see public/examples/product-gallery/classic-framed).
-const LIFESTYLE_SRC: Record<string, string> = {
-  black: "/examples/product-gallery/classic-framed/black.webp",
-  white: "/examples/product-gallery/classic-framed/white.webp",
-  silver: "/examples/product-gallery/classic-framed/silver.webp",
-  "dark grey": "/examples/product-gallery/classic-framed/dark-grey.webp",
-  "light grey": "/examples/product-gallery/classic-framed/light-grey.webp",
-  natural: "/examples/product-gallery/classic-framed/natural.webp",
-  brown: "/examples/product-gallery/classic-framed/brown.webp",
-  gold: "/examples/product-gallery/classic-framed/gold.webp",
-};
+// Real Prodigi-rendered wall/shelf-mockup photos for both "Canvas" and "Classic
+// Frame" — main (hero) + angled + closeup detail shots, keyed by frame colour id,
+// orientation, and size. See canvasLifestyleShots()/classicFrameLifestyleShots()'s
+// own comments in lib/design/frames.ts.
 
-// Real Prodigi-rendered wall-mockup photos for the "Canvas" product kind — main
-// (hero) + angled + closeup detail shots, keyed by CANVAS_FRAME_COLOURS id and
-// orientation. See CANVAS_LIFESTYLE_SHOTS's own comment in lib/design/frames.ts.
+// The colour-swatch quick-switch strip below shows one representative size per
+// format rather than tracking the currently selected size — it's a "here's roughly
+// what this colour looks like" preview, not the actual configured product.
+const THUMBNAIL_SIZE_LABEL: Record<FrameCardFormat, string> = { square: '12x12"', iso: "A3" };
 
 const ORIENTATIONS: Format[] = ["ISO", "Square"];
 
@@ -78,8 +71,7 @@ const FRAME_KIND_OPTIONS: { id: ProductKind; label: string }[] = [
 ];
 
 // A handful of colours for the thumbnail strip, echoing the reference screenshot's
-// three or four framed shots rather than all eight swatches. Chosen to match the
-// colours with a real lifestyle photo (see LIFESTYLE_SRC above).
+// three or four framed shots rather than all eight swatches.
 const THUMBNAIL_COLOURS = ["black", "natural", "gold", "dark grey"];
 
 export default function ProductsPageClient() {
@@ -96,6 +88,8 @@ export default function ProductsPageClient() {
   // as that size is on sale for the newly chosen product; otherwise sizeOptions[0] below.
   const [selectedSizeLabel, setSelectedSizeLabel] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [activeShotIndex, setActiveShotIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,29 +131,56 @@ export default function ProductsPageClient() {
   // GLOBAL-FRA-CAN-* SKU (not NO_FRAME_ID).
   const framed = frameKind === "Classic Frame" || (frameKind === "Stretched Canvas" && frameColour !== NO_FRAME_ID);
   const activeFrameColours = frameKind === "Stretched Canvas" ? CANVAS_FRAME_COLOURS : FRAME_COLOURS;
-  const cardFormat = orientation === "Square" ? "square" : "iso";
+  const cardFormat: FrameCardFormat = orientation === "Square" ? "square" : "iso";
   const rect = FRAME_ARTWORK_RECT[cardFormat];
   const aspect = formatAspect(orientation);
   const canvasShots =
-    frameKind === "Stretched Canvas" ? CANVAS_LIFESTYLE_SHOTS[cardFormat][frameColour] : undefined;
+    frameKind === "Stretched Canvas" && selectedSku
+      ? canvasLifestyleShots(cardFormat, frameColour, selectedSku.size_label)
+      : undefined;
+  const classicShots =
+    frameKind === "Classic Frame" && selectedSku
+      ? classicFrameLifestyleShots(cardFormat, frameColour, selectedSku.size_label)
+      : undefined;
+
+  // The three lifestyle photos for the currently selected combination, swiped/tapped
+  // through via the dot strip overlaid on the main image below.
+  const shots = canvasShots ?? classicShots;
+  const shotList = shots
+    ? [
+        { src: shots.main, alt: `${frameKind} in ${frameColour}, shown on a wall` },
+        { src: shots.closeup, alt: `${frameKind} in ${frameColour}, frame corner close-up` },
+        { src: shots.angled, alt: `${frameKind} in ${frameColour}, angled view` },
+      ]
+    : null;
+  const stepShot = (dir: 1 | -1) =>
+    setActiveShotIndex((i) => (i + dir + (shotList?.length ?? 1)) % (shotList?.length ?? 1));
+
+  // The combination changed (frame kind, colour, orientation, or size) — go back to
+  // the hero shot rather than keeping an index that now points at a different photo.
+  // Adjusting state during render (React's documented pattern for this) rather than
+  // in an effect avoids an extra render pass.
+  const comboKey = `${frameKind}|${frameColour}|${orientation}|${selectedSku?.sku}`;
+  const [prevComboKey, setPrevComboKey] = useState(comboKey);
+  if (prevComboKey !== comboKey) {
+    setPrevComboKey(comboKey);
+    setActiveShotIndex(0);
+  }
 
   // Whichever photo the preview below is actually showing right now — used to drive
   // the click-to-zoom lightbox. The frame-card + composited-artwork treatment has no
   // single flat image (it's a photo plus an absolutely-positioned overlay), so that
   // case zooms into the sample artwork alone rather than trying to recreate the
   // composite in the lightbox.
-  const mainImage =
-    frameKind === "Classic Frame" && LIFESTYLE_SRC[frameColour]
-      ? { src: LIFESTYLE_SRC[frameColour], alt: `Classic Frame in ${frameColour}, shown on a shelf` }
-      : canvasShots
-        ? { src: canvasShots.main, alt: `Canvas in ${frameColour}, shown on a wall` }
-        : {
-            src: SAMPLE_ARTWORK_SRC,
-            alt:
-              frameKind === "Stretched Canvas"
-                ? "Sample census artwork on canvas"
-                : "Sample census artwork",
-          };
+  const mainImage = shotList
+    ? shotList[activeShotIndex]
+    : {
+        src: SAMPLE_ARTWORK_SRC,
+        alt:
+          frameKind === "Stretched Canvas"
+            ? "Sample census artwork on canvas"
+            : "Sample census artwork",
+      };
 
   return (
     <div
@@ -243,15 +264,29 @@ export default function ProductsPageClient() {
                         aria-label={option.label}
                         aria-pressed={frameColour === option.id}
                         onClick={() => setFrameColour(option.id)}
-                        className="h-8 w-8 rounded-full transition-shadow"
+                        className="h-8 w-8 overflow-hidden rounded-full transition-shadow"
                         style={{
-                          background: option.hex,
+                          background: option.id === NO_FRAME_ID ? "#fff" : option.hex,
                           boxShadow:
                             frameColour === option.id
                               ? `0 0 0 2px ${GROUND}, 0 0 0 3.5px ${INK}`
                               : `0 0 0 1px ${RULE}`,
                         }}
-                      />
+                      >
+                        {option.id === NO_FRAME_ID && (
+                          <svg viewBox="0 0 32 32" className="h-full w-full" aria-hidden="true">
+                            <line
+                              x1="8"
+                              y1="24"
+                              x2="24"
+                              y2="8"
+                              stroke="#c0392b"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        )}
+                      </button>
                     ))}
                   </div>
                   <p className="mt-2 text-[13px]" style={{ color: MUTED }}>
@@ -327,15 +362,23 @@ export default function ProductsPageClient() {
                 Classic Frame prints arrive ready to hang, in solid, satin-laminated
                 wood in your choice of eight colours. Every frame is glazed with
                 acrylic rather than glass — shatter-resistant in transit and on your
-                wall — with no mount, so the print fills the frame edge to edge.
+                wall — with no mount, so the print fills the frame edge to edge.{" "}
+                <Link href="/framing" className="underline underline-offset-4" style={{ color: INK }}>
+                  See full framing details
+                </Link>
+                .
               </Section>
 
               <Section heading="Canvas">
                 Stretched over a 38mm wooden stretcher bar with an ImageWrap edge,
                 so the artwork continues around the sides rather than showing a
                 plain border. Choose &ldquo;No Frame&rdquo; for the plain stretched
-                canvas, or any colour to add a float frame around it — both arrive
-                ready to hang.
+                canvas, or any colour to add a float frame around it. Hanging
+                hardware isn&apos;t included, so bring your own hook or nail.{" "}
+                <Link href="/framing" className="underline underline-offset-4" style={{ color: INK }}>
+                  See full framing details
+                </Link>
+                .
               </Section>
 
               <Section heading="Shipping">
@@ -355,22 +398,35 @@ export default function ProductsPageClient() {
 
           {/* ── Image gallery ── */}
           <div className="order-1 lg:sticky lg:top-24 lg:self-start">
-            <button
-              type="button"
-              onClick={() => setLightboxOpen(true)}
-              aria-label="Click to zoom"
-              className="group relative block w-full cursor-zoom-in overflow-hidden rounded-md"
+            <div
+              className="relative w-full overflow-hidden rounded-md"
               style={{
                 // 3:4 matches the frame-card/lifestyle photos' own shape — only meaningful
                 // once a real photo is actually shown. Until then the flat sample artwork
                 // keeps its own aspect ratio rather than being cropped to a photo that isn't
                 // there.
                 aspectRatio:
-                  (frameKind === "Classic Frame" && framed) || canvasShots
+                  (frameKind === "Classic Frame" && framed) || canvasShots || classicShots
                     ? "3 / 4"
                     : `${aspect.w} / ${aspect.h}`,
                 background: "#F5F4F1",
               }}
+              onTouchStart={(e) => {
+                if (shotList) touchStartX.current = e.touches[0].clientX;
+              }}
+              onTouchEnd={(e) => {
+                if (!shotList || touchStartX.current === null) return;
+                const delta = e.changedTouches[0].clientX - touchStartX.current;
+                touchStartX.current = null;
+                if (Math.abs(delta) < 40) return;
+                stepShot(delta < 0 ? 1 : -1);
+              }}
+            >
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              aria-label="Click to zoom"
+              className="group relative block h-full w-full cursor-zoom-in"
             >
               <span
                 className="pointer-events-none absolute right-3 top-3 z-10 flex items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100"
@@ -382,17 +438,10 @@ export default function ProductsPageClient() {
                   <path d="M11 8v6M8 11h6" stroke="#fdfaf5" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </span>
-              {frameKind === "Classic Frame" && LIFESTYLE_SRC[frameColour] ? (
+              {shotList ? (
                 <Image
-                  src={LIFESTYLE_SRC[frameColour]}
-                  alt={`Classic Frame in ${frameColour}, shown on a shelf`}
-                  fill
-                  className="object-cover"
-                />
-              ) : canvasShots ? (
-                <Image
-                  src={canvasShots.main}
-                  alt={`Canvas in ${frameColour}, shown on a wall`}
+                  src={shotList[activeShotIndex].src}
+                  alt={shotList[activeShotIndex].alt}
                   fill
                   className="object-cover"
                 />
@@ -435,33 +484,60 @@ export default function ProductsPageClient() {
               )}
             </button>
 
+            {shotList && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous photo"
+                  onClick={() => stepShot(-1)}
+                  className="absolute left-2 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full opacity-70 transition-opacity hover:opacity-100"
+                  style={{ width: 32, height: 32, background: "rgba(30,43,24,0.55)" }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M15 6l-6 6 6 6" stroke="#fdfaf5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next photo"
+                  onClick={() => stepShot(1)}
+                  className="absolute right-2 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center rounded-full opacity-70 transition-opacity hover:opacity-100"
+                  style={{ width: 32, height: 32, background: "rgba(30,43,24,0.55)" }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 6l6 6-6 6" stroke="#fdfaf5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            {shotList && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center gap-2">
+                {shotList.map((shot, index) => (
+                  <button
+                    key={shot.src}
+                    type="button"
+                    aria-label={`Show ${index === 0 ? "main" : index === 1 ? "close-up" : "angled"} photo`}
+                    aria-pressed={activeShotIndex === index}
+                    onClick={() => setActiveShotIndex(index)}
+                    className="pointer-events-auto h-2.5 w-2.5 rounded-full transition-transform"
+                    style={{
+                      background: activeShotIndex === index ? "#fdfaf5" : "rgba(253,250,245,0.55)",
+                      boxShadow: "0 0 0 1px rgba(30,43,24,0.4)",
+                      transform: activeShotIndex === index ? "scale(1.15)" : "scale(1)",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            </div>
+
             {lightboxOpen && (
               <ImageLightbox
                 src={mainImage.src}
                 alt={mainImage.alt}
                 onClose={() => setLightboxOpen(false)}
               />
-            )}
-
-            {canvasShots && (
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="relative aspect-[3/4] overflow-hidden rounded-md">
-                  <Image
-                    src={canvasShots.closeup}
-                    alt={`Canvas in ${frameColour}, frame corner close-up`}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-                <div className="relative aspect-[3/4] overflow-hidden rounded-md">
-                  <Image
-                    src={canvasShots.angled}
-                    alt={`Canvas in ${frameColour}, angled view`}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              </div>
             )}
 
             <div className="mt-3 grid grid-cols-4 gap-3">
@@ -485,11 +561,10 @@ export default function ProductsPageClient() {
                     }}
                   >
                     <Image
-                      src={LIFESTYLE_SRC[colourId] ?? frameCardUrl(colourId, cardFormat)}
+                      src={classicFrameLifestyleShots(cardFormat, colourId, THUMBNAIL_SIZE_LABEL[cardFormat]).main}
                       alt={`${colour.label} frame, ${formatLabel(orientation)}`}
                       fill
-                      unoptimized={!LIFESTYLE_SRC[colourId]}
-                      className={LIFESTYLE_SRC[colourId] ? "object-cover" : "object-fill"}
+                      className="object-cover"
                     />
                   </button>
                 );

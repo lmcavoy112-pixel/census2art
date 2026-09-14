@@ -1,6 +1,5 @@
-// Shared between IrelandArtworkMap and CountyArtworkMap, which both render the
-// "hotspot" highlight style — deep-green radial glows at DED centroids instead
-// of shaded polygons.
+// Used by IrelandArtworkMap for the "hotspot" highlight style — deep-green
+// radial glows at DED centroids instead of shaded polygons.
 //
 // In dense clusters (city-centre DEDs) a glow sized off count alone can be
 // bigger than the DED itself, so neighbouring glows merge into a blob. To

@@ -116,7 +116,6 @@ function CurrencyMenu() {
         style={{ color: MUTED, outlineColor: GOLD }}
       >
         <span style={{ fontWeight: 600 }}>{CURRENCY_LABELS[currency].symbol}</span>
-        <span className="hidden md:inline">{currency}</span>
         <svg
           width="10"
           height="10"
@@ -377,14 +376,14 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
         </div>
 
         <nav className="hidden items-center gap-6 lg:flex">
-          <HeaderLink href="/discover" active={isActivePath(pathname, "/discover")}>
-            Discover
-          </HeaderLink>
           <HeaderLink href="/examples" active={isActivePath(pathname, "/examples")}>
             Examples
           </HeaderLink>
           <HeaderLink href="/gallery" active={isActivePath(pathname, "/gallery")}>
             Products
+          </HeaderLink>
+          <HeaderLink href="/discover" active={isActivePath(pathname, "/discover")}>
+            Discover
           </HeaderLink>
           <HeaderLink href="/background" active={isActivePath(pathname, "/background")}>
             Background
@@ -590,14 +589,6 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
               <div className="px-5 py-5">
                 <div className="flex flex-col gap-4">
                   <Link
-                    href="/discover"
-                    onClick={requestCloseMenu}
-                    className="text-sm"
-                    style={{ color: INK }}
-                  >
-                    Discover
-                  </Link>
-                  <Link
                     href="/examples"
                     onClick={requestCloseMenu}
                     className="text-sm"
@@ -612,6 +603,14 @@ export default function SiteHeader({ back }: SiteHeaderProps) {
                     style={{ color: INK }}
                   >
                     Products
+                  </Link>
+                  <Link
+                    href="/discover"
+                    onClick={requestCloseMenu}
+                    className="text-sm"
+                    style={{ color: INK }}
+                  >
+                    Discover
                   </Link>
                   <Link
                     href="/background"

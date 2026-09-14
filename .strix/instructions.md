@@ -97,7 +97,7 @@ and field-projected. Test:
 
 ## 4. Geometry / map endpoints
 
-`/api/polygon`, `/api/county-polygons`, `/api/county-outline`, `/api/surname-polygons`,
+`/api/county-polygons`, `/api/county-outline`, `/api/surname-polygons`,
 `/api/geocode-house`.
 
 Check for SSRF via any URL-shaped parameter, path traversal into the bundled GeoJSON
