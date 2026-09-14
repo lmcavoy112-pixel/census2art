@@ -19,10 +19,15 @@ export default function ImageLightbox({
   src,
   alt,
   onClose,
+  cropAspect,
 }: {
   src: string;
   alt: string;
   onClose: () => void;
+  // Matches the crop of whatever preview thumbnail was clicked (e.g. "3 / 4" for the
+  // product gallery's lifestyle photos) so the zoomed view isn't a jarring re-crop of
+  // the same image. Omit to show the image uncropped, at its natural aspect ratio.
+  cropAspect?: string;
 }) {
   const [closing, setClosing] = useState(false);
 
@@ -76,22 +81,39 @@ export default function ImageLightbox({
       <div
         className={closing ? "lightbox-panel-out" : "lightbox-panel-in"}
         onClick={(event) => event.stopPropagation()}
+        style={
+          cropAspect
+            ? { position: "relative", aspectRatio: cropAspect, maxHeight: "85vh", maxWidth: "90vw", height: "85vh" }
+            : undefined
+        }
       >
-        <Image
-          src={src}
-          alt={alt}
-          width={700}
-          height={990}
-          unoptimized
-          priority
-          style={{
-            maxHeight: "85vh",
-            maxWidth: "90vw",
-            width: "auto",
-            height: "auto",
-            boxShadow: "0 30px 70px -20px rgba(20,28,16,0.5)",
-          }}
-        />
+        {cropAspect ? (
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            unoptimized
+            priority
+            className="object-cover"
+            style={{ boxShadow: "0 30px 70px -20px rgba(20,28,16,0.5)" }}
+          />
+        ) : (
+          <Image
+            src={src}
+            alt={alt}
+            width={700}
+            height={990}
+            unoptimized
+            priority
+            style={{
+              maxHeight: "85vh",
+              maxWidth: "90vw",
+              width: "auto",
+              height: "auto",
+              boxShadow: "0 30px 70px -20px rgba(20,28,16,0.5)",
+            }}
+          />
+        )}
       </div>
     </div>
   );

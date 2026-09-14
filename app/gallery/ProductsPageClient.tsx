@@ -182,6 +182,15 @@ export default function ProductsPageClient() {
             : "Sample census artwork",
       };
 
+  // 3:4 matches the frame-card/lifestyle photos' own shape — only meaningful once a
+  // real photo is actually shown. Until then the flat sample artwork keeps its own
+  // aspect ratio rather than being cropped to a photo that isn't there. Shared between
+  // the preview box and the lightbox so zooming in doesn't re-crop the same image.
+  const previewAspect =
+    (frameKind === "Classic Frame" && framed) || canvasShots || classicShots
+      ? "3 / 4"
+      : `${aspect.w} / ${aspect.h}`;
+
   return (
     <div
       className={siteFontVars}
@@ -405,10 +414,7 @@ export default function ProductsPageClient() {
                 // once a real photo is actually shown. Until then the flat sample artwork
                 // keeps its own aspect ratio rather than being cropped to a photo that isn't
                 // there.
-                aspectRatio:
-                  (frameKind === "Classic Frame" && framed) || canvasShots || classicShots
-                    ? "3 / 4"
-                    : `${aspect.w} / ${aspect.h}`,
+                aspectRatio: previewAspect,
                 background: "#F5F4F1",
               }}
               onTouchStart={(e) => {
@@ -443,6 +449,7 @@ export default function ProductsPageClient() {
                   src={shotList[activeShotIndex].src}
                   alt={shotList[activeShotIndex].alt}
                   fill
+                  unoptimized
                   className="object-cover"
                 />
               ) : frameKind === "Classic Frame" && framed ? (
@@ -537,6 +544,7 @@ export default function ProductsPageClient() {
                 src={mainImage.src}
                 alt={mainImage.alt}
                 onClose={() => setLightboxOpen(false)}
+                cropAspect={previewAspect}
               />
             )}
 
@@ -564,6 +572,7 @@ export default function ProductsPageClient() {
                       src={classicFrameLifestyleShots(cardFormat, colourId, THUMBNAIL_SIZE_LABEL[cardFormat]).main}
                       alt={`${colour.label} frame, ${formatLabel(orientation)}`}
                       fill
+                      unoptimized
                       className="object-cover"
                     />
                   </button>

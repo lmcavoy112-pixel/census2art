@@ -64,3 +64,6 @@ pricing.xlsx
 
 # One-off local output from scripts/generate-canvas-calibration.js, never meant for git.
 /.calibration/
+
+# Scratch folder for manual product-photo alignment review, never meant for git.
+/tmp/
