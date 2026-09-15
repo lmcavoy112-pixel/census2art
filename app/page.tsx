@@ -7,6 +7,7 @@ import {
   AncestryKnowledgeBanner,
   AncestryKnowledgeModern,
   AncestryKnowledgeHistoric,
+  AncestryKnowledgeNai,
 } from "./components/home/AncestryKnowledge";
 import HowItWorks from "./components/home/HowItWorks";
 import Gallery from "./components/home/Gallery";
@@ -107,6 +108,8 @@ export default function Home() {
         <SectionDivider />
         <AncestryKnowledgeHistoric />
         <Gallery only="historic" />
+        <SectionDivider />
+        <AncestryKnowledgeNai />
 
         <HowItWorks />
         <Testimonials />

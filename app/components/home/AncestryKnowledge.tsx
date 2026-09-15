@@ -28,6 +28,14 @@ const HISTORIC_PITCH: Pitch = {
   buttonHref: "/discover#discover-historic",
 };
 
+const NAI_PITCH: Pitch = {
+  heading: "I have the record on nationalarchives.ie",
+  body: "Already found your ancestor's record? Paste its link and we'll take you straight into the designer.",
+  buttonLabel: "Use my record",
+  // NaiRecordLookup's own section id — further down /discover.
+  buttonHref: "/discover#nai-lookup",
+};
+
 /** Heading, subtext and CTA together again — back above the persona's Gallery strip
  *  (a brief detour had the button living below it centred; that only made sense in
  *  isolation, and reads as inconsistent once it's grouped back with left-aligned copy).
@@ -108,4 +116,8 @@ export function AncestryKnowledgeModern() {
 
 export function AncestryKnowledgeHistoric() {
   return <PitchBlock pitch={HISTORIC_PITCH} />;
+}
+
+export function AncestryKnowledgeNai() {
+  return <PitchBlock pitch={NAI_PITCH} />;
 }

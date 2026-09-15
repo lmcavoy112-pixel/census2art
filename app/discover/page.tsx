@@ -5,6 +5,7 @@ import SiteFooter from "../components/home/SiteFooter";
 import CensusBlock from "../components/home/CensusBlock";
 import Gallery from "../components/home/Gallery";
 import DiscoverHistory from "../components/home/DiscoverHistory";
+import NaiRecordLookup, { NaiHowToSteps, NAI_CENSUS_SEARCH_URL } from "../components/home/NaiRecordLookup";
 import SectionDivider from "../components/home/SectionDivider";
 import HashScrollFix from "../components/home/HashScrollFix";
 import { siteFontVars } from "../fonts";
@@ -51,6 +52,42 @@ export default function DiscoverPage() {
         <SectionDivider />
         <DiscoverHistory />
         <Gallery only="historic" title="Historic Examples" />
+        <SectionDivider />
+
+        <section id="nai-lookup" className="scroll-mt-24 px-6 py-10 sm:py-16">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2
+              style={{
+                fontFamily: "var(--font-cormorant)",
+                fontSize: "clamp(1.9rem, 4vw, 2.6rem)",
+                fontWeight: 500,
+                color: INK,
+              }}
+            >
+              Already found the record on nationalarchives.ie?
+            </h2>
+            <p className="mt-4 text-base leading-relaxed" style={{ color: "#6b5f4a", fontWeight: 300 }}>
+              Search{" "}
+              <a
+                href={NAI_CENSUS_SEARCH_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+                style={{ color: INK }}
+              >
+                nationalarchives.ie
+              </a>
+              , paste the record&apos;s link below, and we&apos;ll take you straight into the
+              designer with the household already filled in.
+            </p>
+            <div className="mt-6 text-left">
+              <NaiRecordLookup />
+              <div className="mt-6">
+                <NaiHowToSteps />
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
       <SiteFooter />
